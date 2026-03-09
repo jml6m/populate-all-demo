@@ -1,30 +1,34 @@
 import assert from 'assert';
+import { ComponentPopulated } from '../algorithms/types';
 
-export function smartCompare(actual: any, expected: any): { pass: boolean; errorDetail: string | null; nodesProcessed: number } {
+export function smartCompare(actual: unknown, expected: unknown): { pass: boolean; errorDetail: string | null; nodesProcessed: number } {
   try {
     assert.deepStrictEqual(actual, expected);
-    
-    const visited = new Set<any>();
-    function countNodes(nodes: any[]): number {
+
+    const visited = new Set<ComponentPopulated>();
+
+    function countNodes(nodes: ComponentPopulated[]): number {
       let count = 0;
       for (const node of nodes) {
         if (!visited.has(node)) {
           visited.add(node);
           count++;
-          if (node.dependencies) {
-            count += countNodes(node.dependencies);
-          }
+          count += countNodes(node.dependencies);
         }
       }
       return count;
     }
-    
-    return { pass: true, errorDetail: null, nodesProcessed: countNodes(actual) };
-  } catch (error: any) {
-    return { 
-      pass: false, 
-      errorDetail: error.message || 'Assertion Error: Graph mismatch',
-      nodesProcessed: 0
+
+    // We know 'actual' passed deepStrictEqual, so it safely matches our populated array structure
+    const actualNodes = actual as ComponentPopulated[];
+
+    return { pass: true, errorDetail: null, nodesProcessed: countNodes(actualNodes) };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      pass: false,
+      errorDetail: errorMessage !== '' ? errorMessage : 'Assertion Error: Graph mismatch',
+      nodesProcessed: 0,
     };
   }
 }

@@ -53,11 +53,9 @@ function generateDataset(size: number, seedSuffix: string) {
   return { flatComponents, populatedArray };
 }
 
-function writeYaml(filename: string, data: any, enableAliases: boolean) {
+function writeYaml<T>(filename: string, data: T, enableAliases: boolean) {
   const filePath = path.join(__dirname, '../data', filename);
   const yamlString = YAML.stringify(data, {
-    // This is the magic flag for YAML 1.2:
-    // It detects RAM cycles and turns them into &anchors and *aliases
     aliasDuplicateObjects: enableAliases,
   });
   fs.writeFileSync(filePath, yamlString, 'utf8');
