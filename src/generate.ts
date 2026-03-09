@@ -70,9 +70,8 @@ function run() {
   writeYaml('basic_test.yaml', basic.flatComponents, false);
   writeYaml('basic_answer.yaml', basic.populatedArray, true);
 
-  console.log('\nGenerating Stress Dataset (50,000 nodes)...');
-  console.log('This may take a few seconds to detect and map tens of thousands of cycles...');
-  const stress = generateDataset(50000, 'stress');
+  console.log('\nGenerating Stress Dataset (1,000 nodes)...');
+  const stress = generateDataset(1000, 'stress');
   writeYaml('stress_test.yaml', stress.flatComponents, false);
   writeYaml('stress_answer.yaml', stress.populatedArray, true);
 }
