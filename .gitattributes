@@ -1,0 +1,27 @@
+# Mark lockfiles as generated
+# This collapses them in GitHub PRs and excludes them from language stats
+# but allows them to be treated as text if you force expand the diff.
+package-lock.json linguist-generated=true
+yarn.lock linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+
+# Web technologies
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.json text eol=lf
+
+# Documentation and Configs
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.xml text eol=lf
+*.svg text eol=lf
+
+# Linter and Ignore files
+.gitignore text eol=lf
+.editorconfig text eol=lf
