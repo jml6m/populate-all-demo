@@ -30,7 +30,11 @@ interface BenchmarkReport {
 function loadYaml(filename: string): unknown {
   const filePath = path.join(__dirname, '../data', filename);
   const fileContent = fs.readFileSync(filePath, 'utf8');
-  return YAML.parse(fileContent);
+  // maxAliasCount is safe to raise here because these YAML files are generated
+  // by our own generate.ts script with a deterministic seed — they are trusted
+  // input, not user-supplied data. The stress dataset has 1,000 nodes with 1-3
+  // deps each, so 10,000 is a generous upper bound that will never be exceeded.
+  return YAML.parse(fileContent, { maxAliasCount: 10000 });
 }
 
 function runBenchmark() {
