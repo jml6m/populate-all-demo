@@ -6,6 +6,8 @@
   "scripts": {
     "build": "tsc",
     "generate": "tsx src/generate.ts",
+    "run": "tsx src/runner.ts",
+    "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\""
   },
   "keywords": [],
@@ -20,7 +22,7 @@
     "@eslint/js": "^9.37.0",
     "@types/node": "^25.4.0",
     "@types/seedrandom": "^3.0.8",
-    "eslint": "^9.37.0",
+    "eslint": "^9.39.4",
     "eslint-plugin-unused-imports": "^4.3.0",
     "prettier": "^3.6.2",
     "prettier-plugin-organize-imports": "^4.3.0",

@@ -1,35 +1,35 @@
 import fs from 'fs';
 import path from 'path';
-import YAML from 'yaml';
 import seedrandom from 'seedrandom';
+import YAML from 'yaml';
 
 // Hardcoded seed ensures our test data is mathematically identical on every run
 const SEED = 'mongoose-issue-16074';
 
-type ComponentFlat = {
+interface ComponentFlat {
   id: string;
   name: string;
   dependencies: string[]; // Foreign Keys
-};
+}
 
-type ComponentPopulated = {
+interface ComponentPopulated {
   id: string;
   name: string;
   dependencies: ComponentPopulated[]; // True RAM Pointers
-};
+}
 
 function generateDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
-  const flatComponents: ComponentFlat[] =[];
+  const flatComponents: ComponentFlat[] = [];
   const populatedMap = new Map<string, ComponentPopulated>();
 
   // 1. Initialize all nodes
   for (let i = 0; i < size; i++) {
     const id = `comp_${i}`;
     const name = `Component ${i}`;
-    
-    flatComponents.push({ id, name, dependencies:[] });
-    populatedMap.set(id, { id, name, dependencies:[] });
+
+    flatComponents.push({ id, name, dependencies: [] });
+    populatedMap.set(id, { id, name, dependencies: [] });
   }
 
   // 2. Assign edges (dependencies) to create cyclic graphs
@@ -56,7 +56,7 @@ function generateDataset(size: number, seedSuffix: string) {
 function writeYaml(filename: string, data: any, enableAliases: boolean) {
   const filePath = path.join(__dirname, '../data', filename);
   const yamlString = YAML.stringify(data, {
-    // This is the magic flag for YAML 1.2: 
+    // This is the magic flag for YAML 1.2:
     // It detects RAM cycles and turns them into &anchors and *aliases
     aliasDuplicateObjects: enableAliases,
   });
