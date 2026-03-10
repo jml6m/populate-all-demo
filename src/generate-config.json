@@ -1,0 +1,7 @@
+{
+  "datasets": [
+    { "name": "basic", "size": 10, "seedSuffix": "basic" },
+    { "name": "stress", "size": 1000, "seedSuffix": "stress" }
+  ],
+  "outputDir": "../data"
+}
