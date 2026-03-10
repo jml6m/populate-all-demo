@@ -48,7 +48,7 @@ function getDataDir(): string {
     const rawConfig = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(rawConfig) as { outputDir?: unknown };
     if (typeof parsed.outputDir === 'string' && parsed.outputDir.trim() !== '') {
-      return path.resolve(__dirname, '..', parsed.outputDir);
+      return path.resolve(__dirname, parsed.outputDir);
     }
   } catch (err) {
     console.warn(`[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`);
