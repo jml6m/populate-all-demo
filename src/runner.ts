@@ -51,7 +51,9 @@ function getDataDir(): string {
       return path.resolve(__dirname, parsed.outputDir);
     }
   } catch (err) {
-    console.warn(`[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`);
+    console.warn(
+      `[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`
+    );
   }
 
   return defaultDir;
@@ -79,26 +81,16 @@ function loadYaml(filename: string): unknown {
   const basename = path.basename(filename, '.yaml');
   const parts = basename.split('.');
   if (parts.length !== 3) {
-    throw new Error(
-      `Invalid benchmark filename "${filename}": expected "<name>.<type>.<hash>.yaml" format.`,
-    );
+    throw new Error(`Invalid benchmark filename "${filename}": expected "<name>.<type>.<hash>.yaml" format.`);
   }
   const embeddedContentHash = parts[2];
   const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
   if (actualHash !== embeddedContentHash) {
-    throw new Error(
-      `Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`,
-    );
+    throw new Error(`Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`);
   }
 
-  // maxAliasCount is set to a large but finite ceiling because the stress dataset YAML
-  // uses circular aliases extensively for its 1,000-node graph. This is safe here
-  // because: (1) filenames are derived from the manifest, not user input; (2) the
-  // path-traversal guard above ensures we only read from the data directory; (3) the
-  // content hash check above has already verified that the file bytes exactly match
-  // what our deterministic generate.ts produced, ruling out any tampering or
-  // resource-exhaustion payload.
-  return YAML.parse(fileContent, { maxAliasCount: 1000000 });
+  // Disabling maxAliasCount (using hashes to verify files instead)
+  return YAML.parse(fileContent, { maxAliasCount: -1 });
 }
 
 function runBenchmark() {
@@ -114,7 +106,7 @@ function runBenchmark() {
     ...new Set(
       Object.keys(manifest.files)
         .filter((key) => key.endsWith(TEST_SUFFIX))
-        .map((key) => key.slice(0, -TEST_SUFFIX.length)),
+        .map((key) => key.slice(0, -TEST_SUFFIX.length))
     ),
   ];
 
