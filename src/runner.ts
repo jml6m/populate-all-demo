@@ -40,14 +40,32 @@ interface BenchmarkReport {
   };
 }
 
+function getDataDir(): string {
+  const defaultDir = path.resolve(__dirname, '../data');
+  const configPath = path.resolve(__dirname, '../generate-config.json');
+
+  try {
+    const rawConfig = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(rawConfig) as { outputDir?: unknown };
+    if (typeof parsed.outputDir === 'string' && parsed.outputDir.trim() !== '') {
+      return path.resolve(__dirname, '..', parsed.outputDir);
+    }
+  } catch {
+    // If the config file is missing or invalid, fall back to the previous default.
+  }
+
+  return defaultDir;
+}
+
 function loadManifest(): Manifest {
-  const manifestPath = path.resolve(__dirname, '../data/manifest.json');
+  const dataDir = getDataDir();
+  const manifestPath = path.resolve(dataDir, 'manifest.json');
   const raw = fs.readFileSync(manifestPath, 'utf8');
   return JSON.parse(raw) as Manifest;
 }
 
 function loadYaml(filename: string): unknown {
-  const dataDir = path.resolve(__dirname, '../data');
+  const dataDir = getDataDir();
   const filePath = path.resolve(dataDir, filename);
   // Guard against path traversal: the relative path from dataDir must not escape
   // upward (i.e. start with '..') and must not be absolute.
@@ -60,14 +78,17 @@ function loadYaml(filename: string): unknown {
   // Validate content hash embedded in filename against the actual file content
   const basename = path.basename(filename, '.yaml');
   const parts = basename.split('.');
-  if (parts.length === 3) {
-    const embeddedContentHash = parts[2];
-    const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
-    if (actualHash !== embeddedContentHash) {
-      throw new Error(
-        `Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`,
-      );
-    }
+  if (parts.length !== 3) {
+    throw new Error(
+      `Invalid benchmark filename "${filename}": expected "<name>.<type>.<hash>.yaml" format.`,
+    );
+  }
+  const embeddedContentHash = parts[2];
+  const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
+  if (actualHash !== embeddedContentHash) {
+    throw new Error(
+      `Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`,
+    );
   }
 
   // maxAliasCount is set to -1 (unlimited) because the stress dataset YAML uses
