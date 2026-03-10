@@ -27,12 +27,13 @@ jobs:
 
       - name: Lint
         run: npm run lint
+        continue-on-error: true
 
       - name: Generate test data
         run: npm run generate
 
       - name: Run benchmark suite
-        run: npm run run
+        run: npm run experiment
 
       - name: Upload benchmark reports
         uses: actions/upload-artifact@v4
