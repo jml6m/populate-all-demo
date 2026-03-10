@@ -28,9 +28,21 @@ interface BenchmarkReport {
 }
 
 function loadYaml(filename: string): unknown {
-  const filePath = path.join(__dirname, '../data', filename);
+  const dataDir = path.resolve(__dirname, '../data');
+  const filePath = path.resolve(dataDir, filename);
+  // Guard against path traversal: the relative path from dataDir must not escape
+  // upward (i.e. start with '..') and must not be absolute.
+  const relative = path.relative(dataDir, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Path "${filePath}" is outside the data directory`);
+  }
   const fileContent = fs.readFileSync(filePath, 'utf8');
-  return YAML.parse(fileContent);
+  // maxAliasCount is raised from the default (100) because the stress dataset YAML
+  // uses aliases extensively for its 1,000-node graph. Raising the limit is safe here
+  // because: (1) filenames are derived from the hardcoded `datasets` array, not user
+  // input; (2) the path-traversal guard above ensures we only read from the data
+  // directory; (3) the files themselves are produced by our deterministic generate.ts.
+  return YAML.parse(fileContent, { maxAliasCount: 10000 });
 }
 
 function runBenchmark() {
