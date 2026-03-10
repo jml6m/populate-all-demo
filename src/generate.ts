@@ -72,13 +72,16 @@ interface Manifest {
   files: Record<string, ManifestEntry>;
 }
 
-function writeYaml<T>(preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
+function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
   const yamlString = YAML.stringify(data, {
     aliasDuplicateObjects: enableAliases,
   });
   const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
-  const filename = `${preset}.${scriptHash}.${contentHash}.yaml`;
-  const filePath = path.join(__dirname, config.outputDir, filename);
+  const basename = `${preset}.${scriptHash}.${contentHash}.yaml`;
+  // The manifest stores the subdirectory-prefixed path so the runner can
+  // resolve the file relative to the data root.
+  const filename = `${subDir}/${basename}`;
+  const filePath = path.join(__dirname, config.outputDir, subDir, basename);
   fs.writeFileSync(filePath, yamlString, 'utf8');
   console.log(`✅ Wrote ${filename} (${(fs.statSync(filePath).size / 1024).toFixed(2)} KB)`);
   return { filename, contentHash };
@@ -96,8 +99,13 @@ function run() {
   for (const dataset of config.datasets) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
     const { flatComponents, populatedArray } = generateDataset(dataset.size, dataset.seedSuffix);
-    manifestFiles[`${dataset.name}_test`] = writeYaml(`${dataset.name}_test`, scriptHash, flatComponents, false);
-    manifestFiles[`${dataset.name}_answer`] = writeYaml(`${dataset.name}_answer`, scriptHash, populatedArray, true);
+
+    // Create per-dataset subdirectory.
+    const datasetDir = path.join(outputDir, dataset.name);
+    fs.mkdirSync(datasetDir, { recursive: true });
+
+    manifestFiles[`${dataset.name}_test`] = writeYaml(dataset.name, `${dataset.name}_test`, scriptHash, flatComponents, false);
+    manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, scriptHash, populatedArray, true);
   }
 
   const manifest: Manifest = {

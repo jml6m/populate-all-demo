@@ -9,6 +9,9 @@
 # Generated data
 /data
 
+# Benchmark reports
+/reports
+
 # IDE
 /.idea
 /.vscode
