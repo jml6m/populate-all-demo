@@ -1,10 +1,13 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import seedrandom from 'seedrandom';
 import YAML from 'yaml';
 
+import config from './generate-config.json';
+
 // Hardcoded seed ensures our test data is mathematically identical on every run
-const SEED = 'mongoose-issue-16074';
+const SEED = 'populate-all-demo';
 
 interface ComponentFlat {
   id: string;
@@ -53,25 +56,58 @@ function generateDataset(size: number, seedSuffix: string) {
   return { flatComponents, populatedArray };
 }
 
-function writeYaml<T>(filename: string, data: T, enableAliases: boolean) {
-  const filePath = path.join(__dirname, '../data', filename);
+function computeScriptHash(): string {
+  const content = fs.readFileSync(__filename);
+  return crypto.createHash('sha256').update(content).digest('hex').slice(0, 8);
+}
+
+interface ManifestEntry {
+  filename: string;
+  contentHash: string;
+}
+
+interface Manifest {
+  generatedAt: string;
+  scriptHash: string;
+  files: Record<string, ManifestEntry>;
+}
+
+function writeYaml<T>(preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
   const yamlString = YAML.stringify(data, {
     aliasDuplicateObjects: enableAliases,
   });
+  const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
+  const filename = `${preset}.${scriptHash}.${contentHash}.yaml`;
+  const filePath = path.join(__dirname, config.outputDir, filename);
   fs.writeFileSync(filePath, yamlString, 'utf8');
   console.log(`✅ Wrote ${filename} (${(fs.statSync(filePath).size / 1024).toFixed(2)} KB)`);
+  return { filename, contentHash };
 }
 
 function run() {
-  console.log('Generating Basic Dataset (10 nodes)...');
-  const basic = generateDataset(10, 'basic');
-  writeYaml('basic_test.yaml', basic.flatComponents, false);
-  writeYaml('basic_answer.yaml', basic.populatedArray, true);
+  const scriptHash = computeScriptHash();
+  const manifestFiles: Record<string, ManifestEntry> = {};
 
-  console.log('\nGenerating Stress Dataset (1,000 nodes)...');
-  const stress = generateDataset(1000, 'stress');
-  writeYaml('stress_test.yaml', stress.flatComponents, false);
-  writeYaml('stress_answer.yaml', stress.populatedArray, true);
+  const outputDir = path.join(__dirname, config.outputDir);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  for (const dataset of config.datasets) {
+    console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
+    const { flatComponents, populatedArray } = generateDataset(dataset.size, dataset.seedSuffix);
+    manifestFiles[`${dataset.name}_test`] = writeYaml(`${dataset.name}_test`, scriptHash, flatComponents, false);
+    manifestFiles[`${dataset.name}_answer`] = writeYaml(`${dataset.name}_answer`, scriptHash, populatedArray, true);
+  }
+
+  const manifest: Manifest = {
+    generatedAt: new Date().toISOString(),
+    scriptHash,
+    files: manifestFiles,
+  };
+  const manifestPath = path.join(__dirname, config.outputDir, 'manifest.json');
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+  console.log(`\n✅ Wrote manifest.json`);
 }
 
 run();

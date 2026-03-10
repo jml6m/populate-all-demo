@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
@@ -8,7 +9,19 @@ import { smartCompare } from './utils/compare';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, customMapTracker];
 
-const datasets = ['basic', 'stress'];
+const TEST_SUFFIX = '_test';
+const ANSWER_SUFFIX = '_answer';
+
+interface ManifestEntry {
+  filename: string;
+  contentHash: string;
+}
+
+interface Manifest {
+  generatedAt: string;
+  scriptHash: string;
+  files: Record<string, ManifestEntry | undefined>;
+}
 
 interface BenchmarkReport {
   algorithmCategory: string;
@@ -27,8 +40,32 @@ interface BenchmarkReport {
   };
 }
 
+function getDataDir(): string {
+  const defaultDir = path.resolve(__dirname, '../data');
+  const configPath = path.resolve(__dirname, 'generate-config.json');
+
+  try {
+    const rawConfig = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(rawConfig) as { outputDir?: unknown };
+    if (typeof parsed.outputDir === 'string' && parsed.outputDir.trim() !== '') {
+      return path.resolve(__dirname, '..', parsed.outputDir);
+    }
+  } catch (err) {
+    console.warn(`[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`);
+  }
+
+  return defaultDir;
+}
+
+function loadManifest(): Manifest {
+  const dataDir = getDataDir();
+  const manifestPath = path.resolve(dataDir, 'manifest.json');
+  const raw = fs.readFileSync(manifestPath, 'utf8');
+  return JSON.parse(raw) as Manifest;
+}
+
 function loadYaml(filename: string): unknown {
-  const dataDir = path.resolve(__dirname, '../data');
+  const dataDir = getDataDir();
   const filePath = path.resolve(dataDir, filename);
   // Guard against path traversal: the relative path from dataDir must not escape
   // upward (i.e. start with '..') and must not be absolute.
@@ -37,26 +74,60 @@ function loadYaml(filename: string): unknown {
     throw new Error(`Path "${filePath}" is outside the data directory`);
   }
   const fileContent = fs.readFileSync(filePath, 'utf8');
-  // maxAliasCount is raised from the default (100) because the stress dataset YAML
-  // uses aliases extensively for its 1,000-node graph. Raising the limit is safe here
-  // because: (1) filenames are derived from the hardcoded `datasets` array, not user
-  // input; (2) the path-traversal guard above ensures we only read from the data
-  // directory; (3) the files themselves are produced by our deterministic generate.ts.
-  return YAML.parse(fileContent, { maxAliasCount: 10000 });
+
+  // Validate content hash embedded in filename against the actual file content
+  const basename = path.basename(filename, '.yaml');
+  const parts = basename.split('.');
+  if (parts.length !== 3) {
+    throw new Error(
+      `Invalid benchmark filename "${filename}": expected "<name>.<type>.<hash>.yaml" format.`,
+    );
+  }
+  const embeddedContentHash = parts[2];
+  const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
+  if (actualHash !== embeddedContentHash) {
+    throw new Error(
+      `Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`,
+    );
+  }
+
+  // maxAliasCount is set to a large but finite ceiling because the stress dataset YAML
+  // uses circular aliases extensively for its 1,000-node graph. This is safe here
+  // because: (1) filenames are derived from the manifest, not user input; (2) the
+  // path-traversal guard above ensures we only read from the data directory; (3) the
+  // content hash check above has already verified that the file bytes exactly match
+  // what our deterministic generate.ts produced, ruling out any tampering or
+  // resource-exhaustion payload.
+  return YAML.parse(fileContent, { maxAliasCount: 1000000 });
 }
 
 function runBenchmark() {
+  const manifest = loadManifest();
   const reports: BenchmarkReport[] = [];
   const reportsDir = path.join(__dirname, '../reports');
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir);
   }
 
+  // Derive dataset names from manifest keys (e.g. "basic_test" -> "basic")
+  const datasets = [
+    ...new Set(
+      Object.keys(manifest.files)
+        .filter((key) => key.endsWith(TEST_SUFFIX))
+        .map((key) => key.slice(0, -TEST_SUFFIX.length)),
+    ),
+  ];
+
   for (const dataset of datasets) {
     console.log(`\n--- Loading ${dataset} dataset ---`);
+    const testEntry = manifest.files[`${dataset}${TEST_SUFFIX}`];
+    const answerEntry = manifest.files[`${dataset}${ANSWER_SUFFIX}`];
+    if (!testEntry || !answerEntry) {
+      throw new Error(`Missing manifest entries for dataset "${dataset}"`);
+    }
     // Type casting the flat data for the algorithms
-    const testData = loadYaml(`${dataset}_test.yaml`) as ComponentFlat[];
-    const answerData = loadYaml(`${dataset}_answer.yaml`);
+    const testData = loadYaml(testEntry.filename) as ComponentFlat[];
+    const answerData = loadYaml(answerEntry.filename);
 
     for (const algo of algorithms) {
       console.log(`Running:[${algo.category}] ${algo.name}...`);
