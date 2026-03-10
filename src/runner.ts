@@ -42,7 +42,7 @@ interface BenchmarkReport {
 
 function getDataDir(): string {
   const defaultDir = path.resolve(__dirname, '../data');
-  const configPath = path.resolve(__dirname, '../generate-config.json');
+  const configPath = path.resolve(__dirname, 'generate-config.json');
 
   try {
     const rawConfig = fs.readFileSync(configPath, 'utf8');
@@ -50,8 +50,8 @@ function getDataDir(): string {
     if (typeof parsed.outputDir === 'string' && parsed.outputDir.trim() !== '') {
       return path.resolve(__dirname, '..', parsed.outputDir);
     }
-  } catch {
-    // If the config file is missing or invalid, fall back to the previous default.
+  } catch (err) {
+    console.warn(`[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`);
   }
 
   return defaultDir;
@@ -98,7 +98,7 @@ function loadYaml(filename: string): unknown {
   // content hash check above has already verified that the file bytes exactly match
   // what our deterministic generate.ts produced, ruling out any tampering or
   // resource-exhaustion payload.
-  return YAML.parse(fileContent, { maxAliasCount: 1_000_000 });
+  return YAML.parse(fileContent, { maxAliasCount: 1000000 });
 }
 
 function runBenchmark() {
