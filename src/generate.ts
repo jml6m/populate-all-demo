@@ -7,7 +7,7 @@ import YAML from 'yaml';
 import config from './generate-config.json';
 
 // Hardcoded seed ensures our test data is mathematically identical on every run
-const SEED = 'mongoose-issue-16074';
+const SEED = 'populate-all-demo';
 
 interface ComponentFlat {
   id: string;

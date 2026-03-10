@@ -5,6 +5,7 @@
   "main": "dist/generate.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "node -e \"require('fs').copyFileSync('src/generate-config.json','dist/generate-config.json')\"",
     "generate": "tsx src/generate.ts",
     "run": "tsx src/runner.ts",
     "experiment": "tsx src/runner.ts",

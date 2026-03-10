@@ -91,14 +91,14 @@ function loadYaml(filename: string): unknown {
     );
   }
 
-  // maxAliasCount is set to -1 (unlimited) because the stress dataset YAML uses
-  // circular aliases extensively for its 1,000-node graph and the resolution count
-  // exceeds conservative limits. This is safe here because: (1) filenames are derived
-  // from the manifest, not user input; (2) the path-traversal guard above ensures we
-  // only read from the data directory; (3) the content hash check above has already
-  // verified that the file bytes exactly match what our deterministic generate.ts
-  // produced, ruling out any tampering or resource-exhaustion payload.
-  return YAML.parse(fileContent, { maxAliasCount: -1 });
+  // maxAliasCount is set to a large but finite ceiling because the stress dataset YAML
+  // uses circular aliases extensively for its 1,000-node graph. This is safe here
+  // because: (1) filenames are derived from the manifest, not user input; (2) the
+  // path-traversal guard above ensures we only read from the data directory; (3) the
+  // content hash check above has already verified that the file bytes exactly match
+  // what our deterministic generate.ts produced, ruling out any tampering or
+  // resource-exhaustion payload.
+  return YAML.parse(fileContent, { maxAliasCount: 1_000_000 });
 }
 
 function runBenchmark() {
