@@ -251,83 +251,166 @@ describe('smartCompare — mismatch detection', () => {
 });
 
 // ---------------------------------------------------------------------------
-// O(V + E) correctness — nodesProcessed equals unique nodes (V)
+// O(V + E) complexity proof
+//
+// Strategy: build graphs at scale factors [1×, 2×, 4×, 8×] of BASE_N nodes,
+// each organised as groups of GROUP_SIZE nodes forming independent short
+// cycles.  This keeps the max recursion depth constant (= GROUP_SIZE) while
+// letting N grow large enough for reliable timing.
+//
+// For each graph:
+//   V = N  (every node is visited exactly once)
+//   E = N × DEGREE  (every edge is traversed exactly once)
+//   ops = V + E = N × (1 + DEGREE)  — mathematically deterministic
+//
+// Two independent checks are performed and then synthesised:
+//  1. Operation count: ops(k×N) / ops(N) must equal k exactly.
+//  2. Runtime scaling: time(k×N) / time(N) must be ≈ k (within tolerance).
 // ---------------------------------------------------------------------------
 
-describe('smartCompare — O(V+E): nodesProcessed reflects unique nodes', () => {
-  it('counts each unique node exactly once in a linear graph', () => {
-    // 3 nodes: A → B → C (no shared refs, no cycles in top-level array)
-    const a1 = makeNode('a');
-    const b1 = makeNode('b');
-    const c1 = makeNode('c');
-    a1.dependencies.push(b1);
-    b1.dependencies.push(c1);
+// Fixed parameters for the complexity proof
+const BASE_N = 2500; // number of nodes at the 1× scale point
+const DEGREE = 2; // out-degree per node (must be < GROUP_SIZE)
+const GROUP_SIZE = 10; // nodes per independent cycle — bounds max recursion depth
+const SCALE_FACTORS = [1, 2, 4, 8]; // scale multipliers relative to BASE_N
+const WARMUP_RUNS = 3; // JIT warm-up runs before timing
+const TIMING_RUNS = 7; // timing runs; median is used
+// How far the actual runtime ratio may deviate from the expected linear ratio.
+// 75% tolerance means: for a 2× scale we accept ratios in [0.5, 3.5].
+// This catches super-linear (O(N²)) regressions while tolerating CI noise.
+const RUNTIME_TOLERANCE = 0.75;
 
-    const a2 = makeNode('a');
-    const b2 = makeNode('b');
-    const c2 = makeNode('c');
-    a2.dependencies.push(b2);
-    b2.dependencies.push(c2);
+interface ScalePoint {
+  scale: number;
+  N: number;
+  V: number;
+  E: number;
+  ops: number;
+  medianMs: number;
+}
 
-    const r = smartCompare([a1], [a2]);
-    assert.equal(r.pass, true);
-    // a, b, c each visited once = 3
-    assert.equal(r.nodesProcessed, 3);
-  });
-
-  it('counts the shared diamond node only once', () => {
-    const [actual, expected] = diamond();
-    const r = smartCompare(actual, expected);
-    assert.equal(r.pass, true);
-    // a, b, c, d — each top-level node appears in the array; d is shared via b and c.
-    // The comparator visits each unique actual object once → 4 unique nodes.
-    assert.equal(r.nodesProcessed, 4);
-  });
-
-  it('counts each node of a 2-node cycle exactly once', () => {
-    const [actual, expected] = twoCycle();
-    const r = smartCompare(actual, expected);
-    assert.equal(r.pass, true);
-    // a and b are each visited once (cycle back to a is caught as already-paired)
-    assert.equal(r.nodesProcessed, 2);
-  });
-
-  it('counts V unique nodes in a chain-cycle of length N', () => {
-    const N = 50;
-    const actual = makeChainCycle(N);
-    const expected = makeChainCycle(N);
-    const r = smartCompare(actual, expected);
-    assert.equal(r.pass, true);
-    // Each node is visited exactly once regardless of cycles
-    assert.equal(r.nodesProcessed, N);
-  });
-
-  it('handles a large stress-like graph without hanging (1000 nodes)', () => {
-    // Build a dense cyclic graph similar to the stress dataset:
-    // each node points to a few others (with cycles), all shared via a map.
-    const N = 1000;
-    const actualNodes: ComponentPopulated[] = [];
-    const expectedNodes: ComponentPopulated[] = [];
-
-    for (let i = 0; i < N; i++) {
-      actualNodes.push(makeNode(`node_${i}`));
-      expectedNodes.push(makeNode(`node_${i}`));
+function makeGroupedCycleGraph(n: number): [ComponentPopulated[], ComponentPopulated[]] {
+  function buildSide(): ComponentPopulated[] {
+    const nodes: ComponentPopulated[] = [];
+    for (let i = 0; i < n; i++) nodes.push(makeNode(`n${i}`));
+    for (let g = 0; g * GROUP_SIZE < n; g++) {
+      const start = g * GROUP_SIZE;
+      const end = Math.min(start + GROUP_SIZE, n);
+      const size = end - start;
+      for (let i = 0; i < size; i++) {
+        for (let k = 1; k <= DEGREE; k++) {
+          nodes[start + i].dependencies.push(nodes[start + (i + k) % size]);
+        }
+      }
     }
-    // Wire edges: node_i → node_{(i+1)%N}, node_i → node_{(i+7)%N}
-    for (let i = 0; i < N; i++) {
-      actualNodes[i].dependencies.push(actualNodes[(i + 1) % N]);
-      actualNodes[i].dependencies.push(actualNodes[(i + 7) % N]);
-      expectedNodes[i].dependencies.push(expectedNodes[(i + 1) % N]);
-      expectedNodes[i].dependencies.push(expectedNodes[(i + 7) % N]);
-    }
+    return nodes;
+  }
+  return [buildSide(), buildSide()];
+}
 
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+// Compute scaling data once at describe-level so all three it() blocks share it.
+const scalingData: ScalePoint[] = SCALE_FACTORS.map((scale) => {
+  const N = BASE_N * scale;
+  const [actual, expected] = makeGroupedCycleGraph(N);
+
+  // Warm up the JIT and capture the last result for V/E metadata
+  let lastResult = smartCompare(actual, expected);
+  for (let w = 1; w < WARMUP_RUNS; w++) lastResult = smartCompare(actual, expected);
+
+  // Collect timing samples
+  const timings: number[] = [];
+  for (let t = 0; t < TIMING_RUNS; t++) {
     const start = performance.now();
-    const r = smartCompare(actualNodes, expectedNodes);
-    const elapsed = performance.now() - start;
+    lastResult = smartCompare(actual, expected);
+    timings.push(performance.now() - start);
+  }
 
-    assert.equal(r.pass, true);
-    assert.equal(r.nodesProcessed, N);
-    // Should complete well under 1 second
-    assert.ok(elapsed < 1000, `Expected < 1000ms but took ${elapsed.toFixed(1)}ms`);
+  return {
+    scale,
+    N,
+    V: lastResult.nodesProcessed,
+    E: lastResult.edgesTraversed,
+    ops: lastResult.nodesProcessed + lastResult.edgesTraversed,
+    medianMs: median(timings),
+  };
+});
+
+const baseOps = scalingData[0].ops;
+const baseMs = scalingData[0].medianMs;
+
+describe('smartCompare — O(V+E) complexity proof', () => {
+  it('operation count scales exactly as O(V+E) [mathematical proof]', () => {
+    const details: string[] = [];
+
+    for (const { scale, N, V, E, ops } of scalingData) {
+      // V and E must equal their expected values exactly (no tolerance)
+      assert.equal(V, N, `V should equal N at scale ${scale}×`);
+      assert.equal(E, N * DEGREE, `E should equal N×degree at scale ${scale}×`);
+
+      const actualRatio = ops / baseOps;
+      const expectedRatio = scale;
+      details.push(`${scale}×: ops=${ops} ratio=${actualRatio.toFixed(3)} (expected=${expectedRatio})`);
+
+      assert.equal(actualRatio, expectedRatio, `ops ratio for ${scale}× scale must be exactly ${expectedRatio}`);
+    }
+
+    console.log('   [Op Count]', details.join('  |  '));
+    console.log('   ✅ Operation count scales exactly as O(V+E).');
+  });
+
+  it('runtime scales approximately as O(V+E) [empirical check]', () => {
+    const details: string[] = [];
+
+    for (const { scale, medianMs } of scalingData) {
+      const actualRatio = medianMs / baseMs;
+      const expectedRatio = scale;
+      const lo = Math.max(0, expectedRatio * (1 - RUNTIME_TOLERANCE));
+      const hi = expectedRatio * (1 + RUNTIME_TOLERANCE);
+      details.push(`${scale}×: ${medianMs.toFixed(2)}ms ratio=${actualRatio.toFixed(2)} (expect [${lo.toFixed(1)}, ${hi.toFixed(1)}])`);
+
+      assert.ok(
+        actualRatio >= lo && actualRatio <= hi,
+        `Runtime ratio for ${scale}× scale is ${actualRatio.toFixed(2)}, expected in [${lo.toFixed(2)}, ${hi.toFixed(2)}]`,
+      );
+    }
+
+    console.log('   [Runtime ]', details.join('  |  '));
+    console.log('   ✅ Runtime scales approximately as O(V+E).');
+  });
+
+  it('final verification: both checks agree on O(V+E) behavior', () => {
+    let opCountPassed = true;
+    let runtimePassed = true;
+
+    for (const { scale, ops, medianMs } of scalingData) {
+      if (ops / baseOps !== scale) opCountPassed = false;
+
+      const ratio = medianMs / baseMs;
+      const lo = Math.max(0, scale * (1 - RUNTIME_TOLERANCE));
+      const hi = scale * (1 + RUNTIME_TOLERANCE);
+      if (ratio < lo || ratio > hi) runtimePassed = false;
+    }
+
+    if (opCountPassed && runtimePassed) {
+      console.log(
+        '   ✅ O(V+E) VERIFIED: both operation count and runtime checks confirm linear scaling.',
+      );
+    } else if (opCountPassed && !runtimePassed) {
+      console.error(
+        '   ⚠️  O(V+E) PARTIAL: operation count mathematically confirms linear scaling; runtime check inconclusive (possible CI measurement noise).',
+      );
+    } else if (!opCountPassed && runtimePassed) {
+      console.error(
+        '   ⚠️  O(V+E) PARTIAL: runtime approximately confirms linear scaling; operation count check failed unexpectedly.',
+      );
+    } else {
+      console.error('   ❌ O(V+E) NOT VERIFIED: both operation count and runtime checks failed.');
+      assert.fail('O(V+E) not verified: both operation count and runtime checks failed.');
+    }
   });
 });

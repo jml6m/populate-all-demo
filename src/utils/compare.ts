@@ -13,10 +13,10 @@ import { ComponentPopulated } from '../algorithms/types';
 export function smartCompare(
   actual: unknown,
   expected: unknown
-): { pass: boolean; errorDetail: string | null; nodesProcessed: number } {
+): { pass: boolean; errorDetail: string | null; nodesProcessed: number; edgesTraversed: number } {
   try {
     if (!Array.isArray(actual) || !Array.isArray(expected)) {
-      return { pass: false, errorDetail: 'Both actual and expected must be arrays', nodesProcessed: 0 };
+      return { pass: false, errorDetail: 'Both actual and expected must be arrays', nodesProcessed: 0, edgesTraversed: 0 };
     }
 
     if (actual.length !== expected.length) {
@@ -24,6 +24,7 @@ export function smartCompare(
         pass: false,
         errorDetail: `Top-level array length mismatch: actual=${actual.length}, expected=${expected.length}`,
         nodesProcessed: 0,
+        edgesTraversed: 0,
       };
     }
 
@@ -32,6 +33,8 @@ export function smartCompare(
     // Reverse map — expected node → its paired actual node — for O(1) collision checks
     const reversePaired = new Map<ComponentPopulated, ComponentPopulated>();
     let nodesProcessed = 0;
+    // Each dependency link traversed (including back-edges to already-visited nodes)
+    let edgesTraversed = 0;
 
     /**
      * Returns null on success, or an error string on the first mismatch found.
@@ -70,8 +73,9 @@ export function smartCompare(
         return `dependencies length mismatch for id "${a.id}": actual=${a.dependencies.length}, expected=${e.dependencies.length}`;
       }
 
-      // Recurse into dependencies.
+      // Recurse into dependencies — each iteration is one edge traversal.
       for (let i = 0; i < a.dependencies.length; i++) {
+        edgesTraversed++;
         const err = compareNode(a.dependencies[i], e.dependencies[i]);
         if (err !== null) return err;
       }
@@ -85,17 +89,18 @@ export function smartCompare(
     for (let i = 0; i < actualNodes.length; i++) {
       const err = compareNode(actualNodes[i], expectedNodes[i]);
       if (err !== null) {
-        return { pass: false, errorDetail: err, nodesProcessed };
+        return { pass: false, errorDetail: err, nodesProcessed, edgesTraversed };
       }
     }
 
-    return { pass: true, errorDetail: null, nodesProcessed };
+    return { pass: true, errorDetail: null, nodesProcessed, edgesTraversed };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       pass: false,
       errorDetail: errorMessage !== '' ? errorMessage : 'Assertion Error: Graph mismatch',
       nodesProcessed: 0,
+      edgesTraversed: 0,
     };
   }
 }

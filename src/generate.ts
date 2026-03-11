@@ -89,9 +89,33 @@ function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: 
 
 function run() {
   const scriptHash = computeScriptHash();
-  const manifestFiles: Record<string, ManifestEntry> = {};
 
   const outputDir = path.join(__dirname, config.outputDir);
+  const manifestPath = path.join(outputDir, 'manifest.json');
+
+  // Idempotency guard: skip all generation if the manifest was produced by the
+  // same version of this script AND every file it references still exists on disk.
+  if (fs.existsSync(manifestPath)) {
+    const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
+    if (existingManifest.scriptHash === scriptHash) {
+      const missingFiles = Object.entries(existingManifest.files)
+        .filter(([, { filename }]) => !fs.existsSync(path.join(outputDir, filename)))
+        .map(([key]) => key);
+
+      if (missingFiles.length === 0) {
+        console.log(`⚡ Data is already up-to-date for scriptHash=${scriptHash} — skipping generation.`);
+        console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
+        return;
+      }
+
+      console.log(`⚠️  Manifest matches scriptHash=${scriptHash} but ${missingFiles.length} file(s) are missing: ${missingFiles.join(', ')}. Regenerating...`);
+    } else {
+      console.log(`📦 Script changed (old: ${existingManifest.scriptHash} → new: ${scriptHash}). Regenerating...`);
+    }
+  }
+
+  const manifestFiles: Record<string, ManifestEntry> = {};
+
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
@@ -113,7 +137,6 @@ function run() {
     scriptHash,
     files: manifestFiles,
   };
-  const manifestPath = path.join(__dirname, config.outputDir, 'manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
   console.log(`\n✅ Wrote manifest.json`);
 }
