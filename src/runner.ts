@@ -37,6 +37,7 @@ interface BenchmarkReport {
     pass: boolean;
     errorDetail: string | null;
     nodesProcessed: number;
+    edgesTraversed: number;
   };
 }
 
@@ -126,7 +127,7 @@ function runBenchmark() {
 
       let executionTimeMs = 0;
       let ramUsedMb = 0;
-      let accuracyResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0 };
+      let accuracyResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
 
       try {
         const startMem = process.memoryUsage().heapUsed;
@@ -147,6 +148,7 @@ function runBenchmark() {
           pass: false,
           errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
           nodesProcessed: 0,
+          edgesTraversed: 0,
         };
       }
 

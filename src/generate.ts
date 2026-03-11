@@ -72,13 +72,16 @@ interface Manifest {
   files: Record<string, ManifestEntry>;
 }
 
-function writeYaml<T>(preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
+function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
   const yamlString = YAML.stringify(data, {
     aliasDuplicateObjects: enableAliases,
   });
   const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
-  const filename = `${preset}.${scriptHash}.${contentHash}.yaml`;
-  const filePath = path.join(__dirname, config.outputDir, filename);
+  const basename = `${preset}.${scriptHash}.${contentHash}.yaml`;
+  // The manifest stores the subdirectory-prefixed path so the runner can
+  // resolve the file relative to the data root.
+  const filename = `${subDir}/${scriptHash}/${basename}`;
+  const filePath = path.join(__dirname, config.outputDir, subDir, scriptHash, basename);
   fs.writeFileSync(filePath, yamlString, 'utf8');
   console.log(`✅ Wrote ${filename} (${(fs.statSync(filePath).size / 1024).toFixed(2)} KB)`);
   return { filename, contentHash };
@@ -86,9 +89,33 @@ function writeYaml<T>(preset: string, scriptHash: string, data: T, enableAliases
 
 function run() {
   const scriptHash = computeScriptHash();
-  const manifestFiles: Record<string, ManifestEntry> = {};
 
   const outputDir = path.join(__dirname, config.outputDir);
+  const manifestPath = path.join(outputDir, 'manifest.json');
+
+  // Idempotency guard: skip all generation if the manifest was produced by the
+  // same version of this script AND every file it references still exists on disk.
+  if (fs.existsSync(manifestPath)) {
+    const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
+    if (existingManifest.scriptHash === scriptHash) {
+      const missingFiles = Object.entries(existingManifest.files)
+        .filter(([, { filename }]) => !fs.existsSync(path.join(outputDir, filename)))
+        .map(([key]) => key);
+
+      if (missingFiles.length === 0) {
+        console.log(`⚡ Data is already up-to-date for scriptHash=${scriptHash} — skipping generation.`);
+        console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
+        return;
+      }
+
+      console.log(`⚠️  Manifest matches scriptHash=${scriptHash} but ${missingFiles.length} file(s) are missing: ${missingFiles.join(', ')}. Regenerating...`);
+    } else {
+      console.log(`📦 Script changed (old: ${existingManifest.scriptHash} → new: ${scriptHash}). Regenerating...`);
+    }
+  }
+
+  const manifestFiles: Record<string, ManifestEntry> = {};
+
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
@@ -96,8 +123,13 @@ function run() {
   for (const dataset of config.datasets) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
     const { flatComponents, populatedArray } = generateDataset(dataset.size, dataset.seedSuffix);
-    manifestFiles[`${dataset.name}_test`] = writeYaml(`${dataset.name}_test`, scriptHash, flatComponents, false);
-    manifestFiles[`${dataset.name}_answer`] = writeYaml(`${dataset.name}_answer`, scriptHash, populatedArray, true);
+
+    // Create per-dataset/per-scriptHash subdirectory.
+    const datasetRunDir = path.join(outputDir, dataset.name, scriptHash);
+    fs.mkdirSync(datasetRunDir, { recursive: true });
+
+    manifestFiles[`${dataset.name}_test`] = writeYaml(dataset.name, `${dataset.name}_test`, scriptHash, flatComponents, false);
+    manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, scriptHash, populatedArray, true);
   }
 
   const manifest: Manifest = {
@@ -105,7 +137,6 @@ function run() {
     scriptHash,
     files: manifestFiles,
   };
-  const manifestPath = path.join(__dirname, config.outputDir, 'manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
   console.log(`\n✅ Wrote manifest.json`);
 }
