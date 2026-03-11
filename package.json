@@ -10,7 +10,8 @@
     "run": "tsx src/runner.ts",
     "experiment": "tsx src/runner.ts",
     "npm:reinstall": "node scripts/reinstall.js",
-    "lint": "eslint \"src/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",

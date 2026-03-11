@@ -80,8 +80,8 @@ function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: 
   const basename = `${preset}.${scriptHash}.${contentHash}.yaml`;
   // The manifest stores the subdirectory-prefixed path so the runner can
   // resolve the file relative to the data root.
-  const filename = `${subDir}/${basename}`;
-  const filePath = path.join(__dirname, config.outputDir, subDir, basename);
+  const filename = `${subDir}/${scriptHash}/${basename}`;
+  const filePath = path.join(__dirname, config.outputDir, subDir, scriptHash, basename);
   fs.writeFileSync(filePath, yamlString, 'utf8');
   console.log(`✅ Wrote ${filename} (${(fs.statSync(filePath).size / 1024).toFixed(2)} KB)`);
   return { filename, contentHash };
@@ -100,9 +100,9 @@ function run() {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
     const { flatComponents, populatedArray } = generateDataset(dataset.size, dataset.seedSuffix);
 
-    // Create per-dataset subdirectory.
-    const datasetDir = path.join(outputDir, dataset.name);
-    fs.mkdirSync(datasetDir, { recursive: true });
+    // Create per-dataset/per-scriptHash subdirectory.
+    const datasetRunDir = path.join(outputDir, dataset.name, scriptHash);
+    fs.mkdirSync(datasetRunDir, { recursive: true });
 
     manifestFiles[`${dataset.name}_test`] = writeYaml(dataset.name, `${dataset.name}_test`, scriptHash, flatComponents, false);
     manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, scriptHash, populatedArray, true);
