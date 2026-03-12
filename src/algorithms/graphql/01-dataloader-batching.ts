@@ -6,7 +6,7 @@ export const dataloaderBatching: PopulateAlgorithm = {
   timeComplexity: 'O(V + E)',
   spaceComplexity: 'O(V)',
   description:
-    'Simulates GraphQL DataLoader-style batched loading. Starts with root IDs, collects all dependency IDs per level, batch-resolves them, and repeats until all dependencies are resolved. A visited map handles cycles by returning the existing reference when a node is revisited.',
+    'Simulates GraphQL DataLoader-style batched loading using a single global batch. All node shells are pre-allocated up front, then their dependency edges are wired in one pass so each node is resolved exactly once. A visited map handles cycles and shared references by returning the existing object when a node is revisited.',
   execute: (flatDatabaseState: ComponentFlat[]): ComponentPopulated[] => {
     const dbMap = new Map<string, ComponentFlat>();
     for (const comp of flatDatabaseState) {
@@ -27,7 +27,11 @@ export const dataloaderBatching: PopulateAlgorithm = {
     for (const comp of flatDatabaseState) {
       const node = visited.get(comp.id)!;
       for (const depId of comp.dependencies) {
-        node.dependencies.push(visited.get(depId)!);
+        const depNode = visited.get(depId);
+        if (!depNode) {
+          throw new Error(`Component ${depId} not found`);
+        }
+        node.dependencies.push(depNode);
       }
     }
 
