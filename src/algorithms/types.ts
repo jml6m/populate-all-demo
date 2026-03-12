@@ -12,7 +12,7 @@ export interface ComponentPopulated {
 
 export interface PopulateAlgorithm {
   name: string;
-  category: 'Cycle Detection' | 'GraphQL' | 'DDD';
+  category: 'Cycle Detection' | 'GraphQL' | 'DDD' | 'Topological';
   timeComplexity: string;
   spaceComplexity: string;
   description: string;
