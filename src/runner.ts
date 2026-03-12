@@ -4,10 +4,12 @@ import path from 'path';
 import YAML from 'yaml';
 import { naiveRecursion } from './algorithms/cycle-detection/01-naive-recursion';
 import { customMapTracker } from './algorithms/cycle-detection/02-custom-map-tracker';
+import { dataloaderBatching } from './algorithms/graphql/01-dataloader-batching';
+import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
 import { ComponentFlat, PopulateAlgorithm } from './algorithms/types';
 import { smartCompare } from './utils/compare';
 
-const algorithms: PopulateAlgorithm[] = [naiveRecursion, customMapTracker];
+const algorithms: PopulateAlgorithm[] = [naiveRecursion, customMapTracker, tarjanSccLayering, dataloaderBatching];
 
 const TEST_SUFFIX = '_test';
 const ANSWER_SUFFIX = '_answer';
@@ -96,7 +98,7 @@ function loadYaml(filename: string): unknown {
 
 function runBenchmark() {
   const manifest = loadManifest();
-  const reports: BenchmarkReport[] = [];
+  const scriptHash = manifest.scriptHash;
   const reportsDir = path.join(__dirname, '../reports');
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir);
@@ -112,6 +114,17 @@ function runBenchmark() {
   ];
 
   for (const dataset of datasets) {
+    // Idempotency guard: skip if a report already exists for this dataset + scriptHash
+    const datasetReportsDir = path.join(reportsDir, dataset, scriptHash);
+    if (fs.existsSync(datasetReportsDir)) {
+      const existingReports = fs.readdirSync(datasetReportsDir).filter((f) => f.startsWith('benchmark-') && f.endsWith('.json'));
+      if (existingReports.length > 0) {
+        console.log(`\n⚡ Benchmark results already exist for dataset "${dataset}" with scriptHash=${scriptHash} — skipping.`);
+        console.log(`   (Delete reports/${dataset}/${scriptHash}/ to force a re-run.)`);
+        continue;
+      }
+    }
+
     console.log(`\n--- Loading ${dataset} dataset ---`);
     const testEntry = manifest.files[`${dataset}${TEST_SUFFIX}`];
     const answerEntry = manifest.files[`${dataset}${ANSWER_SUFFIX}`];
@@ -121,6 +134,8 @@ function runBenchmark() {
     // Type casting the flat data for the algorithms
     const testData = loadYaml(testEntry.filename) as ComponentFlat[];
     const answerData = loadYaml(answerEntry.filename);
+
+    const datasetReports: BenchmarkReport[] = [];
 
     for (const algo of algorithms) {
       console.log(`Running:[${algo.category}] ${algo.name}...`);
@@ -165,7 +180,7 @@ function runBenchmark() {
         accuracy: accuracyResult,
       };
 
-      reports.push(report);
+      datasetReports.push(report);
 
       console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${report.metrics.timeMs}ms | RAM: ${report.metrics.ramMb}MB`);
 
@@ -175,11 +190,13 @@ function runBenchmark() {
         console.log(`  Error Detail: ${previewError}...`);
       }
     }
-  }
 
-  const reportPath = path.join(reportsDir, `benchmark-${Date.now()}.json`);
-  fs.writeFileSync(reportPath, JSON.stringify(reports, null, 2));
-  console.log(`\n✅ Full report saved to ${reportPath}`);
+    // Write per-dataset report immediately after all algorithms finish for this dataset
+    fs.mkdirSync(datasetReportsDir, { recursive: true });
+    const reportPath = path.join(datasetReportsDir, `benchmark-${Date.now()}.json`);
+    fs.writeFileSync(reportPath, JSON.stringify(datasetReports, null, 2));
+    console.log(`\n✅ Report saved to ${reportPath}`);
+  }
 }
 
 runBenchmark();

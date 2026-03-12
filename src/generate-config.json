@@ -1,7 +1,9 @@
 {
   "datasets": [
     { "name": "basic", "size": 10, "seedSuffix": "basic" },
-    { "name": "stress", "size": 1000, "seedSuffix": "stress" }
+    { "name": "medium", "size": 5000, "seedSuffix": "medium" },
+    { "name": "stress", "size": 50000, "seedSuffix": "stress" },
+    { "name": "extreme", "size": 250000, "seedSuffix": "extreme" }
   ],
   "outputDir": "../data"
 }
