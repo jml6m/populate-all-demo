@@ -1,14 +1,20 @@
 import { ComponentPopulated } from '../algorithms/types';
 
+/** Explicit call-frame type used by the iterative DFS stack in compareNode. */
+interface CompareFrame { a: ComponentPopulated; e: ComponentPopulated; depIdx: number }
+
 /**
  * Cycle-aware graph comparator — O(V + E).
  *
- * Both the algorithm output and the answer YAML use object-identity (shared
+ * Both the algorithm output and the expected graph use object-identity (shared
  * references) to represent cycles.  We walk both graphs in parallel, keeping a
  * Map<actualNode, expectedNode> that records every pair we have already paired
  * together.  When we encounter a node we have already visited we verify that
  * the same expected node was previously paired with it, which validates that
  * both graphs have an identical reference-sharing / cycle structure.
+ *
+ * The traversal is an iterative DFS (explicit frame stack) to avoid call-stack
+ * overflow on large cyclic graphs.
  */
 export function smartCompare(
   actual: unknown,
@@ -37,47 +43,75 @@ export function smartCompare(
     let edgesTraversed = 0;
 
     /**
+     * Iterative DFS over the sub-graph reachable from (startA, startE).
      * Returns null on success, or an error string on the first mismatch found.
      */
-    function compareNode(a: ComponentPopulated, e: ComponentPopulated): string | null {
-      const alreadyPaired = paired.get(a);
-      if (alreadyPaired !== undefined) {
-        // We have visited this actual node before — verify the cycle points to
-        // the same expected node we originally paired it with.
-        if (alreadyPaired !== e) {
-          return `Cycle structure mismatch at node "${a.id}": expected cycle target differs`;
-        }
-        return null; // cycle correctly matches — stop recursion here
+    function compareNode(startA: ComponentPopulated, startE: ComponentPopulated): string | null {
+      // Fast path: node was already processed (outer-loop revisit or cycle back-edge)
+      const initialPaired = paired.get(startA);
+      if (initialPaired !== undefined) {
+        return initialPaired !== startE ? `Cycle structure mismatch at node "${startA.id}": expected cycle target differs` : null;
       }
 
-      // Check the reverse direction: if this expected node was already paired
-      // with a *different* actual node, the structures diverge.
-      const reversePairedActual = reversePaired.get(e);
-      if (reversePairedActual !== undefined && reversePairedActual !== a) {
-        return `Cycle structure mismatch: expected node "${e.id}" is paired with more than one actual node`;
+      const reverseStart = reversePaired.get(startE);
+      if (reverseStart !== undefined && reverseStart !== startA) {
+        return `Cycle structure mismatch: expected node "${startE.id}" is paired with more than one actual node`;
       }
 
-      // First visit — record the pairing before recursing (handles cycles).
-      paired.set(a, e);
-      reversePaired.set(e, a);
+      // Record the start node before pushing it to the stack (handles cycles)
+      paired.set(startA, startE);
+      reversePaired.set(startE, startA);
       nodesProcessed++;
 
-      // Compare scalar fields.
-      if (a.id !== e.id) {
-        return `id mismatch: actual="${a.id}", expected="${e.id}"`;
-      }
-      if (a.name !== e.name) {
-        return `name mismatch for id "${a.id}": actual="${a.name}", expected="${e.name}"`;
-      }
-      if (a.dependencies.length !== e.dependencies.length) {
-        return `dependencies length mismatch for id "${a.id}": actual=${a.dependencies.length}, expected=${e.dependencies.length}`;
+      if (startA.id !== startE.id) return `id mismatch: actual="${startA.id}", expected="${startE.id}"`;
+      if (startA.name !== startE.name) return `name mismatch for id "${startA.id}": actual="${startA.name}", expected="${startE.name}"`;
+      if (startA.dependencies.length !== startE.dependencies.length) {
+        return `dependencies length mismatch for id "${startA.id}": actual=${startA.dependencies.length}, expected=${startE.dependencies.length}`;
       }
 
-      // Recurse into dependencies — each iteration is one edge traversal.
-      for (let i = 0; i < a.dependencies.length; i++) {
+      // Explicit frame stack: mirrors the recursive call frames
+      const stack: CompareFrame[] = [{ a: startA, e: startE, depIdx: 0 }];
+
+      while (stack.length > 0) {
+        const frame = stack[stack.length - 1];
+
+        if (frame.depIdx >= frame.a.dependencies.length) {
+          stack.pop();
+          continue;
+        }
+
+        const da = frame.a.dependencies[frame.depIdx];
+        const de = frame.e.dependencies[frame.depIdx];
+        frame.depIdx++;
+        // Count every dependency link traversed, including back-edges
         edgesTraversed++;
-        const err = compareNode(a.dependencies[i], e.dependencies[i]);
-        if (err !== null) return err;
+
+        const alreadyPaired = paired.get(da);
+        if (alreadyPaired !== undefined) {
+          // Back-edge: verify the cycle points to the same expected node
+          if (alreadyPaired !== de) {
+            return `Cycle structure mismatch at node "${da.id}": expected cycle target differs`;
+          }
+          continue;
+        }
+
+        const reversePairedActual = reversePaired.get(de);
+        if (reversePairedActual !== undefined && reversePairedActual !== da) {
+          return `Cycle structure mismatch: expected node "${de.id}" is paired with more than one actual node`;
+        }
+
+        // First visit: record before pushing (handles any intra-subtree cycles)
+        paired.set(da, de);
+        reversePaired.set(de, da);
+        nodesProcessed++;
+
+        if (da.id !== de.id) return `id mismatch: actual="${da.id}", expected="${de.id}"`;
+        if (da.name !== de.name) return `name mismatch for id "${da.id}": actual="${da.name}", expected="${de.name}"`;
+        if (da.dependencies.length !== de.dependencies.length) {
+          return `dependencies length mismatch for id "${da.id}": actual=${da.dependencies.length}, expected=${de.dependencies.length}`;
+        }
+
+        stack.push({ a: da, e: de, depIdx: 0 });
       }
 
       return null;

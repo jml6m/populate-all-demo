@@ -6,13 +6,12 @@ import { naiveRecursion } from './algorithms/cycle-detection/01-naive-recursion'
 import { customMapTracker } from './algorithms/cycle-detection/02-custom-map-tracker';
 import { dataloaderBatching } from './algorithms/graphql/01-dataloader-batching';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
-import { ComponentFlat, PopulateAlgorithm } from './algorithms/types';
+import { ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
 import { smartCompare } from './utils/compare';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, customMapTracker, tarjanSccLayering, dataloaderBatching];
 
 const TEST_SUFFIX = '_test';
-const ANSWER_SUFFIX = '_answer';
 
 interface ManifestEntry {
   filename: string;
@@ -104,6 +103,49 @@ function loadYaml(filename: string): unknown {
   return YAML.parse(fileContent, { maxAliasCount: -1 });
 }
 
+// Builds the expected populated graph from flat test data using a simple two-pass
+// reference implementation — stack-safe (iterative), O(V + E).
+function buildExpectedPopulated(flatComponents: ComponentFlat[]): ComponentPopulated[] {
+  const map = new Map<string, ComponentPopulated>();
+
+  // Pass 1: create all node shells
+  for (const comp of flatComponents) {
+    map.set(comp.id, { id: comp.id, name: comp.name, dependencies: [] });
+  }
+
+  // Pass 2: wire dependency references
+  for (const comp of flatComponents) {
+    const node = map.get(comp.id);
+    if (!node) throw new Error(`Component ${comp.id} not found during wiring`);
+    for (const depId of comp.dependencies) {
+      const dep = map.get(depId);
+      if (!dep) throw new Error(`Component ${depId} not found`);
+      node.dependencies.push(dep);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+// --- Display formatting (human-readable output only; raw JSON uses full precision) ---
+
+// Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
+function formatTime(ms: number): string {
+  if (ms < 0.1) return '< 0.1ms';
+  if (ms < 10) return `${ms.toFixed(1)}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return '> 60s';
+}
+
+// RAM: sub-0.1 MB heap deltas are within measurement noise; scale to GB at 1024 MB.
+function formatRam(mb: number): string {
+  if (mb < 0.1) return '< 0.1 MB';
+  if (mb < 10) return `${mb.toFixed(1)} MB`;
+  if (mb < 1000) return `${Math.round(mb)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
 function runBenchmark() {
   const manifest = loadManifest();
   const scriptHash = manifest.scriptHash;
@@ -137,13 +179,13 @@ function runBenchmark() {
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
     const testEntry = manifest.files[`${dataset}${TEST_SUFFIX}`];
-    const answerEntry = manifest.files[`${dataset}${ANSWER_SUFFIX}`];
-    if (!testEntry || !answerEntry) {
-      throw new Error(`Missing manifest entries for dataset "${dataset}"`);
+    if (!testEntry) {
+      throw new Error(`Missing manifest entry for dataset "${dataset}"`);
     }
     // Type casting the flat data for the algorithms
     const testData = loadYaml(testEntry.filename) as ComponentFlat[];
-    const answerData = loadYaml(answerEntry.filename);
+    // Expected populated graph is reconstructed from the flat test data — stack-safe O(V+E).
+    const answerData = buildExpectedPopulated(testData);
 
     const datasetReports: BenchmarkReport[] = [];
 
@@ -192,7 +234,7 @@ function runBenchmark() {
 
       datasetReports.push(report);
 
-      console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${report.metrics.timeMs}ms | RAM: ${report.metrics.ramMb}MB`);
+      console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
 
       // Strict boolean expression check
       if (accuracyResult.pass === false) {

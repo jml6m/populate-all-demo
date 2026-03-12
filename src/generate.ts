@@ -15,24 +15,13 @@ interface ComponentFlat {
   dependencies: string[]; // Foreign Keys
 }
 
-interface ComponentPopulated {
-  id: string;
-  name: string;
-  dependencies: ComponentPopulated[]; // True RAM Pointers
-}
-
 function generateDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
   const flatComponents: ComponentFlat[] = [];
-  const populatedMap = new Map<string, ComponentPopulated>();
 
   // 1. Initialize all nodes
   for (let i = 0; i < size; i++) {
-    const id = `comp_${i}`;
-    const name = `Component ${i}`;
-
-    flatComponents.push({ id, name, dependencies: [] });
-    populatedMap.set(id, { id, name, dependencies: [] });
+    flatComponents.push({ id: `comp_${i}`, name: `Component ${i}`, dependencies: [] });
   }
 
   // 2. Assign edges (dependencies) to create cyclic graphs
@@ -46,14 +35,11 @@ function generateDataset(size: number, seedSuffix: string) {
       // Prevent immediate self-loop (comp_1 -> comp_1) to ensure deep, complex cycles
       if (targetIdx !== i && !flatComponents[i].dependencies.includes(targetId)) {
         flatComponents[i].dependencies.push(targetId);
-        // Link the actual memory reference for the Answer file
-        populatedMap.get(flatComponents[i].id)!.dependencies.push(populatedMap.get(targetId)!);
       }
     }
   }
 
-  const populatedArray = Array.from(populatedMap.values());
-  return { flatComponents, populatedArray };
+  return { flatComponents };
 }
 
 function computeScriptHash(): string {
@@ -72,10 +58,8 @@ interface Manifest {
   files: Record<string, ManifestEntry>;
 }
 
-function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: T, enableAliases: boolean): ManifestEntry {
-  const yamlString = YAML.stringify(data, {
-    aliasDuplicateObjects: enableAliases,
-  });
+function writeYaml<T>(subDir: string, preset: string, scriptHash: string, data: T): ManifestEntry {
+  const yamlString = YAML.stringify(data);
   const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
   const basename = `${preset}.${scriptHash}.${contentHash}.yaml`;
   // The manifest stores the subdirectory-prefixed path so the runner can
@@ -122,14 +106,13 @@ function run() {
 
   for (const dataset of config.datasets) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
-    const { flatComponents, populatedArray } = generateDataset(dataset.size, dataset.seedSuffix);
+    const { flatComponents } = generateDataset(dataset.size, dataset.seedSuffix);
 
     // Create per-dataset/per-scriptHash subdirectory.
     const datasetRunDir = path.join(outputDir, dataset.name, scriptHash);
     fs.mkdirSync(datasetRunDir, { recursive: true });
 
-    manifestFiles[`${dataset.name}_test`] = writeYaml(dataset.name, `${dataset.name}_test`, scriptHash, flatComponents, false);
-    manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, scriptHash, populatedArray, true);
+    manifestFiles[`${dataset.name}_test`] = writeYaml(dataset.name, `${dataset.name}_test`, scriptHash, flatComponents);
   }
 
   const manifest: Manifest = {
