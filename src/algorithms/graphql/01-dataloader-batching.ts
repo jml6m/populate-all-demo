@@ -8,11 +8,6 @@ export const dataloaderBatching: PopulateAlgorithm = {
   description:
     'Simulates GraphQL DataLoader-style batched loading using a single global batch. All node shells are pre-allocated up front, then their dependency edges are wired in one pass so each node is resolved exactly once. A visited map handles cycles and shared references by returning the existing object when a node is revisited.',
   execute: (flatDatabaseState: ComponentFlat[]): ComponentPopulated[] => {
-    const dbMap = new Map<string, ComponentFlat>();
-    for (const comp of flatDatabaseState) {
-      dbMap.set(comp.id, comp);
-    }
-
     // Pre-allocate all ComponentPopulated shells so every reference to the same
     // id points to the same JS object — this is what makes cycles cycle-safe.
     const visited = new Map<string, ComponentPopulated>();

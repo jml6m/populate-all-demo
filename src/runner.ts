@@ -69,6 +69,14 @@ function loadManifest(): Manifest {
   return JSON.parse(raw) as Manifest;
 }
 
+// Validates that a value is a safe single-segment path component (no slashes, dots-only names, or other traversal characters).
+const SAFE_PATH_SEGMENT = /^[a-z0-9_-]+$/i;
+function assertSafePathSegment(value: string, label: string): void {
+  if (!SAFE_PATH_SEGMENT.test(value)) {
+    throw new Error(`Unsafe ${label} value "${value}": must match ${SAFE_PATH_SEGMENT.source}`);
+  }
+}
+
 function loadYaml(filename: string): unknown {
   const dataDir = getDataDir();
   const filePath = path.resolve(dataDir, filename);
@@ -99,6 +107,7 @@ function loadYaml(filename: string): unknown {
 function runBenchmark() {
   const manifest = loadManifest();
   const scriptHash = manifest.scriptHash;
+  assertSafePathSegment(scriptHash, 'scriptHash');
   const reportsDir = path.join(__dirname, '../reports');
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir);
@@ -114,6 +123,7 @@ function runBenchmark() {
   ];
 
   for (const dataset of datasets) {
+    assertSafePathSegment(dataset, 'dataset');
     // Idempotency guard: skip if a report already exists for this dataset + scriptHash
     const datasetReportsDir = path.join(reportsDir, dataset, scriptHash);
     if (fs.existsSync(datasetReportsDir)) {
