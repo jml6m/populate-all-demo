@@ -6,6 +6,7 @@ import YAML from 'yaml';
 
 import config from './generate-config.json';
 import { AnswerEntry, ComponentFlat } from './algorithms/types';
+import { Manifest, ManifestEntry } from './types';
 
 // Hardcoded seed ensures our test data is mathematically identical on every run
 const SEED = 'populate-all-demo';
@@ -50,16 +51,6 @@ function buildAnswerData(flatComponents: ComponentFlat[]): AnswerEntry[] {
   }));
 }
 
-interface ManifestEntry {
-  filename: string;
-  contentHash: string;
-}
-
-interface Manifest {
-  generatedAt: string;
-  files: Record<string, ManifestEntry>;
-}
-
 function writeYaml<T>(subDir: string, preset: string, data: T): ManifestEntry {
   const yamlString = YAML.stringify(data);
   const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
@@ -82,7 +73,7 @@ function run() {
   if (fs.existsSync(manifestPath)) {
     const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
     const missingFiles = Object.entries(existingManifest.files)
-      .filter(([, { filename }]) => !fs.existsSync(path.join(outputDir, filename)))
+      .filter(([, entry]) => !entry || !fs.existsSync(path.join(outputDir, entry.filename)))
       .map(([key]) => key);
 
     // Compute the set of expected manifest keys based on currently enabled datasets.

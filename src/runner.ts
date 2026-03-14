@@ -8,21 +8,12 @@ import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
 import { AnswerEntry, ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
 import { smartCompare } from './utils/compare';
+import { Manifest } from './types';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
 const INPUT_SUFFIX = '_input';
 const ANSWER_SUFFIX = '_answer';
-
-interface ManifestEntry {
-  filename: string;
-  contentHash: string;
-}
-
-interface Manifest {
-  generatedAt: string;
-  files: Record<string, ManifestEntry | undefined>;
-}
 
 interface BenchmarkReport {
   algorithmCategory: string;
