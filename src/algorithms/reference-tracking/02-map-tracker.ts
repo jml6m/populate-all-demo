@@ -25,7 +25,7 @@ export const mapTracker: PopulateAlgorithm = {
       const populated: ComponentPopulated = {
         id: flat.id,
         name: flat.name,
-        dependencies:[]
+        dependencies: []
       };
 
       visited.set(id, populated);
