@@ -1,9 +1,9 @@
 {
   "datasets": [
-    { "name": "basic", "size": 10, "seedSuffix": "basic" },
-    { "name": "medium", "size": 5000, "seedSuffix": "medium" },
-    { "name": "stress", "size": 50000, "seedSuffix": "stress" },
-    { "name": "extreme", "size": 250000, "seedSuffix": "extreme" }
+    { "name": "basic", "size": 10, "seedSuffix": "basic", "enabled": true },
+    { "name": "medium", "size": 5000, "seedSuffix": "medium", "enabled": true },
+    { "name": "stress", "size": 50000, "seedSuffix": "stress", "enabled": true },
+    { "name": "extreme", "size": 250000, "seedSuffix": "extreme", "enabled": false }
   ],
   "outputDir": "../data"
 }
