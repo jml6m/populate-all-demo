@@ -92,20 +92,62 @@ function run() {
   const outputDir = path.join(__dirname, config.outputDir);
   const manifestPath = path.join(outputDir, 'manifest.json');
 
-  // Idempotency guard: skip if manifest exists and every file it references is present on disk.
+  // Idempotency guard: skip if manifest exists, every file it references is present on disk,
+  // and the manifest's dataset keys match the currently enabled datasets.
   if (fs.existsSync(manifestPath)) {
     const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
     const missingFiles = Object.entries(existingManifest.files)
       .filter(([, { filename }]) => !fs.existsSync(path.join(outputDir, filename)))
       .map(([key]) => key);
 
-    if (missingFiles.length === 0) {
+    // Compute the set of expected manifest keys based on currently enabled datasets.
+    const expectedManifestKeys = new Set<string>();
+    for (const dataset of config.datasets) {
+      if (!dataset.enabled) continue;
+      expectedManifestKeys.add(`${dataset.name}_input`);
+      expectedManifestKeys.add(`${dataset.name}_answer`);
+    }
+
+    const existingManifestKeys = new Set<string>(Object.keys(existingManifest.files));
+
+    const missingManifestKeys: string[] = [];
+    for (const key of expectedManifestKeys) {
+      if (!existingManifestKeys.has(key)) {
+        missingManifestKeys.push(key);
+      }
+    }
+
+    const extraManifestKeys: string[] = [];
+    for (const key of existingManifestKeys) {
+      if (!expectedManifestKeys.has(key)) {
+        extraManifestKeys.push(key);
+      }
+    }
+
+    const hasManifestKeyMismatch = missingManifestKeys.length > 0 || extraManifestKeys.length > 0;
+
+    if (missingFiles.length === 0 && !hasManifestKeyMismatch) {
       console.log(`⚡ Data is already up-to-date — skipping generation.`);
       console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
       return;
     }
 
-    console.log(`⚠️  Manifest exists but ${missingFiles.length} file(s) are missing: ${missingFiles.join(', ')}. Regenerating...`);
+    const reasons: string[] = [];
+    if (missingFiles.length > 0) {
+      reasons.push(`${missingFiles.length} file(s) are missing: ${missingFiles.join(', ')}`);
+    }
+    if (hasManifestKeyMismatch) {
+      const parts: string[] = [];
+      if (missingManifestKeys.length > 0) {
+        parts.push(`missing manifest entries for enabled datasets: ${missingManifestKeys.join(', ')}`);
+      }
+      if (extraManifestKeys.length > 0) {
+        parts.push(`manifest contains entries no longer expected from config: ${extraManifestKeys.join(', ')}`);
+      }
+      reasons.push(parts.join('; '));
+    }
+
+    console.log(`⚠️  Manifest exists but ${reasons.join(' | ')}. Regenerating...`);
   }
 
   const manifestFiles: Record<string, ManifestEntry> = {};
