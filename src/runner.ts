@@ -6,7 +6,7 @@ import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
 import { naiveRecursion } from './algorithms/reference-tracking/01-naive-recursion';
 import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
-import { ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
+import { AnswerEntry, ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
 import { smartCompare } from './utils/compare';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
@@ -101,15 +101,6 @@ function loadYaml(filename: string): unknown {
 
   // Disabling maxAliasCount (using hashes to verify files instead)
   return YAML.parse(fileContent, { maxAliasCount: -1 });
-}
-
-// The answer file stores dependency positions (array indices) rather than string IDs.
-// This flat index-based structure avoids deep YAML nesting for large cyclic graphs
-// while encoding the exact same graph topology as the input.
-interface AnswerEntry {
-  id: string;
-  name: string;
-  depIndices: number[];
 }
 
 // Rebuilds a ComponentPopulated[] with proper JS object identity (for cycles) from

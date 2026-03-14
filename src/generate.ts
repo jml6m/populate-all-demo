@@ -5,25 +5,10 @@ import seedrandom from 'seedrandom';
 import YAML from 'yaml';
 
 import config from './generate-config.json';
+import { AnswerEntry, ComponentFlat } from './algorithms/types';
 
 // Hardcoded seed ensures our test data is mathematically identical on every run
 const SEED = 'populate-all-demo';
-
-interface ComponentFlat {
-  id: string;
-  name: string;
-  dependencies: string[]; // Foreign Keys
-}
-
-// The answer format stores dependency positions (array indices) instead of string IDs.
-// This flat index-based structure avoids deep YAML nesting for large cyclic graphs
-// while still encoding the exact same graph topology as the input.
-// At load time, the runner rebuilds the cyclic ComponentPopulated[] from these indices.
-interface AnswerEntry {
-  id: string;
-  name: string;
-  depIndices: number[];
-}
 
 function generateDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
