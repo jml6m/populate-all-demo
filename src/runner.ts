@@ -2,16 +2,17 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
-import { naiveRecursion } from './algorithms/cycle-detection/01-naive-recursion';
-import { customMapTracker } from './algorithms/cycle-detection/02-custom-map-tracker';
-import { dataloaderBatching } from './algorithms/graphql/01-dataloader-batching';
+import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
+import { naiveRecursion } from './algorithms/reference-tracking/01-naive-recursion';
+import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
 import { ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
 import { smartCompare } from './utils/compare';
 
-const algorithms: PopulateAlgorithm[] = [naiveRecursion, customMapTracker, tarjanSccLayering, dataloaderBatching];
+const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
-const TEST_SUFFIX = '_test';
+const INPUT_SUFFIX = '_input';
+const ANSWER_SUFFIX = '_answer';
 
 interface ManifestEntry {
   filename: string;
@@ -20,7 +21,6 @@ interface ManifestEntry {
 
 interface Manifest {
   generatedAt: string;
-  scriptHash: string;
   files: Record<string, ManifestEntry | undefined>;
 }
 
@@ -90,10 +90,10 @@ function loadYaml(filename: string): unknown {
   // Validate content hash embedded in filename against the actual file content
   const basename = path.basename(filename, '.yaml');
   const parts = basename.split('.');
-  if (parts.length !== 3) {
-    throw new Error(`Invalid benchmark filename "${filename}": expected "<name>.<type>.<hash>.yaml" format.`);
+  if (parts.length !== 2) {
+    throw new Error(`Invalid benchmark filename "${filename}": expected "<name>.<hash>.yaml" format.`);
   }
-  const embeddedContentHash = parts[2];
+  const embeddedContentHash = parts[1];
   const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
   if (actualHash !== embeddedContentHash) {
     throw new Error(`Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`);
@@ -103,31 +103,26 @@ function loadYaml(filename: string): unknown {
   return YAML.parse(fileContent, { maxAliasCount: -1 });
 }
 
-// Builds the expected populated graph from flat test data using a simple two-pass
-// reference implementation — stack-safe (iterative), O(V + E).
-function buildExpectedPopulated(flatComponents: ComponentFlat[]): ComponentPopulated[] {
-  const map = new Map<string, ComponentPopulated>();
-
-  // Pass 1: create all node shells
-  for (const comp of flatComponents) {
-    map.set(comp.id, { id: comp.id, name: comp.name, dependencies: [] });
-  }
-
-  // Pass 2: wire dependency references
-  for (const comp of flatComponents) {
-    const node = map.get(comp.id);
-    if (!node) throw new Error(`Component ${comp.id} not found during wiring`);
-    for (const depId of comp.dependencies) {
-      const dep = map.get(depId);
-      if (!dep) throw new Error(`Component ${depId} not found`);
-      node.dependencies.push(dep);
-    }
-  }
-
-  return Array.from(map.values());
+// The answer file stores dependency positions (array indices) rather than string IDs.
+// This flat index-based structure avoids deep YAML nesting for large cyclic graphs
+// while encoding the exact same graph topology as the input.
+interface AnswerEntry {
+  id: string;
+  name: string;
+  depIndices: number[];
 }
 
-// --- Display formatting (human-readable output only; raw JSON uses full precision) ---
+// Rebuilds a ComponentPopulated[] with proper JS object identity (for cycles) from
+// the flat index-based answer format stored in the answer file.
+function buildPopulatedFromAnswer(entries: AnswerEntry[]): ComponentPopulated[] {
+  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
+  for (let i = 0; i < entries.length; i++) {
+    for (const depIdx of entries[i].depIndices) {
+      nodes[i].dependencies.push(nodes[depIdx]);
+    }
+  }
+  return nodes;
+}
 
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
 function formatTime(ms: number): string {
@@ -148,44 +143,51 @@ function formatRam(mb: number): string {
 
 function runBenchmark() {
   const manifest = loadManifest();
-  const scriptHash = manifest.scriptHash;
-  assertSafePathSegment(scriptHash, 'scriptHash');
   const reportsDir = path.join(__dirname, '../reports');
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir);
   }
 
-  // Derive dataset names from manifest keys (e.g. "basic_test" -> "basic")
-  const datasets = [
+  // Derive dataset names from manifest keys (e.g. "basic_input" -> "basic")
+  const allDatasets = [
     ...new Set(
       Object.keys(manifest.files)
-        .filter((key) => key.endsWith(TEST_SUFFIX))
-        .map((key) => key.slice(0, -TEST_SUFFIX.length))
+        .filter((key) => key.endsWith(INPUT_SUFFIX))
+        .map((key) => key.slice(0, -INPUT_SUFFIX.length))
     ),
   ];
 
+  // Parse --tier CLI argument to optionally filter datasets
+  const tierArgIndex = process.argv.indexOf('--tier');
+  let datasets: string[];
+  if (tierArgIndex !== -1) {
+    const tierName = process.argv.at(tierArgIndex + 1);
+    if (tierName === undefined || tierName.startsWith('--')) {
+      throw new Error(`--tier requires a tier name argument (e.g. --tier basic)`);
+    }
+    if (!allDatasets.includes(tierName)) {
+      throw new Error(`Tier "${tierName}" not found in manifest. Available tiers: ${allDatasets.join(', ')}`);
+    }
+    datasets = [tierName];
+  } else {
+    datasets = allDatasets;
+  }
+
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
-    // Idempotency guard: skip if a report already exists for this dataset + scriptHash
-    const datasetReportsDir = path.join(reportsDir, dataset, scriptHash);
-    if (fs.existsSync(datasetReportsDir)) {
-      const existingReports = fs.readdirSync(datasetReportsDir).filter((f) => f.startsWith('benchmark-') && f.endsWith('.json'));
-      if (existingReports.length > 0) {
-        console.log(`\n⚡ Benchmark results already exist for dataset "${dataset}" with scriptHash=${scriptHash} — skipping.`);
-        console.log(`   (Delete reports/${dataset}/${scriptHash}/ to force a re-run.)`);
-        continue;
-      }
+
+    const inputEntry = manifest.files[`${dataset}${INPUT_SUFFIX}`];
+    const answerEntry = manifest.files[`${dataset}${ANSWER_SUFFIX}`];
+
+    // Skip datasets that don't have both input and answer files (e.g. disabled during generation)
+    if (!inputEntry || !answerEntry) {
+      console.log(`\n⏭️  Skipping dataset "${dataset}" — missing input or answer file in manifest.`);
+      continue;
     }
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
-    const testEntry = manifest.files[`${dataset}${TEST_SUFFIX}`];
-    if (!testEntry) {
-      throw new Error(`Missing manifest entry for dataset "${dataset}"`);
-    }
-    // Type casting the flat data for the algorithms
-    const testData = loadYaml(testEntry.filename) as ComponentFlat[];
-    // Expected populated graph is reconstructed from the flat test data — stack-safe O(V+E).
-    const answerData = buildExpectedPopulated(testData);
+    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
+    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[]);
 
     const datasetReports: BenchmarkReport[] = [];
 
@@ -200,7 +202,7 @@ function runBenchmark() {
         const startMem = process.memoryUsage().heapUsed;
         const startTime = performance.now();
 
-        const result = algo.execute(testData);
+        const result = algo.execute(inputData);
 
         const endTime = performance.now();
         const endMem = process.memoryUsage().heapUsed;
@@ -243,7 +245,8 @@ function runBenchmark() {
       }
     }
 
-    // Write per-dataset report immediately after all algorithms finish for this dataset
+    // Write per-dataset report
+    const datasetReportsDir = path.join(reportsDir, dataset);
     fs.mkdirSync(datasetReportsDir, { recursive: true });
     const reportPath = path.join(datasetReportsDir, `benchmark-${Date.now()}.json`);
     fs.writeFileSync(reportPath, JSON.stringify(datasetReports, null, 2));

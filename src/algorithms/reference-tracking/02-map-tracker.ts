@@ -1,8 +1,8 @@
 import { PopulateAlgorithm, ComponentFlat, ComponentPopulated } from '../types';
 
-export const customMapTracker: PopulateAlgorithm = {
-  name: "Custom Map Tracker",
-  category: "Cycle Detection",
+export const mapTracker: PopulateAlgorithm = {
+  name: "Map Tracker",
+  category: "Reference Tracking",
   timeComplexity: "O(V + E)",
   spaceComplexity: "O(V)",
   description: "Uses a Map to track visited nodes during graph traversal to safely close cycles in RAM.",

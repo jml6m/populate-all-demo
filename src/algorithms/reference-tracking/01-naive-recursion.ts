@@ -2,7 +2,7 @@ import { PopulateAlgorithm, ComponentFlat, ComponentPopulated } from '../types';
 
 export const naiveRecursion: PopulateAlgorithm = {
   name: "Naive Recursion",
-  category: "Cycle Detection",
+  category: "Reference Tracking",
   timeComplexity: "O(∞)",
   spaceComplexity: "O(∞)",
   description: "Standard recursive population without cycle tracking. Will cause a stack overflow on cyclic graphs.",
