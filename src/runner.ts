@@ -1,14 +1,14 @@
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import YAML from 'yaml';
 import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
 import { naiveRecursion } from './algorithms/reference-tracking/01-naive-recursion';
 import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
-import { AnswerEntry, ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
+import { AnswerEntry, ComponentFlat, PopulateAlgorithm } from './algorithms/types';
+import { buildPopulatedFromAnswer } from './utils/answer-builder';
 import { smartCompare } from './utils/compare';
-import { Manifest } from './types';
+import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
+import { flatCompare } from './utils/flat-compare';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
@@ -25,85 +25,20 @@ interface BenchmarkReport {
     timeMs: number;
     ramMb: number;
   };
-  accuracy: {
+  verification: {
     pass: boolean;
-    errorDetail: string | null;
-    nodesProcessed: number;
-    edgesTraversed: number;
+    smartCompare: {
+      pass: boolean;
+      errorDetail: string | null;
+      nodesProcessed: number;
+      edgesTraversed: number;
+    };
+    flatCompare: {
+      pass: boolean;
+      errorDetail: string | null;
+    };
+    doubleVerified: boolean;
   };
-}
-
-function getDataDir(): string {
-  const defaultDir = path.resolve(__dirname, '../data');
-  const configPath = path.resolve(__dirname, 'generate-config.json');
-
-  try {
-    const rawConfig = fs.readFileSync(configPath, 'utf8');
-    const parsed = JSON.parse(rawConfig) as { outputDir?: unknown };
-    if (typeof parsed.outputDir === 'string' && parsed.outputDir.trim() !== '') {
-      return path.resolve(__dirname, parsed.outputDir);
-    }
-  } catch (err) {
-    console.warn(
-      `[runner] Could not read generate-config.json at "${configPath}"; falling back to default data dir. (${err instanceof Error ? err.message : String(err)})`
-    );
-  }
-
-  return defaultDir;
-}
-
-function loadManifest(): Manifest {
-  const dataDir = getDataDir();
-  const manifestPath = path.resolve(dataDir, 'manifest.json');
-  const raw = fs.readFileSync(manifestPath, 'utf8');
-  return JSON.parse(raw) as Manifest;
-}
-
-// Validates that a value is a safe single-segment path component (no slashes, dots-only names, or other traversal characters).
-const SAFE_PATH_SEGMENT = /^[a-z0-9_-]+$/i;
-function assertSafePathSegment(value: string, label: string): void {
-  if (!SAFE_PATH_SEGMENT.test(value)) {
-    throw new Error(`Unsafe ${label} value "${value}": must match ${SAFE_PATH_SEGMENT.source}`);
-  }
-}
-
-function loadYaml(filename: string): unknown {
-  const dataDir = getDataDir();
-  const filePath = path.resolve(dataDir, filename);
-  // Guard against path traversal: the relative path from dataDir must not escape
-  // upward (i.e. start with '..') and must not be absolute.
-  const relative = path.relative(dataDir, filePath);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`Path "${filePath}" is outside the data directory`);
-  }
-  const fileContent = fs.readFileSync(filePath, 'utf8');
-
-  // Validate content hash embedded in filename against the actual file content
-  const basename = path.basename(filename, '.yaml');
-  const parts = basename.split('.');
-  if (parts.length !== 2) {
-    throw new Error(`Invalid benchmark filename "${filename}": expected "<name>.<hash>.yaml" format.`);
-  }
-  const embeddedContentHash = parts[1];
-  const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
-  if (actualHash !== embeddedContentHash) {
-    throw new Error(`Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`);
-  }
-
-  // Disabling maxAliasCount (using hashes to verify files instead)
-  return YAML.parse(fileContent, { maxAliasCount: -1 });
-}
-
-// Rebuilds a ComponentPopulated[] with proper JS object identity (for cycles) from
-// the flat index-based answer format stored in the answer file.
-function buildPopulatedFromAnswer(entries: AnswerEntry[]): ComponentPopulated[] {
-  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
-  for (let i = 0; i < entries.length; i++) {
-    for (const depIdx of entries[i].depIndices) {
-      nodes[i].dependencies.push(nodes[depIdx]);
-    }
-  }
-  return nodes;
 }
 
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
@@ -169,7 +104,9 @@ function runBenchmark() {
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
     const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
-    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[]);
+    // Keep raw entries for flatCompare (which verifies against the file directly)
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+    const answerData = buildPopulatedFromAnswer(rawAnswerEntries);
 
     const datasetReports: BenchmarkReport[] = [];
 
@@ -178,7 +115,8 @@ function runBenchmark() {
 
       let executionTimeMs = 0;
       let ramUsedMb = 0;
-      let accuracyResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
+      let smartResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
+      let flatResult = { pass: false, errorDetail: null as string | null };
 
       try {
         const startMem = process.memoryUsage().heapUsed;
@@ -192,16 +130,31 @@ function runBenchmark() {
         executionTimeMs = endTime - startTime;
         ramUsedMb = Math.max(0, (endMem - startMem) / 1024 / 1024);
 
-        accuracyResult = smartCompare(result, answerData);
+        smartResult = smartCompare(result, answerData);
+        flatResult = flatCompare(result, rawAnswerEntries);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        accuracyResult = {
+        smartResult = {
           pass: false,
           errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
           nodesProcessed: 0,
           edgesTraversed: 0,
         };
+        flatResult = {
+          pass: false,
+          errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
+        };
       }
+
+      const bothPass = smartResult.pass && flatResult.pass;
+      const disagree = smartResult.pass !== flatResult.pass;
+
+      const verification: BenchmarkReport['verification'] = {
+        pass: bothPass,
+        smartCompare: smartResult,
+        flatCompare: flatResult,
+        doubleVerified: bothPass,
+      };
 
       const report: BenchmarkReport = {
         algorithmCategory: algo.category,
@@ -213,17 +166,39 @@ function runBenchmark() {
           timeMs: Number(executionTimeMs.toFixed(3)),
           ramMb: Number(ramUsedMb.toFixed(3)),
         },
-        accuracy: accuracyResult,
+        verification,
       };
 
       datasetReports.push(report);
 
-      console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      // Build result line
+      let resultLine: string;
+      if (disagree) {
+        if (smartResult.pass) {
+          resultLine = '🚨 VERIFICATION CONFLICT — smartCompare=PASS, flatCompare=FAIL';
+        } else {
+          resultLine = '🚨 VERIFICATION CONFLICT — smartCompare=FAIL, flatCompare=PASS';
+        }
+      } else if (bothPass) {
+        resultLine = '✅ PASS (double-verified)';
+      } else {
+        const errors: string[] = [];
+        if (!smartResult.pass) errors.push(`smartCompare: ${smartResult.errorDetail ?? ''}`);
+        if (!flatResult.pass) errors.push(`flatCompare: ${flatResult.errorDetail ?? ''}`);
+        resultLine = `❌ FAIL [${errors.join('] [')}]`;
+      }
 
-      // Strict boolean expression check
-      if (accuracyResult.pass === false) {
-        const previewError = (accuracyResult.errorDetail ?? '').substring(0, 100).replace(/\n/g, ' ');
-        console.log(`  Error Detail: ${previewError}...`);
+      console.log(`  Result: ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+
+      if (!bothPass && !disagree) {
+        if (!smartResult.pass && smartResult.errorDetail !== null) {
+          const previewError = smartResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
+          console.log(`  smartCompare Error: ${previewError}...`);
+        }
+        if (!flatResult.pass && flatResult.errorDetail !== null) {
+          const previewError = flatResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
+          console.log(`  flatCompare Error: ${previewError}...`);
+        }
       }
     }
 

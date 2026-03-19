@@ -17,7 +17,7 @@ function generateDataset(size: number, seedSuffix: string) {
 
   // 1. Initialize all nodes
   for (let i = 0; i < size; i++) {
-    flatComponents.push({ id: `comp_${i}`, name: `Component ${i}`, dependencies: [] });
+    flatComponents.push({ id: `comp_${i}`, dependencies: [] });
   }
 
   // 2. Assign edges (dependencies) to create cyclic graphs
@@ -46,7 +46,6 @@ function buildAnswerData(flatComponents: ComponentFlat[]): AnswerEntry[] {
   flatComponents.forEach((c, i) => idToIndex.set(c.id, i));
   return flatComponents.map((c) => ({
     id: c.id,
-    name: c.name,
     depIndices: c.dependencies.map((depId) => idToIndex.get(depId)!),
   }));
 }
