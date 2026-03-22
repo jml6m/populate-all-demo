@@ -187,16 +187,38 @@ describe('flatCompare — mismatch detection', () => {
 // Integration test — real basic-tier data files
 // ---------------------------------------------------------------------------
 
+/**
+ * Ensures the basic-tier data files are present, generating only the basic dataset
+ * if they are missing.  Using --tier basic avoids spinning up the medium (5 K) and
+ * stress (50 K) generation that would happen with a bare `npm run generate`.
+ */
 function ensureDataGenerated(): void {
   const dataDir = getDataDir();
   const manifestPath = path.join(dataDir, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) {
-    console.log('[test] Data files not found — running npm run generate...');
-    const projectRoot = path.resolve(__dirname, '..', '..');
-    execSync('npm run generate', { cwd: projectRoot, stdio: 'inherit' });
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error('Data generation did not produce manifest.json. Cannot run flatCompare integration test.');
+
+  if (fs.existsSync(manifestPath)) {
+    // Check that the basic entries specifically are present and their files exist.
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+      files?: Record<string, { filename?: string } | undefined>;
+    };
+    const inputFilename = raw.files?.['basic_input']?.filename;
+    const answerFilename = raw.files?.['basic_answer']?.filename;
+    if (
+      typeof inputFilename === 'string' &&
+      typeof answerFilename === 'string' &&
+      fs.existsSync(path.join(dataDir, inputFilename)) &&
+      fs.existsSync(path.join(dataDir, answerFilename))
+    ) {
+      return; // Basic-tier files already present
     }
+  }
+
+  // Generate only the basic dataset to avoid creating medium (5 K) and stress (50 K) files.
+  console.log('[test] Basic-tier data files not found — running npm run generate --tier basic...');
+  const projectRoot = path.resolve(__dirname, '..', '..');
+  execSync('npm run generate -- --tier basic', { cwd: projectRoot, stdio: 'inherit' });
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Data generation did not produce manifest.json. Cannot run flatCompare integration test.');
   }
 }
 

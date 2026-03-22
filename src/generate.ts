@@ -64,79 +64,75 @@ function writeYaml<T>(subDir: string, preset: string, data: T): ManifestEntry {
 }
 
 function run() {
+  // Optional --tier filter: when provided, only the named dataset is generated.
+  // Mirrors the same --tier pattern used by runner.ts.
+  const tierArgIndex = process.argv.indexOf('--tier');
+  let tierFilter: string | null = null;
+  if (tierArgIndex !== -1) {
+    const tierName = process.argv.at(tierArgIndex + 1);
+    if (tierName === undefined || tierName.startsWith('--')) {
+      throw new Error('--tier requires a tier name argument (e.g. --tier basic)');
+    }
+    tierFilter = tierName;
+  }
+
   const outputDir = path.join(__dirname, config.outputDir);
   const manifestPath = path.join(outputDir, 'manifest.json');
 
-  // Idempotency guard: skip if manifest exists, every file it references is present on disk,
-  // and the manifest's dataset keys match the currently enabled datasets.
+  // Determine which datasets to generate (all enabled ones, or just the filtered one).
+  const datasetsToProcess = config.datasets.filter(
+    (d) => d.enabled && (tierFilter === null || d.name === tierFilter)
+  );
+
+  if (datasetsToProcess.length === 0) {
+    console.log(
+      tierFilter !== null
+        ? `⏭️  Dataset "${tierFilter}" is disabled or not found — nothing to generate.`
+        : '⏭️  All datasets are disabled — nothing to generate.'
+    );
+    return;
+  }
+
+  // Idempotency guard: skip generation if every requested dataset's files are already present.
   if (fs.existsSync(manifestPath)) {
     const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
-    const missingFiles = Object.entries(existingManifest.files)
-      .filter(([, entry]) => !entry || !fs.existsSync(path.join(outputDir, entry.filename)))
-      .map(([key]) => key);
 
-    // Compute the set of expected manifest keys based on currently enabled datasets.
-    const expectedManifestKeys = new Set<string>();
-    for (const dataset of config.datasets) {
-      if (!dataset.enabled) continue;
-      expectedManifestKeys.add(`${dataset.name}_input`);
-      expectedManifestKeys.add(`${dataset.name}_answer`);
-    }
+    const missingFiles = datasetsToProcess
+      .flatMap((d) => [`${d.name}_input`, `${d.name}_answer`])
+      .filter((key) => {
+        const entry = existingManifest.files[key];
+        return !entry || !fs.existsSync(path.join(outputDir, entry.filename));
+      });
 
-    const existingManifestKeys = new Set<string>(Object.keys(existingManifest.files));
-
-    const missingManifestKeys: string[] = [];
-    for (const key of expectedManifestKeys) {
-      if (!existingManifestKeys.has(key)) {
-        missingManifestKeys.push(key);
+    if (missingFiles.length === 0) {
+      const scope = tierFilter !== null ? `"${tierFilter}" dataset` : 'all datasets';
+      console.log(`⚡ Data is already up-to-date (${scope}) — skipping generation.`);
+      if (tierFilter === null) {
+        console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
       }
-    }
-
-    const extraManifestKeys: string[] = [];
-    for (const key of existingManifestKeys) {
-      if (!expectedManifestKeys.has(key)) {
-        extraManifestKeys.push(key);
-      }
-    }
-
-    const hasManifestKeyMismatch = missingManifestKeys.length > 0 || extraManifestKeys.length > 0;
-
-    if (missingFiles.length === 0 && !hasManifestKeyMismatch) {
-      console.log(`⚡ Data is already up-to-date — skipping generation.`);
-      console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
       return;
     }
 
-    const reasons: string[] = [];
-    if (missingFiles.length > 0) {
-      reasons.push(`${missingFiles.length} file(s) are missing: ${missingFiles.join(', ')}`);
-    }
-    if (hasManifestKeyMismatch) {
-      const parts: string[] = [];
-      if (missingManifestKeys.length > 0) {
-        parts.push(`missing manifest entries for enabled datasets: ${missingManifestKeys.join(', ')}`);
-      }
-      if (extraManifestKeys.length > 0) {
-        parts.push(`manifest contains entries no longer expected from config: ${extraManifestKeys.join(', ')}`);
-      }
-      reasons.push(parts.join('; '));
-    }
-
-    console.log(`⚠️  Manifest exists but ${reasons.join(' | ')}. Regenerating...`);
+    console.log(`⚠️  Regenerating: missing entries for ${missingFiles.join(', ')}`);
   }
-
-  const manifestFiles: Record<string, ManifestEntry> = {};
 
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  for (const dataset of config.datasets) {
-    if (!dataset.enabled) {
-      console.log(`⏭️  Skipping disabled dataset "${dataset.name}"`);
-      continue;
+  // When filtering to a single tier, carry forward other tiers' manifest entries so
+  // a partial generate doesn't erase the rest of the manifest.
+  const manifestFiles: Record<string, ManifestEntry> = {};
+  if (tierFilter !== null && fs.existsSync(manifestPath)) {
+    const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
+    for (const [key, entry] of Object.entries(existingManifest.files)) {
+      if (entry !== undefined) {
+        manifestFiles[key] = entry;
+      }
     }
+  }
 
+  for (const dataset of datasetsToProcess) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
     const { flatComponents } = generateDataset(dataset.size, dataset.seedSuffix);
 
@@ -148,6 +144,15 @@ function run() {
 
     const answerData = buildAnswerData(flatComponents);
     manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, answerData);
+  }
+
+  // When doing a full (unfiltered) generation, note any disabled datasets.
+  if (tierFilter === null) {
+    for (const dataset of config.datasets) {
+      if (!dataset.enabled) {
+        console.log(`⏭️  Skipping disabled dataset "${dataset.name}"`);
+      }
+    }
   }
 
   const manifest: Manifest = {

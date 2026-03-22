@@ -413,24 +413,42 @@ describe('smartCompare — O(V+E) complexity proof', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Ensures data files exist, generating them if needed.
- * Throws if generation fails so the test fails loudly (never silently passes).
+ * Ensures the basic-tier data files are present, generating only the basic dataset
+ * if they are missing.  Using --tier basic avoids spinning up the medium (5 K) and
+ * stress (50 K) generation that would happen with a bare `npm run generate`.
  */
 function ensureDataGenerated(): void {
   const dataDir = getDataDir();
   const manifestPath = path.join(dataDir, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) {
-    console.log('[test] Data files not found — running npm run generate...');
-    const projectRoot = path.resolve(__dirname, '..', '..');
-    execSync('npm run generate', { cwd: projectRoot, stdio: 'inherit' });
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error('Data generation did not produce manifest.json. Cannot run verbose trace test.');
+
+  if (fs.existsSync(manifestPath)) {
+    // Check that the basic entries specifically are present and their files exist.
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+      files?: Record<string, { filename?: string } | undefined>;
+    };
+    const inputFilename = raw.files?.['basic_input']?.filename;
+    const answerFilename = raw.files?.['basic_answer']?.filename;
+    if (
+      typeof inputFilename === 'string' &&
+      typeof answerFilename === 'string' &&
+      fs.existsSync(path.join(dataDir, inputFilename)) &&
+      fs.existsSync(path.join(dataDir, answerFilename))
+    ) {
+      return; // Basic-tier files already present
     }
+  }
+
+  // Generate only the basic dataset to avoid creating medium (5 K) and stress (50 K) files.
+  console.log('[test] Basic-tier data files not found — running npm run generate --tier basic...');
+  const projectRoot = path.resolve(__dirname, '..', '..');
+  execSync('npm run generate -- --tier basic', { cwd: projectRoot, stdio: 'inherit' });
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Data generation did not produce manifest.json. Cannot run verbose trace test.');
   }
 }
 
 describe('smartCompare — verbose basic-tier trace', () => {
-  it('runs twoPassWire on basic data, verifies with smartCompare, writes trace log', () => {
+  it('runs twoPassWire on basic data, verifies with smartCompare, writes trace log', (t) => {
     ensureDataGenerated();
 
     const manifest = loadManifest();
@@ -444,23 +462,22 @@ describe('smartCompare — verbose basic-tier trace', () => {
     const expected = buildPopulatedFromAnswer(rawAnswerEntries);
     const actual = twoPassWire.execute(inputData);
 
-    // Capture [smartCompare] log lines
+    // Use node:test's scoped mock so the override is automatically restored after the
+    // test ends and does not bleed into other tests running concurrently.
     const logLines: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => {
+    t.mock.method(console, 'log', (...args: unknown[]) => {
       const line = args.map(String).join(' ');
       if (line.startsWith('[smartCompare]')) {
         logLines.push(line);
       }
-      origLog(...args);
-    };
+      // [smartCompare] verbose lines are captured to the log file only; suppress from stdout
+      // to keep test output clean.
+    });
 
-    let result: ReturnType<typeof smartCompare>;
-    try {
-      result = smartCompare(actual, expected, { verbose: true });
-    } finally {
-      console.log = origLog;
-    }
+    const result = smartCompare(actual, expected, { verbose: true });
+
+    // Restore console.log before any further logging so the file-written message appears.
+    t.mock.restoreAll();
 
     assert.equal(result.pass, true, `smartCompare failed: ${result.errorDetail ?? ''}`);
     assert.equal(result.nodesProcessed, 10, 'basic tier must have exactly 10 nodes processed');
