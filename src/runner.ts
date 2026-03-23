@@ -96,13 +96,52 @@ function loadYaml(filename: string): unknown {
 
 // Rebuilds a ComponentPopulated[] with proper JS object identity (for cycles) from
 // the flat index-based answer format stored in the answer file.
-function buildPopulatedFromAnswer(entries: AnswerEntry[]): ComponentPopulated[] {
-  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
-  for (let i = 0; i < entries.length; i++) {
-    for (const depIdx of entries[i].depIndices) {
-      nodes[i].dependencies.push(nodes[depIdx]);
+function buildPopulatedFromAnswer(entries: AnswerEntry[], verbose = false): ComponentPopulated[] {
+  if (verbose) {
+    console.log('\n--- Pass 1: Shell creation ---');
+    for (const e of entries) {
+      console.log(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
     }
   }
+
+  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
+
+  if (verbose) {
+    console.log('\n--- Pass 2: Wiring ---');
+  }
+  for (let i = 0; i < entries.length; i++) {
+    if (verbose) {
+      console.log(`\n${nodes[i].id}:`);
+      if (entries[i].depIndices.length === 0) {
+        console.log('  (no dependencies)');
+      }
+    }
+    for (let j = 0; j < entries[i].depIndices.length; j++) {
+      const depIdx = entries[i].depIndices[j];
+      nodes[i].dependencies.push(nodes[depIdx]);
+      if (verbose) {
+        console.log(`  Wire: ${nodes[i].id}.dependencies[${j}] → ${nodes[depIdx].id} (index ${depIdx})`);
+      }
+    }
+  }
+
+  if (verbose) {
+    console.log('\n--- Identity checks ---');
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = 0; j < entries[i].depIndices.length; j++) {
+        const depIdx = entries[i].depIndices[j];
+        const isSame = nodes[i].dependencies[j] === nodes[depIdx];
+        console.log(`Identity check: nodes[${i}].dependencies[${j}] === nodes[${depIdx}] → ${isSame}`);
+      }
+    }
+
+    console.log('\n--- Final expected graph ---');
+    for (const node of nodes) {
+      const depIds = node.dependencies.map((d) => d.id).join(', ');
+      console.log(`${node.id} → [${depIds}]`);
+    }
+  }
+
   return nodes;
 }
 
@@ -155,6 +194,9 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
+  // Parse --verbose CLI flag to enable trace logging in buildPopulatedFromAnswer
+  const verboseMode = process.argv.includes('--verbose');
+
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
 
@@ -169,7 +211,10 @@ function runBenchmark() {
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
     const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
-    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[]);
+    if (verboseMode) {
+      console.log(`\n=== buildPopulatedFromAnswer verbose trace — ${dataset} tier ===`);
+    }
+    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[], verboseMode);
 
     const datasetReports: BenchmarkReport[] = [];
 
