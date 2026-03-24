@@ -138,7 +138,7 @@ describe('smartCompare — matching graphs', () => {
   it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', () => {
     // comp_0 → comp_1 → comp_0: when the DFS reaches comp_1 → comp_0,
     // comp_0's frame is still on the stack (it pushed comp_1 but hasn't finished),
-    // yet comp_0 was added to `paired` before the frame was pushed (line 62),
+    // yet comp_0 was added to `paired` before its frame was pushed onto the stack,
     // so the back-edge check correctly treats it as BACK-EDGE rather than re-entering it.
     const a0 = makeNode('comp_0');
     const a1 = makeNode('comp_1');
@@ -274,7 +274,7 @@ describe('smartCompare — mismatch detection', () => {
   it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', () => {
     // actual:   A → B → A  (B cycles back to A — correct 2-node cycle)
     // expected: A → B → B  (B has a self-loop, NOT a back-edge to A)
-    // The alreadyPaired check (line 92: alreadyPaired !== de) catches this:
+    // The alreadyPaired guard (the alreadyPaired !== de check) catches this:
     // paired.get(actualA)=expectedA, but de=expectedB → mismatch.
     const actualA = makeNode('a');
     const actualB = makeNode('b');
@@ -296,8 +296,9 @@ describe('smartCompare — mismatch detection', () => {
     // Expected has the first cycle correct [p↔q], but the second cycle's back-edges
     // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
     // This means e1(q) would need to be paired with both a1(q) and a3(s) — impossible.
-    // The reversePaired map (lines 98-101) catches this: when processing a2→a3 vs e2→e1,
-    // da=a3 is a fresh actual node but de=e1 is already reversePaired with a1 → mismatch.
+    // The reversePaired map, which enforces a one-to-one mapping from expected nodes
+    // to actual nodes, catches this: when processing a2→a3 vs e2→e1, da=a3 is a fresh
+    // actual node but de=e1 is already reversePaired with a1 → mismatch.
     const a0 = makeNode('p'), a1 = makeNode('q');
     const a2 = makeNode('r'), a3 = makeNode('s');
     a0.dependencies.push(a1);
