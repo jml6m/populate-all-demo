@@ -543,7 +543,7 @@ describe('smartCompare — verbose basic-tier trace', () => {
       // to keep test output clean.
     });
 
-    const result = smartCompare(actual, expected, { verbose: true });
+    const result = smartCompare(actual, expected, true);
 
     // Restore console.log before any further logging so the file-written message appears.
     t.mock.restoreAll();

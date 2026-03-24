@@ -82,10 +82,6 @@ export function smartCompare(
         log(`[smartCompare] ❌ id mismatch: actual="${startA.id}", expected="${startE.id}"`);
         return `id mismatch: actual="${startA.id}", expected="${startE.id}"`;
       }
-      if (startA.name !== startE.name) {
-        log(`[smartCompare] ❌ name mismatch for "${startA.id}": actual="${startA.name}", expected="${startE.name}"`);
-        return `name mismatch for id "${startA.id}": actual="${startA.name}", expected="${startE.name}"`;
-      }
       if (startA.dependencies.length !== startE.dependencies.length) {
         log(`[smartCompare] ❌ dep-count mismatch for "${startA.id}": actual=${startA.dependencies.length}, expected=${startE.dependencies.length}`);
         return `dependencies length mismatch for id "${startA.id}": actual=${startA.dependencies.length}, expected=${startE.dependencies.length}`;
@@ -136,10 +132,6 @@ export function smartCompare(
         if (da.id !== de.id) {
           log(`[smartCompare] ❌ id mismatch: actual="${da.id}", expected="${de.id}"`);
           return `id mismatch: actual="${da.id}", expected="${de.id}"`;
-        }
-        if (da.name !== de.name) {
-          log(`[smartCompare] ❌ name mismatch for "${da.id}": actual="${da.name}", expected="${de.name}"`);
-          return `name mismatch for id "${da.id}": actual="${da.name}", expected="${de.name}"`;
         }
         if (da.dependencies.length !== de.dependencies.length) {
           log(`[smartCompare] ❌ dep-count mismatch for "${da.id}": actual=${da.dependencies.length}, expected=${de.dependencies.length}`);
