@@ -266,8 +266,11 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
-  // Parse --verbose CLI flag to enable trace logging in buildPopulatedFromAnswer
-  const verboseMode = process.argv.includes('--verbose');
+  // Parse trace-mode CLI flags:
+  //   --trace-build    enables buildPopulatedFromAnswer verbose trace (expected-graph wiring)
+  //   --trace-compare  enables smartCompare verbose trace (per-node pairing and back-edges)
+  const traceBuild = process.argv.includes('--trace-build');
+  const traceCompare = process.argv.includes('--trace-compare');
 
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
@@ -286,10 +289,10 @@ function runBenchmark() {
     let answerData: ComponentPopulated[];
     try {
       inputData = parseInputData(loadYaml(inputEntry.filename), inputEntry.filename);
-      if (verboseMode) {
+      if (traceBuild) {
         console.log(`\n=== buildPopulatedFromAnswer verbose trace — ${dataset} tier ===`);
       }
-      answerData = buildPopulatedFromAnswer(parseAnswerData(loadYaml(answerEntry.filename), answerEntry.filename), verboseMode);
+      answerData = buildPopulatedFromAnswer(parseAnswerData(loadYaml(answerEntry.filename), answerEntry.filename), traceBuild);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n❌ Skipping dataset "${dataset}" — failed to load or validate data: ${msg}`);
@@ -317,7 +320,10 @@ function runBenchmark() {
         executionTimeMs = endTime - startTime;
         ramUsedMb = Math.max(0, (endMem - startMem) / 1024 / 1024);
 
-        accuracyResult = smartCompare(result, answerData);
+        if (traceCompare) {
+          console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
+        }
+        accuracyResult = smartCompare(result, answerData, traceCompare);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         accuracyResult = {

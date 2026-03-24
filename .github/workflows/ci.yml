@@ -1,4 +1,4 @@
-name: CI
+name: Benchmark
 
 on:
   workflow_dispatch:
@@ -22,33 +22,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Test
-        run: npm run test
-        continue-on-error: true
-
       - name: Generate test data
         run: npm run generate
 
       - name: Run benchmark suite
         run: npm run experiment
 
-      - name: Run basic tier accuracy trace
-        run: npm run experiment -- --tier basic --verbose 2>&1 | tee basic-tier-accuracy-trace.log
-
       - name: Upload benchmark reports
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-reports
           path: reports/
-          if-no-files-found: error
-
-      - name: Upload basic tier accuracy trace log
-        uses: actions/upload-artifact@v4
-        with:
-          name: basic-tier-accuracy-trace
-          path: basic-tier-accuracy-trace.log
           if-no-files-found: error
