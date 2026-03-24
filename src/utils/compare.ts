@@ -3,6 +3,9 @@ import { ComponentPopulated } from '../algorithms/types';
 /** Explicit call-frame type used by the iterative DFS stack in compareNode. */
 interface CompareFrame { a: ComponentPopulated; e: ComponentPopulated; depIdx: number }
 
+/** Shared no-op used when verbose=false to avoid allocating a new function on every smartCompare call. */
+function noop(_msg: string): void { /* intentionally empty */ }
+
 /**
  * Cycle-aware graph comparator — O(V + E).
  *
@@ -16,16 +19,15 @@ interface CompareFrame { a: ComponentPopulated; e: ComponentPopulated; depIdx: n
  * The traversal is an iterative DFS (explicit frame stack) to avoid call-stack
  * overflow on large cyclic graphs.
  *
- * @param options.verbose  When true, emits step-by-step logs via console.log
- *                         with a `[smartCompare]` prefix.  Does not affect the
- *                         return value or algorithm behaviour.
+ * @param verbose When true, prints a per-node pairing trace (prefixed [smartCompare]) to stdout.
  */
 export function smartCompare(
   actual: unknown,
   expected: unknown,
-  options?: { verbose?: boolean }
+  verbose = false
 ): { pass: boolean; errorDetail: string | null; nodesProcessed: number; edgesTraversed: number } {
-  const verbose = options?.verbose === true;
+  const log = verbose ? (msg: string) => console.log(msg) : noop;
+
   try {
     if (!Array.isArray(actual) || !Array.isArray(expected)) {
       return { pass: false, errorDetail: 'Both actual and expected must be arrays', nodesProcessed: 0, edgesTraversed: 0 };
@@ -56,11 +58,17 @@ export function smartCompare(
       // Fast path: node was already processed (outer-loop revisit or cycle back-edge)
       const initialPaired = paired.get(startA);
       if (initialPaired !== undefined) {
-        return initialPaired !== startE ? `Cycle structure mismatch at node "${startA.id}": expected cycle target differs` : null;
+        if (initialPaired !== startE) {
+          log(`[smartCompare] ❌ Mismatch: node "${startA.id}" was previously paired with "${initialPaired.id}" but now expected "${startE.id}"`);
+          return `Cycle structure mismatch at node "${startA.id}": expected cycle target differs`;
+        }
+        log(`[smartCompare] Already paired (outer revisit): actual="${startA.id}" ↔ expected="${startE.id}" ✓`);
+        return null;
       }
 
       const reverseStart = reversePaired.get(startE);
       if (reverseStart !== undefined && reverseStart !== startA) {
+        log(`[smartCompare] ❌ Mismatch: expected node "${startE.id}" claimed by both "${reverseStart.id}" and "${startA.id}"`);
         return `Cycle structure mismatch: expected node "${startE.id}" is paired with more than one actual node`;
       }
 
@@ -68,10 +76,18 @@ export function smartCompare(
       paired.set(startA, startE);
       reversePaired.set(startE, startA);
       nodesProcessed++;
-      if (verbose) console.log(`[smartCompare] PAIR: ${startA.id} ↔ ${startE.id} [nodesProcessed=${nodesProcessed}]`);
+      log(`[smartCompare] Paired: actual="${startA.id}" ↔ expected="${startE.id}" (${startA.dependencies.length} deps)`);
 
-      if (startA.id !== startE.id) return `id mismatch: actual="${startA.id}", expected="${startE.id}"`;
+      if (startA.id !== startE.id) {
+        log(`[smartCompare] ❌ id mismatch: actual="${startA.id}", expected="${startE.id}"`);
+        return `id mismatch: actual="${startA.id}", expected="${startE.id}"`;
+      }
+      if (startA.name !== startE.name) {
+        log(`[smartCompare] ❌ name mismatch for "${startA.id}": actual="${startA.name}", expected="${startE.name}"`);
+        return `name mismatch for id "${startA.id}": actual="${startA.name}", expected="${startE.name}"`;
+      }
       if (startA.dependencies.length !== startE.dependencies.length) {
+        log(`[smartCompare] ❌ dep-count mismatch for "${startA.id}": actual=${startA.dependencies.length}, expected=${startE.dependencies.length}`);
         return `dependencies length mismatch for id "${startA.id}": actual=${startA.dependencies.length}, expected=${startE.dependencies.length}`;
       }
       if (verbose) console.log(`[smartCompare] CHECK ${startA.id}: id ✓, deps.length=${startA.dependencies.length} ✓`);
@@ -98,14 +114,16 @@ export function smartCompare(
         if (alreadyPaired !== undefined) {
           // Back-edge: verify the cycle points to the same expected node
           if (alreadyPaired !== de) {
+            log(`[smartCompare] ❌ Back-edge mismatch: actual="${da.id}" paired with "${alreadyPaired.id}" but cycle expected "${de.id}"`);
             return `Cycle structure mismatch at node "${da.id}": expected cycle target differs`;
           }
-          if (verbose) console.log(`[smartCompare] BACK-EDGE: ${da.id} already paired ✓`);
+          log(`[smartCompare] Back-edge: actual="${da.id}" → already paired with expected="${de.id}" ✓`);
           continue;
         }
 
         const reversePairedActual = reversePaired.get(de);
         if (reversePairedActual !== undefined && reversePairedActual !== da) {
+          log(`[smartCompare] ❌ Mismatch: expected node "${de.id}" claimed by both "${reversePairedActual.id}" and "${da.id}"`);
           return `Cycle structure mismatch: expected node "${de.id}" is paired with more than one actual node`;
         }
 
@@ -113,10 +131,18 @@ export function smartCompare(
         paired.set(da, de);
         reversePaired.set(de, da);
         nodesProcessed++;
-        if (verbose) console.log(`[smartCompare] PAIR: ${da.id} ↔ ${de.id} [nodesProcessed=${nodesProcessed}]`);
+        log(`[smartCompare] Paired: actual="${da.id}" ↔ expected="${de.id}" (${da.dependencies.length} deps)`);
 
-        if (da.id !== de.id) return `id mismatch: actual="${da.id}", expected="${de.id}"`;
+        if (da.id !== de.id) {
+          log(`[smartCompare] ❌ id mismatch: actual="${da.id}", expected="${de.id}"`);
+          return `id mismatch: actual="${da.id}", expected="${de.id}"`;
+        }
+        if (da.name !== de.name) {
+          log(`[smartCompare] ❌ name mismatch for "${da.id}": actual="${da.name}", expected="${de.name}"`);
+          return `name mismatch for id "${da.id}": actual="${da.name}", expected="${de.name}"`;
+        }
         if (da.dependencies.length !== de.dependencies.length) {
+          log(`[smartCompare] ❌ dep-count mismatch for "${da.id}": actual=${da.dependencies.length}, expected=${de.dependencies.length}`);
           return `dependencies length mismatch for id "${da.id}": actual=${da.dependencies.length}, expected=${de.dependencies.length}`;
         }
         if (verbose) console.log(`[smartCompare] CHECK ${da.id}: id ✓, deps.length=${da.dependencies.length} ✓`);
@@ -130,15 +156,23 @@ export function smartCompare(
     const actualNodes = actual as ComponentPopulated[];
     const expectedNodes = expected as ComponentPopulated[];
 
+    if (verbose) {
+      log(`\n--- smartCompare: comparing ${actualNodes.length} root node(s) ---`);
+    }
+
     for (let i = 0; i < actualNodes.length; i++) {
+      if (verbose) log(`[smartCompare] Root[${i}]: actual="${actualNodes[i].id}" vs expected="${expectedNodes[i].id}"`);
       const err = compareNode(actualNodes[i], expectedNodes[i]);
       if (err !== null) {
-        if (verbose) console.log(`[smartCompare] DONE: pass=false, nodesProcessed=${nodesProcessed}, edgesTraversed=${edgesTraversed}`);
+        log(`[smartCompare] ❌ FAIL — ${err}`);
         return { pass: false, errorDetail: err, nodesProcessed, edgesTraversed };
       }
     }
 
-    if (verbose) console.log(`[smartCompare] DONE: pass=true, nodesProcessed=${nodesProcessed}, edgesTraversed=${edgesTraversed}`);
+    if (verbose) {
+      log(`[smartCompare] ✅ PASS — ${nodesProcessed} nodes, ${edgesTraversed} edges`);
+    }
+
     return { pass: true, errorDetail: null, nodesProcessed, edgesTraversed };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
