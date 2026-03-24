@@ -135,6 +135,28 @@ describe('smartCompare — matching graphs', () => {
     assert.equal(r.errorDetail, null);
   });
 
+  it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', () => {
+    // comp_0 → comp_1 → comp_0: when the DFS reaches comp_1 → comp_0,
+    // comp_0's frame is still on the stack (it pushed comp_1 but hasn't finished),
+    // yet comp_0 was added to `paired` before its frame was pushed onto the stack,
+    // so the back-edge check correctly treats it as BACK-EDGE rather than re-entering it.
+    const a0 = makeNode('comp_0');
+    const a1 = makeNode('comp_1');
+    a0.dependencies.push(a1);
+    a1.dependencies.push(a0);
+
+    const e0 = makeNode('comp_0');
+    const e1 = makeNode('comp_1');
+    e0.dependencies.push(e1);
+    e1.dependencies.push(e0);
+
+    const r = smartCompare([a0, a1], [e0, e1]);
+    assert.equal(r.pass, true);
+    assert.equal(r.errorDetail, null);
+    assert.equal(r.nodesProcessed, 2);
+    assert.equal(r.edgesTraversed, 2);
+  });
+
   it('matches a diamond graph with a shared-reference node', () => {
     const [actual, expected] = diamond();
     const r = smartCompare(actual, expected);
@@ -247,6 +269,53 @@ describe('smartCompare — mismatch detection', () => {
     // When we visit sharedC the second time (via b1), we expect it to be paired with c2a already,
     // but b2 points to c2b — a different object → mismatch
     assert.equal(r.pass, false);
+  });
+
+  it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', () => {
+    // actual:   A → B → A  (B cycles back to A — correct 2-node cycle)
+    // expected: A → B → B  (B has a self-loop, NOT a back-edge to A)
+    // The alreadyPaired guard (the alreadyPaired !== de check) catches this:
+    // paired.get(actualA)=expectedA, but de=expectedB → mismatch.
+    const actualA = makeNode('a');
+    const actualB = makeNode('b');
+    actualA.dependencies.push(actualB);
+    actualB.dependencies.push(actualA); // cycle back to A
+
+    const expectedA = makeNode('a');
+    const expectedB = makeNode('b');
+    expectedA.dependencies.push(expectedB);
+    expectedB.dependencies.push(expectedB); // self-loop on B instead of back to A
+
+    const r = smartCompare([actualA, actualB], [expectedA, expectedB]);
+    assert.equal(r.pass, false);
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
+  });
+
+  it('mismatch — swapped 2-cycle targets: reversePaired catches expected node claimed by two actuals', () => {
+    // Actual has two proper 2-node cycles: [p↔q] and [r↔s]
+    // Expected has the first cycle correct [p↔q], but the second cycle's back-edges
+    // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
+    // This means e1(q) would need to be paired with both a1(q) and a3(s) — impossible.
+    // The reversePaired map, which enforces a one-to-one mapping from expected nodes
+    // to actual nodes, catches this: when processing a2→a3 vs e2→e1, da=a3 is a fresh
+    // actual node but de=e1 is already reversePaired with a1 → mismatch.
+    const a0 = makeNode('p'), a1 = makeNode('q');
+    const a2 = makeNode('r'), a3 = makeNode('s');
+    a0.dependencies.push(a1);
+    a1.dependencies.push(a0); // cycle 1: p↔q
+    a2.dependencies.push(a3);
+    a3.dependencies.push(a2); // cycle 2: r↔s
+
+    const e0 = makeNode('p'), e1 = makeNode('q');
+    const e2 = makeNode('r'), e3 = makeNode('s');
+    e0.dependencies.push(e1);
+    e1.dependencies.push(e0); // correct cycle 1: p↔q
+    e2.dependencies.push(e1); // WRONG: r→q (points to first cycle's node!)
+    e3.dependencies.push(e0); // WRONG: s→p (points to first cycle's node!)
+
+    const r = smartCompare([a0, a1, a2, a3], [e0, e1, e2, e3]);
+    assert.equal(r.pass, false);
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 });
 

@@ -67,6 +67,78 @@ function assertSafePathSegment(value: string, label: string): void {
   }
 }
 
+// --- YAML validation helpers ---
+
+function assertTopLevelArray(raw: unknown, label: string): unknown[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`${label}: expected a top-level array, got ${typeof raw}`);
+  }
+  return raw;
+}
+
+function assertEntryRecord(entry: unknown, label: string, i: number): Record<string, unknown> {
+  if (entry === null || typeof entry !== 'object') {
+    throw new Error(`${label}: entry[${i}] is not an object`);
+  }
+  return entry as Record<string, unknown>;
+}
+
+function assertEntryStringField(e: Record<string, unknown>, field: string, label: string, i: number): string {
+  if (typeof e[field] !== 'string') {
+    throw new Error(`${label}: entry[${i}].${field} must be a string`);
+  }
+  return e[field] as string;
+}
+
+/**
+ * Validates and parses raw YAML output as ComponentFlat[].
+ * Throws a descriptive error if the structure does not match the expected schema.
+ */
+function parseInputData(raw: unknown, filename: string): ComponentFlat[] {
+  const label = `Input file "${filename}"`;
+  return assertTopLevelArray(raw, label).map((entry, i) => {
+    const e = assertEntryRecord(entry, label, i);
+    const id = assertEntryStringField(e, 'id', label, i);
+    const name = assertEntryStringField(e, 'name', label, i);
+    if (!Array.isArray(e['dependencies'])) {
+      throw new Error(`${label}: entry[${i}].dependencies must be an array of strings`);
+    }
+    if ((e['dependencies'] as unknown[]).some((d) => typeof d !== 'string')) {
+      throw new Error(`${label}: entry[${i}].dependencies must be an array of strings`);
+    }
+    return { id, name, dependencies: e['dependencies'] as string[] };
+  });
+}
+
+/**
+ * Validates and parses raw YAML output as AnswerEntry[].
+ * Throws a descriptive error if the structure does not match the expected schema,
+ * including out-of-range or non-integer depIndices.
+ */
+function parseAnswerData(raw: unknown, filename: string): AnswerEntry[] {
+  const label = `Answer file "${filename}"`;
+  const arr = assertTopLevelArray(raw, label);
+  const length = arr.length;
+  return arr.map((entry, i) => {
+    const e = assertEntryRecord(entry, label, i);
+    const id = assertEntryStringField(e, 'id', label, i);
+    const name = assertEntryStringField(e, 'name', label, i);
+    if (!Array.isArray(e['depIndices'])) {
+      throw new Error(`${label}: entry[${i}].depIndices must be an array`);
+    }
+    const depIndices: number[] = (e['depIndices'] as unknown[]).map((d, j) => {
+      if (typeof d !== 'number' || !Number.isInteger(d)) {
+        throw new Error(`${label}: entry[${i}].depIndices[${j}]=${JSON.stringify(d)} must be an integer`);
+      }
+      if (d < 0 || d >= length) {
+        throw new Error(`${label}: entry[${i}].depIndices[${j}]=${d} is out of bounds (must be in [0, ${length - 1}])`);
+      }
+      return d;
+    });
+    return { id, name, depIndices };
+  });
+}
+
 function loadYaml(filename: string): unknown {
   const dataDir = getDataDir();
   const filePath = path.resolve(dataDir, filename);
@@ -96,13 +168,52 @@ function loadYaml(filename: string): unknown {
 
 // Rebuilds a ComponentPopulated[] with proper JS object identity (for cycles) from
 // the flat index-based answer format stored in the answer file.
-function buildPopulatedFromAnswer(entries: AnswerEntry[]): ComponentPopulated[] {
-  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
-  for (let i = 0; i < entries.length; i++) {
-    for (const depIdx of entries[i].depIndices) {
-      nodes[i].dependencies.push(nodes[depIdx]);
+function buildPopulatedFromAnswer(entries: AnswerEntry[], verbose = false): ComponentPopulated[] {
+  if (verbose) {
+    console.log('\n--- Pass 1: Shell creation ---');
+    for (const e of entries) {
+      console.log(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
     }
   }
+
+  const nodes: ComponentPopulated[] = entries.map((e) => ({ id: e.id, name: e.name, dependencies: [] }));
+
+  if (verbose) {
+    console.log('\n--- Pass 2: Wiring ---');
+  }
+  for (let i = 0; i < entries.length; i++) {
+    if (verbose) {
+      console.log(`\n${nodes[i].id}:`);
+      if (entries[i].depIndices.length === 0) {
+        console.log('  (no dependencies)');
+      }
+    }
+    for (let j = 0; j < entries[i].depIndices.length; j++) {
+      const depIdx = entries[i].depIndices[j];
+      nodes[i].dependencies.push(nodes[depIdx]);
+      if (verbose) {
+        console.log(`  Wire: ${nodes[i].id}.dependencies[${j}] → ${nodes[depIdx].id} (index ${depIdx})`);
+      }
+    }
+  }
+
+  if (verbose) {
+    console.log('\n--- Identity checks ---');
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = 0; j < entries[i].depIndices.length; j++) {
+        const depIdx = entries[i].depIndices[j];
+        const isSame = nodes[i].dependencies[j] === nodes[depIdx];
+        console.log(`Identity check: nodes[${i}].dependencies[${j}] === nodes[${depIdx}] → ${isSame}`);
+      }
+    }
+
+    console.log('\n--- Final expected graph ---');
+    for (const node of nodes) {
+      const depIds = node.dependencies.map((d) => d.id).join(', ');
+      console.log(`${node.id} → [${depIds}]`);
+    }
+  }
+
   return nodes;
 }
 
@@ -155,6 +266,12 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
+  // Parse trace-mode CLI flags:
+  //   --trace-build    enables buildPopulatedFromAnswer verbose trace (expected-graph wiring)
+  //   --trace-compare  enables smartCompare verbose trace (per-node pairing and back-edges)
+  const traceBuild = process.argv.includes('--trace-build');
+  const traceCompare = process.argv.includes('--trace-compare');
+
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
 
@@ -168,8 +285,19 @@ function runBenchmark() {
     }
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
-    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
-    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[]);
+    let inputData: ComponentFlat[];
+    let answerData: ComponentPopulated[];
+    try {
+      inputData = parseInputData(loadYaml(inputEntry.filename), inputEntry.filename);
+      if (traceBuild) {
+        console.log(`\n=== buildPopulatedFromAnswer verbose trace — ${dataset} tier ===`);
+      }
+      answerData = buildPopulatedFromAnswer(parseAnswerData(loadYaml(answerEntry.filename), answerEntry.filename), traceBuild);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\n❌ Skipping dataset "${dataset}" — failed to load or validate data: ${msg}`);
+      continue;
+    }
 
     const datasetReports: BenchmarkReport[] = [];
 
@@ -192,7 +320,10 @@ function runBenchmark() {
         executionTimeMs = endTime - startTime;
         ramUsedMb = Math.max(0, (endMem - startMem) / 1024 / 1024);
 
-        accuracyResult = smartCompare(result, answerData);
+        if (traceCompare) {
+          console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
+        }
+        accuracyResult = smartCompare(result, answerData, traceCompare);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         accuracyResult = {
@@ -218,7 +349,9 @@ function runBenchmark() {
 
       datasetReports.push(report);
 
-      console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      console.log(
+        `  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Nodes: ${accuracyResult.nodesProcessed} | Edges: ${accuracyResult.edgesTraversed} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`
+      );
 
       // Strict boolean expression check
       if (accuracyResult.pass === false) {
