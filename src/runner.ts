@@ -267,8 +267,8 @@ function runBenchmark() {
       } else if (bothPass) {
         resultLine = `✅ PASS (double-verified)`;
       } else {
-        const smartErr = smartResult.errorDetail ? `smartCompare: ${smartResult.errorDetail.substring(0, 60)}` : '';
-        const flatErr = flatResult.errorDetail ? `flatCompare: ${flatResult.errorDetail.substring(0, 60)}` : '';
+        const smartErr = smartResult.errorDetail !== null ? `smartCompare: ${smartResult.errorDetail.substring(0, 60)}` : '';
+        const flatErr = flatResult.errorDetail !== null ? `flatCompare: ${flatResult.errorDetail.substring(0, 60)}` : '';
         resultLine = `❌ FAIL [${smartErr}] [${flatErr}]`;
       }
 
