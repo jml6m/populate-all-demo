@@ -36,9 +36,19 @@ jobs:
       - name: Run benchmark suite
         run: npm run experiment
 
+      - name: Run basic tier accuracy trace
+        run: npm run experiment -- --tier basic --verbose 2>&1 | tee basic-tier-accuracy-trace.log
+
       - name: Upload benchmark reports
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-reports
           path: reports/
+          if-no-files-found: error
+
+      - name: Upload basic tier accuracy trace log
+        uses: actions/upload-artifact@v4
+        with:
+          name: basic-tier-accuracy-trace
+          path: basic-tier-accuracy-trace.log
           if-no-files-found: error

@@ -343,7 +343,9 @@ function runBenchmark() {
 
       datasetReports.push(report);
 
-      console.log(`  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      console.log(
+        `  Result: ${accuracyResult.pass ? '✅ PASS' : '❌ FAIL'} | Nodes: ${accuracyResult.nodesProcessed} | Edges: ${accuracyResult.edgesTraversed} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`
+      );
 
       // Strict boolean expression check
       if (accuracyResult.pass === false) {
