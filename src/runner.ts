@@ -67,6 +67,76 @@ function assertSafePathSegment(value: string, label: string): void {
   }
 }
 
+/**
+ * Validates and parses raw YAML output as ComponentFlat[].
+ * Throws a descriptive error if the structure does not match the expected schema.
+ */
+function parseInputData(raw: unknown, filename: string): ComponentFlat[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`Input file "${filename}": expected a top-level array, got ${typeof raw}`);
+  }
+  return raw.map((entry: unknown, i: number) => {
+    if (entry === null || typeof entry !== 'object') {
+      throw new Error(`Input file "${filename}": entry[${i}] is not an object`);
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e['id'] !== 'string') {
+      throw new Error(`Input file "${filename}": entry[${i}].id must be a string`);
+    }
+    if (typeof e['name'] !== 'string') {
+      throw new Error(`Input file "${filename}": entry[${i}].name must be a string`);
+    }
+    if (!Array.isArray(e['dependencies'])) {
+      throw new Error(`Input file "${filename}": entry[${i}].dependencies must be an array of strings`);
+    }
+    if ((e['dependencies'] as unknown[]).some((d) => typeof d !== 'string')) {
+      throw new Error(`Input file "${filename}": entry[${i}].dependencies must be an array of strings`);
+    }
+    return { id: e['id'] as string, name: e['name'] as string, dependencies: e['dependencies'] as string[] };
+  });
+}
+
+/**
+ * Validates and parses raw YAML output as AnswerEntry[].
+ * Throws a descriptive error if the structure does not match the expected schema,
+ * including out-of-range or non-integer depIndices.
+ */
+function parseAnswerData(raw: unknown, filename: string): AnswerEntry[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`Answer file "${filename}": expected a top-level array, got ${typeof raw}`);
+  }
+  const length = raw.length;
+  return raw.map((entry: unknown, i: number) => {
+    if (entry === null || typeof entry !== 'object') {
+      throw new Error(`Answer file "${filename}": entry[${i}] is not an object`);
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e['id'] !== 'string') {
+      throw new Error(`Answer file "${filename}": entry[${i}].id must be a string`);
+    }
+    if (typeof e['name'] !== 'string') {
+      throw new Error(`Answer file "${filename}": entry[${i}].name must be a string`);
+    }
+    if (!Array.isArray(e['depIndices'])) {
+      throw new Error(`Answer file "${filename}": entry[${i}].depIndices must be an array`);
+    }
+    const depIndices: number[] = (e['depIndices'] as unknown[]).map((d, j) => {
+      if (typeof d !== 'number' || !Number.isInteger(d)) {
+        throw new Error(
+          `Answer file "${filename}": entry[${i}].depIndices[${j}]=${JSON.stringify(d)} must be an integer`
+        );
+      }
+      if (d < 0 || d >= length) {
+        throw new Error(
+          `Answer file "${filename}": entry[${i}].depIndices[${j}]=${d} is out of bounds (must be in [0, ${length - 1}])`
+        );
+      }
+      return d;
+    });
+    return { id: e['id'] as string, name: e['name'] as string, depIndices };
+  });
+}
+
 function loadYaml(filename: string): unknown {
   const dataDir = getDataDir();
   const filePath = path.resolve(dataDir, filename);
@@ -210,11 +280,19 @@ function runBenchmark() {
     }
 
     console.log(`\n--- Loading ${dataset} dataset ---`);
-    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
-    if (verboseMode) {
-      console.log(`\n=== buildPopulatedFromAnswer verbose trace — ${dataset} tier ===`);
+    let inputData: ComponentFlat[];
+    let answerData: ComponentPopulated[];
+    try {
+      inputData = parseInputData(loadYaml(inputEntry.filename), inputEntry.filename);
+      if (verboseMode) {
+        console.log(`\n=== buildPopulatedFromAnswer verbose trace — ${dataset} tier ===`);
+      }
+      answerData = buildPopulatedFromAnswer(parseAnswerData(loadYaml(answerEntry.filename), answerEntry.filename), verboseMode);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\n❌ Skipping dataset "${dataset}" — failed to load or validate data: ${msg}`);
+      continue;
     }
-    const answerData = buildPopulatedFromAnswer(loadYaml(answerEntry.filename) as AnswerEntry[], verboseMode);
 
     const datasetReports: BenchmarkReport[] = [];
 
