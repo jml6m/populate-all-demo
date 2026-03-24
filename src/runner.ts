@@ -67,32 +67,46 @@ function assertSafePathSegment(value: string, label: string): void {
   }
 }
 
+// --- YAML validation helpers ---
+
+function assertTopLevelArray(raw: unknown, label: string): unknown[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`${label}: expected a top-level array, got ${typeof raw}`);
+  }
+  return raw;
+}
+
+function assertEntryRecord(entry: unknown, label: string, i: number): Record<string, unknown> {
+  if (entry === null || typeof entry !== 'object') {
+    throw new Error(`${label}: entry[${i}] is not an object`);
+  }
+  return entry as Record<string, unknown>;
+}
+
+function assertEntryStringField(e: Record<string, unknown>, field: string, label: string, i: number): string {
+  if (typeof e[field] !== 'string') {
+    throw new Error(`${label}: entry[${i}].${field} must be a string`);
+  }
+  return e[field] as string;
+}
+
 /**
  * Validates and parses raw YAML output as ComponentFlat[].
  * Throws a descriptive error if the structure does not match the expected schema.
  */
 function parseInputData(raw: unknown, filename: string): ComponentFlat[] {
-  if (!Array.isArray(raw)) {
-    throw new Error(`Input file "${filename}": expected a top-level array, got ${typeof raw}`);
-  }
-  return raw.map((entry: unknown, i: number) => {
-    if (entry === null || typeof entry !== 'object') {
-      throw new Error(`Input file "${filename}": entry[${i}] is not an object`);
-    }
-    const e = entry as Record<string, unknown>;
-    if (typeof e['id'] !== 'string') {
-      throw new Error(`Input file "${filename}": entry[${i}].id must be a string`);
-    }
-    if (typeof e['name'] !== 'string') {
-      throw new Error(`Input file "${filename}": entry[${i}].name must be a string`);
-    }
+  const label = `Input file "${filename}"`;
+  return assertTopLevelArray(raw, label).map((entry, i) => {
+    const e = assertEntryRecord(entry, label, i);
+    const id = assertEntryStringField(e, 'id', label, i);
+    const name = assertEntryStringField(e, 'name', label, i);
     if (!Array.isArray(e['dependencies'])) {
-      throw new Error(`Input file "${filename}": entry[${i}].dependencies must be an array of strings`);
+      throw new Error(`${label}: entry[${i}].dependencies must be an array of strings`);
     }
     if ((e['dependencies'] as unknown[]).some((d) => typeof d !== 'string')) {
-      throw new Error(`Input file "${filename}": entry[${i}].dependencies must be an array of strings`);
+      throw new Error(`${label}: entry[${i}].dependencies must be an array of strings`);
     }
-    return { id: e['id'] as string, name: e['name'] as string, dependencies: e['dependencies'] as string[] };
+    return { id, name, dependencies: e['dependencies'] as string[] };
   });
 }
 
@@ -102,38 +116,26 @@ function parseInputData(raw: unknown, filename: string): ComponentFlat[] {
  * including out-of-range or non-integer depIndices.
  */
 function parseAnswerData(raw: unknown, filename: string): AnswerEntry[] {
-  if (!Array.isArray(raw)) {
-    throw new Error(`Answer file "${filename}": expected a top-level array, got ${typeof raw}`);
-  }
-  const length = raw.length;
-  return raw.map((entry: unknown, i: number) => {
-    if (entry === null || typeof entry !== 'object') {
-      throw new Error(`Answer file "${filename}": entry[${i}] is not an object`);
-    }
-    const e = entry as Record<string, unknown>;
-    if (typeof e['id'] !== 'string') {
-      throw new Error(`Answer file "${filename}": entry[${i}].id must be a string`);
-    }
-    if (typeof e['name'] !== 'string') {
-      throw new Error(`Answer file "${filename}": entry[${i}].name must be a string`);
-    }
+  const label = `Answer file "${filename}"`;
+  const arr = assertTopLevelArray(raw, label);
+  const length = arr.length;
+  return arr.map((entry, i) => {
+    const e = assertEntryRecord(entry, label, i);
+    const id = assertEntryStringField(e, 'id', label, i);
+    const name = assertEntryStringField(e, 'name', label, i);
     if (!Array.isArray(e['depIndices'])) {
-      throw new Error(`Answer file "${filename}": entry[${i}].depIndices must be an array`);
+      throw new Error(`${label}: entry[${i}].depIndices must be an array`);
     }
     const depIndices: number[] = (e['depIndices'] as unknown[]).map((d, j) => {
       if (typeof d !== 'number' || !Number.isInteger(d)) {
-        throw new Error(
-          `Answer file "${filename}": entry[${i}].depIndices[${j}]=${JSON.stringify(d)} must be an integer`
-        );
+        throw new Error(`${label}: entry[${i}].depIndices[${j}]=${JSON.stringify(d)} must be an integer`);
       }
       if (d < 0 || d >= length) {
-        throw new Error(
-          `Answer file "${filename}": entry[${i}].depIndices[${j}]=${d} is out of bounds (must be in [0, ${length - 1}])`
-        );
+        throw new Error(`${label}: entry[${i}].depIndices[${j}]=${d} is out of bounds (must be in [0, ${length - 1}])`);
       }
       return d;
     });
-    return { id: e['id'] as string, name: e['name'] as string, depIndices };
+    return { id, name, depIndices };
   });
 }
 
