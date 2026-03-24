@@ -29,20 +29,9 @@ jobs:
       - name: Test
         run: npm run test
 
-      - name: Generate test data
-        run: npm run generate
-
-      - name: Generate build-answer trace log
-        run: npm run experiment -- --tier basic --trace-build 2>&1 | tee build-answer-trace.log
-
-      - name: Generate smart-compare trace log
-        run: npm run experiment -- --tier basic --trace-compare 2>&1 | tee smart-compare-trace.log
-
       - name: Upload trace logs
         uses: actions/upload-artifact@v7
         with:
           name: accuracy-trace-logs
-          path: |
-            build-answer-trace.log
-            smart-compare-trace.log
+          path: analysis/
           if-no-files-found: error
