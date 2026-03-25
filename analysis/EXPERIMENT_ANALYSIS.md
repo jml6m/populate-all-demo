@@ -136,18 +136,32 @@ Map Tracker is especially deceptive: it passes at small scale (10–5K nodes), g
 confidence, then crashes at production scale (50K+). The call stack depth, not the cycle guard,
 is the binding constraint.
 
-### O(V+E) complexity proof via operation counts
+### O(V+E) complexity: analytical proof
 
-The `smartCompare` test instruments each run with `nodesProcessed` and `edgesTraversed` counts.
-These provide a mathematical proof of linear complexity — unaffected by CI hardware noise:
+Both passing algorithms are O(V+E) by construction — this can be verified directly in the source code:
+
+**Two-Pass Wire** (`src/algorithms/schema-driven/01-two-pass-wire.ts`):
+- Pass 1: one loop over all V nodes to allocate shells → O(V)
+- Pass 2: one loop over all V nodes, and for each node iterates over its outgoing edges — each of the E edges is visited exactly once → O(V+E)
+- Total: **O(V+E)**
+
+**Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
+- Iterative Tarjan's SCC: each node and edge visited exactly once → O(V+E)
+- Condensation DAG construction: one pass over all V nodes and E edges → O(V+E)
+- Kahn's BFS layer assignment: one pass over condensed nodes and edges → O(V+E)
+- Pre-allocation and wiring: O(V) + O(V+E)
+- Total: **O(V+E)**
+
+### Graph-scale confirmation
+
+The `smartCompare` verifier records how many nodes (`nodesProcessed`) and edges (`edgesTraversed`) it visits when walking the produced output graph to confirm it matches the expected structure. These counts confirm the graph sizes and scale factor:
 
 | Tier | Nodes | Edges | Total ops | Scale ratio |
 |---|---|---|---|---|
 | stress (50K) | 50,000 | 99,981 | **149,981** | — |
 | extreme (250K) | 250,000 | 500,181 | **750,181** | 750,181 / 149,981 ≈ **5.00×** |
 
-The node count scales exactly 5× and the operation count scales 5.00×. This confirms O(V+E):
-the algorithm does work strictly proportional to the graph size regardless of structure.
+The 5.00× scale ratio matches the 5× node-count increase exactly — confirming the graph generator produces consistent edge density across tiers and that both algorithms correctly produce the full V-node, E-edge graph at every scale.
 
 ### Time and memory (supporting evidence)
 
