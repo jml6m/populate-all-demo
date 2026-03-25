@@ -2,17 +2,18 @@
 
 ## §1 — The Problem
 
-`populateAll()` — replacing foreign-key IDs with fully resolved objects — is a foundational
-operation in every data framework. On trees and DAGs it is trivial: recurse into each
-dependency and return the resolved node. The catch is that real-world schemas are rarely
-acyclic. Component systems, org charts, and permission models all have bidirectional references.
-On these graphs, naive recursion does not terminate.
+`populateAll()` — replacing foreign-key IDs with fully resolved, nested object graphs — is the
+step between a flat database row and the structured data your application expects to work with.
+On trees and Directed Acyclic Graphs (DAGs) it is trivial: recurse into each dependency and
+return the resolved node. The catch is that real-world schemas are rarely acyclic. Component
+systems, org charts, and permission models all have bidirectional references. On these graphs,
+naive recursion does not terminate.
 
 The failure is not graceful. When the traversal revisits a node it has already started
-processing, the call stack grows without bound until V8 raises `RangeError: Maximum call stack
-size exceeded` — no partial result, no descriptive error, just a runtime crash. The only
-fix developers have historically reached for is a `maxDepth` guard that silently truncates the
-result, producing a subtly wrong object graph.
+processing, the call stack grows without bound until the runtime raises a stack overflow error —
+no partial result, no descriptive error, just a crash. A common workaround seen in issue
+trackers is a `maxDepth` guard, but this only shifts the problem: the traversal terminates, but
+the result is silently truncated, producing an incomplete object graph.
 
 A two-pass allocate-then-wire strategy solves this in O(V+E) time with zero recursion: allocate
 every node shell first (Pass 1), then fill in the edges via Map lookup (Pass 2). Cycles resolve
@@ -33,10 +34,10 @@ documentation:
 | Library | Issue / Discussion | Documentation | Failure Mode |
 |---|---|---|---|
 | **Mongoose** | [#16074](https://github.com/Automattic/mongoose/issues/16074) — schema-driven `populateAll()` with `maxDepth`; cites circular refs as motivation | [Population docs](https://mongoosejs.com/docs/populate.html) — no built-in recursive populate | No automatic cycle handling; manual depth management required |
-| **Sequelize** | [#1329](https://github.com/sequelize/sequelize/issues/1329) — eager loading with circular associations → `RangeError: Maximum call stack size exceeded` | [Eager Loading](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | Stack overflow on circular includes |
-| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Infinite loop; must not use `eager:true` on both sides |
-| **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations docs](https://www.prisma.io/docs/orm/prisma-schema/relations/self-relations) — must manually specify each include depth | Not supported; open feature request since 2020 |
-| **MikroORM** | [#4196](https://github.com/mikro-orm/mikro-orm/discussions/4196) — circular populate causes serialization blowup | [Serializing docs](https://mikro-orm.io/docs/serializing#explicit-serialization) — must use explicit serialization to avoid cycles | Overfetch; partial mitigation via serialize hints |
+| **Sequelize** | — | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; must manually break circular includes |
+| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Bidirectional recursive eager loading causes infinite recursion; circular eager relations are unsupported |
+| **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations) — no built-in recursive include; each nesting level must be explicitly written out | No automatic full-depth include; each depth level requires explicit nesting |
+| **MikroORM** | — | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required | No safe "populate all" for cyclic schemas; circular populate requires explicit hints to avoid graph explosion |
 
 These are ORM/ODM libraries operating at the data layer — the abstraction level where population
 and eager-loading live. Larger frameworks like Node.js core, Angular, and React operate at
@@ -173,9 +174,10 @@ The 5.00× scale ratio matches the 5× node-count increase exactly — confirmin
 
 > Times are wall-clock (ms); RAM is heap-delta (MB). Naive Recursion omitted — fails all tiers.
 
-Both passing algorithms are fast enough for production use. The headline insight is not that
-Two-Pass Wire is 4.7× faster than Tarjan SCC — it is that the two algorithms developers
-reach for first (Naive Recursion and Map Tracker) are fundamentally broken at scale.
+Both passing algorithms are fast enough for production use. The headline insight is not
+performance — it is correctness under scale: two of the four approaches fail entirely at
+production-scale graphs, including Map Tracker, which passes at small scale and gives false
+confidence before crashing.
 
 ---
 
