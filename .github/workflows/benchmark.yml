@@ -22,11 +22,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Note: issue #6 (O(V²) YAML alias concern) is already mitigated — answer files use the
+      # flat index-based AnswerEntry[] format, not cyclic object aliases. The --max-old-space-size
+      # flag below addresses the remaining heap pressure from in-memory graph reconstruction.
       - name: Generate test data
         run: npm run generate
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Run benchmark suite
         run: npm run experiment
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Upload benchmark reports
         uses: actions/upload-artifact@v7
