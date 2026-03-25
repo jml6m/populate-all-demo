@@ -131,7 +131,9 @@ xychart-beta
   bar [0.2, 13, 67, 502]
 ```
 
-> Bars: Tarjan SCC (left) vs Two-Pass Wire (right). Map Tracker omitted at stress/extreme (fails). Y-axis is linear; see [`figures/time-by-tier.png`](figures/time-by-tier.png) for log-scale view.
+> Bars: Tarjan SCC (left) vs Two-Pass Wire (right). Map Tracker omitted at stress/extreme (fails). Y-axis is linear; see figure below for log-scale view.
+
+![Execution Time by Dataset Tier (log scale)](figures/time-by-tier.png)
 
 ---
 
@@ -155,6 +157,18 @@ allocates exactly V+1 objects (the Map plus one shell per node) and nothing else
 The advantage actually widens at scale: at 50K Two-Pass Wire is 4.1× faster; at 250K it is
 4.7× faster. If topological ordering of the output is not a requirement, there is no reason to
 pay the Tarjan premium.
+
+![Scaling: Time vs Node Count (log-log)](figures/scaling-curve.png)
+
+**Extrapolation to extreme node counts.** Both algorithms remain O(V+E) regardless of scale,
+so the dominant constraint eventually becomes available RAM rather than algorithm complexity.
+Two-Pass Wire's V+1 object allocation projects to roughly ~2 seconds at 1M nodes and ~10 seconds
+at 5M nodes (V8 GC pressure roughly doubles every additional 5× in node count based on the
+50K→250K ratio). At node counts approaching 1 billion+, a single-process in-memory graph
+ceases to be feasible — 250K nodes at 54 MB already implies ~200 bytes per node on average,
+putting 1B nodes at ~200 GB of heap. The correct architecture at that scale is a distributed
+graph store (e.g., Neo4j, Amazon Neptune) where the two-pass strategy maps naturally to a
+bulk-fetch + batch-wire pipeline across network boundaries.
 
 ---
 
