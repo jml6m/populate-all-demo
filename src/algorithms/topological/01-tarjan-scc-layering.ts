@@ -135,7 +135,7 @@ export const tarjanSccLayering: PopulateAlgorithm = {
     // All nodes exist before any wiring so intra-SCC cycles resolve to the same object reference.
     const populated = new Map<string, ComponentPopulated>();
     for (const comp of flatDatabaseState) {
-      populated.set(comp.id, { id: comp.id, name: comp.name, dependencies: [] });
+      populated.set(comp.id, { id: comp.id, dependencies: [] });
     }
 
     // --- Step 5: Wire dependencies layer by layer ---

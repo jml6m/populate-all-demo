@@ -1,12 +1,10 @@
 export interface ComponentFlat {
   id: string;
-  name: string;
   dependencies: string[];
 }
 
 export interface ComponentPopulated {
   id: string;
-  name: string;
   dependencies: ComponentPopulated[];
 }
 
@@ -16,7 +14,6 @@ export interface ComponentPopulated {
 // At load time, the runner rebuilds the cyclic ComponentPopulated[] from these indices.
 export interface AnswerEntry {
   id: string;
-  name: string;
   depIndices: number[];
 }
 

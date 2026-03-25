@@ -12,7 +12,7 @@ export const twoPassWire: PopulateAlgorithm = {
     // id points to the same JS object — this is what makes cycles cycle-safe.
     const visited = new Map<string, ComponentPopulated>();
     for (const comp of flatDatabaseState) {
-      visited.set(comp.id, { id: comp.id, name: comp.name, dependencies: [] });
+      visited.set(comp.id, { id: comp.id, dependencies: [] });
     }
 
     // Wire up dependencies in a single pass — each node is resolved exactly
