@@ -124,14 +124,14 @@ Benchmark #1 — CI run (ubuntu-latest, Node 22, 4 GB heap). 250K graph: 250,000
 
 ```mermaid
 xychart-beta
-  title "Execution Time by Dataset Tier (passing runs only, log scale)"
+  title "Execution Time by Dataset Tier (passing runs only)"
   x-axis ["basic (10)", "medium (5K)", "stress (50K)", "extreme (250K)"]
   y-axis "Time (ms)" 0 --> 2500
   bar [0.8, 46, 277, 2360]
   bar [0.2, 13, 67, 502]
 ```
 
-> Bars: Tarjan SCC (left) vs Two-Pass Wire (right). Map Tracker omitted at stress/extreme (fails).
+> Bars: Tarjan SCC (left) vs Two-Pass Wire (right). Map Tracker omitted at stress/extreme (fails). Y-axis is linear; see [`figures/time-by-tier.png`](figures/time-by-tier.png) for log-scale view.
 
 ---
 

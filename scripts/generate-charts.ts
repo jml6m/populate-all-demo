@@ -80,12 +80,12 @@ async function renderChart(
 async function generateTimeByTier(): Promise<void> {
   const datasets = Object.entries(TIME_MS).map(([algo, values]) => ({
     label: algo,
-    data: values.map((v) => v ?? 0),
+    // Keep null for failed tiers so Chart.js skips those bars entirely
+    // on the log scale (0 is undefined on a log axis).
+    data: values.map((v) => v),
     backgroundColor: COLORS[algo],
     borderColor: BORDER_COLORS[algo],
     borderWidth: 1,
-    // Use 0 for failed tiers so they don't break the bar chart layout;
-    // the subtitle clarifies that 0 represents a stack-overflow failure.
   }));
 
   const config: ChartConfiguration = {
@@ -103,7 +103,7 @@ async function generateTimeByTier(): Promise<void> {
         },
         subtitle: {
           display: true,
-          text: 'Passing algorithms only — failed tiers (stack overflow) shown as 0',
+          text: 'Passing algorithms only — failed tiers (stack overflow) omitted',
           font: { size: 12 },
         },
         legend: { position: 'top' },
