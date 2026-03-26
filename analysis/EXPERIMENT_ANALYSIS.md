@@ -124,7 +124,7 @@ graph LR
 Benchmark #1 — CI run (ubuntu-latest, Node 22, 4 GB heap). 250K graph: 250,000 nodes,
 500,181 edges. All passing results double-verified (smartCompare + flatCompare).
 
-### Survivability — which algorithms make it?
+### Scale Survivability — which algorithms make it to production?
 
 The primary result is which algorithms survive at each tier. Two of four crash at production
 scale.
