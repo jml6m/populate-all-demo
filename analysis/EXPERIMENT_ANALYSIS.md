@@ -1,4 +1,4 @@
-# Populating Cyclic Graphs in O(V+E): Solving the Recursive Population Problem
+# Cycle-Safe Graph Population in O(V+E): A Two-Pass Solution
 
 ## §1 — The Problem
 
@@ -13,7 +13,7 @@ The failure is not graceful. When the traversal revisits a node it has already s
 processing, the call stack grows without bound until the runtime raises a stack overflow error —
 no partial result, no descriptive error, just a crash. A common workaround seen in issue
 trackers is a `maxDepth` guard, but this only shifts the problem: the traversal terminates, but
-the result is silently truncated, producing an incomplete object graph.
+the result is silently truncated, possibly producing an incomplete object graph.
 
 A two-pass allocate-then-wire strategy solves this in O(V+E) time with zero recursion: allocate
 every node shell first (Pass 1), then fill in the edges via Map lookup (Pass 2). Cycles resolve
@@ -63,10 +63,13 @@ before any cycle is hit. The V8 stack limit is ~10K frames — the algorithm sti
 
 ### Tarjan SCC Layering — iterative and correct
 
-Run iterative Tarjan's algorithm to find strongly connected components, condense the graph into
-a DAG, then process layers with Kahn's BFS in topological order. Fully iterative — no
-recursion, no stack risk. Correct at every scale, but carries significant auxiliary overhead:
-index/lowlink maps, SCC membership sets, and a condensation adjacency structure.
+First, find every group of nodes that are mutually reachable from each other — these groups
+are called Strongly Connected Components (SCCs). For example, if A → B → A, those two nodes
+form one SCC. Next, collapse each SCC into a single "super-node" so the graph becomes a DAG
+with no cycles. Finally, process that simplified DAG in layer order (topological sort), wiring
+all dependencies at each layer before moving to the next. Every step uses an explicit stack or
+queue — no recursion at all. Correct at any scale, but requires several auxiliary data
+structures to track group membership and the collapsed graph.
 
 ### Two-Pass Wire — the winner
 
@@ -155,14 +158,19 @@ Both passing algorithms are O(V+E) by construction — this can be verified dire
 
 ### Graph-scale confirmation
 
-The `smartCompare` verifier records how many nodes (`nodesProcessed`) and edges (`edgesTraversed`) it visits when walking the produced output graph to confirm it matches the expected structure. These counts confirm the graph sizes and scale factor:
+This subsection answers two questions: did the graph generator actually produce the expected
+graph size at each tier, and did the algorithms produce the complete output? The `smartCompare`
+verifier records how many nodes (`nodesProcessed`) and edges (`edgesTraversed`) it visits when
+walking the produced output graph. These counts directly measure the output size:
 
 | Tier | Nodes | Edges | Total ops | Scale ratio |
 |---|---|---|---|---|
 | stress (50K) | 50,000 | 99,981 | **149,981** | — |
 | extreme (250K) | 250,000 | 500,181 | **750,181** | 750,181 / 149,981 ≈ **5.00×** |
 
-The 5.00× scale ratio matches the 5× node-count increase exactly — confirming the graph generator produces consistent edge density across tiers and that both algorithms correctly produce the full V-node, E-edge graph at every scale.
+The 5.00× scale ratio matches the 5× node-count increase exactly, confirming both that the
+graph generator produces consistent edge density across tiers, and that both algorithms output
+the complete, correct graph at every scale — not a truncated or partial result.
 
 ### Time and memory (supporting evidence)
 
@@ -197,28 +205,4 @@ of live heap, not algorithmic complexity.
 Tarjan's auxiliary structures (per-node index/lowlink, SCC sets, condensation DAG) add a
 constant overhead per node that compounds with GC at 149 MB of live heap. Two-Pass Wire
 allocates exactly V+1 objects (the Map plus one shell per node) and nothing else.
-
----
-
-## §6 — Applicability to JS Frameworks
-
-Two-Pass Wire needs only a flat `{id, dependencies[]}` list and a Map — it is entirely
-framework-agnostic. The `ComponentFlat` → `ComponentPopulated` interface used in this
-experiment is a direct analogy to Mongoose's `Document` → `PopulatedDocument` pattern.
-
-**Mongoose** could expose a `cycleStrategy: 'iterative'` option on `populate()`. When set,
-the resolver would run a pre-pass to collect all referenced IDs, bulk-fetch them, and wire
-via Map lookup — the same two passes, just split across a network boundary.
-
-**Sequelize / TypeORM** follow the same pattern. Eager-loading association resolution is
-structurally identical: collect all foreign keys from the parent query result (Pass 1), issue
-a single `WHERE id IN (...)` query for each association (the network analog of allocation),
-then wire (Pass 2).
-
-**GraphQL** already applies the same philosophy via DataLoader: batch-collect IDs first,
-resolve in bulk, return results. Two-Pass Wire is the in-process equivalent — the insight
-is identical.
-
-The implementation barrier is low. Any library that can expose the flat ID list before
-resolving can adopt this pattern without a major architectural change.
 
