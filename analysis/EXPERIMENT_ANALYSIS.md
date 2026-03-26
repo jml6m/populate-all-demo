@@ -1,18 +1,19 @@
-# Populating Cyclic Graphs in O(V+E): Why Every Major JS Data Framework Gets This Wrong
+# Cycle-Safe Graph Population in O(V+E): A Two-Pass Solution
 
 ## §1 — The Problem
 
-`populateAll()` — replacing foreign-key IDs with fully resolved objects — is a foundational
-operation in every data framework. On trees and DAGs it is trivial: recurse into each
-dependency and return the resolved node. The catch is that real-world schemas are rarely
-acyclic. Component systems, org charts, and permission models all have bidirectional references.
-On these graphs, naive recursion does not terminate.
+`populateAll()` — replacing foreign-key IDs with fully resolved, nested object graphs — is the
+step between a flat database row and the structured data your application expects to work with.
+On trees and Directed Acyclic Graphs (DAGs) it is trivial: recurse into each dependency and
+return the resolved node. The catch is that real-world schemas are rarely acyclic. Component
+systems, org charts, and permission models all have bidirectional references. On these graphs,
+naive recursion does not terminate.
 
 The failure is not graceful. When the traversal revisits a node it has already started
-processing, the call stack grows without bound until V8 raises `RangeError: Maximum call stack
-size exceeded` — no partial result, no descriptive error, just a runtime crash. The only
-fix developers have historically reached for is a `maxDepth` guard that silently truncates the
-result, producing a subtly wrong object graph.
+processing, the call stack grows without bound until the runtime raises a stack overflow error —
+no partial result, no descriptive error, just a crash. A common workaround seen in issue
+trackers is a `maxDepth` guard, but this only shifts the problem: the traversal terminates, but
+the result is silently truncated, possibly producing an incomplete object graph.
 
 A two-pass allocate-then-wire strategy solves this in O(V+E) time with zero recursion: allocate
 every node shell first (Pass 1), then fill in the edges via Map lookup (Pass 2). Cycles resolve
@@ -20,22 +21,29 @@ naturally because every object already exists before any edge is wired.
 
 ---
 
-## §2 — This Isn't Just Mongoose
+## §2 — A Recognized Challenge in the Data Layer Ecosystem
 
-This failure class appears across every mainstream JS data library. The table below lists the
-specific open issues and documentation pages for each:
+This research was motivated by [Mongoose issue #16074](https://github.com/Automattic/mongoose/issues/16074),
+which describes a `populate()` call on a self-referential model crashing with a stack overflow.
+It is a concrete, open example of the problem this experiment addresses.
 
-| Library | Issue | Documentation | Failure Mode |
+Looking at the broader ORM/ODM landscape, the same pattern of cyclic reference challenges
+appears consistently across other data libraries — visible in their open issue trackers and
+documentation:
+
+| Library | Issue / Discussion | Documentation | Failure Mode |
 |---|---|---|---|
 | **Mongoose** | [#16074](https://github.com/Automattic/mongoose/issues/16074) — schema-driven `populateAll()` with `maxDepth`; cites circular refs as motivation | [Population docs](https://mongoosejs.com/docs/populate.html) — no built-in recursive populate | No automatic cycle handling; manual depth management required |
-| **Sequelize** | [#1329](https://github.com/sequelize/sequelize/issues/1329) — eager loading with circular associations → `RangeError: Maximum call stack size exceeded` | [Eager Loading](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | Stack overflow on circular includes |
-| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Infinite loop; must not use `eager:true` on both sides |
-| **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations docs](https://www.prisma.io/docs/orm/prisma-schema/relations/self-relations) — must manually specify each include depth | Not supported; open feature request since 2020 |
-| **MikroORM** | [#4196](https://github.com/mikro-orm/mikro-orm/discussions/4196) — circular populate causes serialization blowup | [Serializing docs](https://mikro-orm.io/docs/serializing#explicit-serialization) — must use explicit serialization to avoid cycles | Overfetch; partial mitigation via serialize hints |
+| **Sequelize** | — | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; must manually break circular includes |
+| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Bidirectional recursive eager loading causes infinite recursion; circular eager relations are unsupported |
+| **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations) — no built-in recursive include; each nesting level must be explicitly written out | No automatic full-depth include; each depth level requires explicit nesting |
+| **MikroORM** | — | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required | No safe "populate all" for cyclic schemas; circular populate requires explicit hints to avoid graph explosion |
 
-The pattern is consistent: every library either crashes on cycles, silently truncates, or simply
-does not support recursive population at all. This is not a Mongoose quirk — it is an
-unsolved problem in JS data layer design.
+These are ORM/ODM libraries operating at the data layer — the abstraction level where population
+and eager-loading live. Larger frameworks like Node.js core, Angular, and React operate at
+different levels of abstraction and may handle related graph problems internally in ways we have
+not investigated here. This experiment focuses specifically on the ORM/ODM population problem,
+where the challenge is well-documented and no general iterative solution is widely available.
 
 ---
 
@@ -55,10 +63,13 @@ before any cycle is hit. The V8 stack limit is ~10K frames — the algorithm sti
 
 ### Tarjan SCC Layering — iterative and correct
 
-Run iterative Tarjan's algorithm to find strongly connected components, condense the graph into
-a DAG, then process layers with Kahn's BFS in topological order. Fully iterative — no
-recursion, no stack risk. Correct at every scale, but carries significant auxiliary overhead:
-index/lowlink maps, SCC membership sets, and a condensation adjacency structure.
+First, find every group of nodes that are mutually reachable from each other — these groups
+are called Strongly Connected Components (SCCs). For example, if A → B → A, those two nodes
+form one SCC. Next, collapse each SCC into a single "super-node" so the graph becomes a DAG
+with no cycles. Finally, process that simplified DAG in layer order (topological sort), wiring
+all dependencies at each layer before moving to the next. Every step uses an explicit stack or
+queue — no recursion at all. Correct at any scale, but requires several auxiliary data
+structures to track group membership and the collapsed graph.
 
 ### Two-Pass Wire — the winner
 
@@ -113,27 +124,68 @@ graph LR
 Benchmark #1 — CI run (ubuntu-latest, Node 22, 4 GB heap). 250K graph: 250,000 nodes,
 500,181 edges. All passing results double-verified (smartCompare + flatCompare).
 
-| Algorithm | basic (10) | medium (5K) | stress (50K) | **extreme (250K)** |
+### Scale Survivability — which algorithms make it to production?
+
+The primary result is which algorithms survive at each tier. Two of four crash at production
+scale.
+
+| Algorithm | basic (10) | medium (5K) | stress (50K) | extreme (250K) |
 |---|---|---|---|---|
 | Naive Recursion | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow |
-| Map Tracker | ✅ 0.3 ms / 0.0 MB | ✅ 13 ms / 3.0 MB | ❌ Stack overflow | ❌ Stack overflow |
-| Tarjan SCC | ✅ 0.8 ms / 0.1 MB | ✅ 46 ms / 9.2 MB | ✅ 277 ms / 14.8 MB | ✅ 2,360 ms / 149 MB |
-| Two-Pass Wire | ✅ 0.2 ms / 0.0 MB | ✅ 13 ms / 2.9 MB | ✅ 67 ms / 7.4 MB | ✅ 502 ms / 54 MB |
+| Map Tracker | ✅ Pass | ✅ Pass | ❌ Stack overflow | ❌ Stack overflow |
+| Tarjan SCC | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
+| Two-Pass Wire | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
 
-> Times are wall-clock (ms); RAM is heap-delta (MB).
+Map Tracker is especially deceptive: it passes at small scale (10–5K nodes), giving false
+confidence, then crashes at production scale (50K+). The call stack depth, not the cycle guard,
+is the binding constraint.
 
-```mermaid
-xychart-beta
-  title "Execution Time by Dataset Tier (passing runs only)"
-  x-axis ["basic (10)", "medium (5K)", "stress (50K)", "extreme (250K)"]
-  y-axis "Time (ms)" 0 --> 2500
-  bar [0.8, 46, 277, 2360]
-  bar [0.2, 13, 67, 502]
-```
+### O(V+E) complexity: analytical proof
 
-> Bars: Tarjan SCC (left) vs Two-Pass Wire (right). Map Tracker omitted at stress/extreme (fails). Y-axis is linear; see figure below for log-scale view.
+Both passing algorithms are O(V+E) by construction — this can be verified directly in the source code:
 
-![Execution Time by Dataset Tier (log scale)](figures/time-by-tier.png)
+**Two-Pass Wire** (`src/algorithms/schema-driven/01-two-pass-wire.ts`):
+- Pass 1: one loop over all V nodes to allocate shells → O(V)
+- Pass 2: one loop over all V nodes, and for each node iterates over its outgoing edges — each of the E edges is visited exactly once → O(V+E)
+- Total: **O(V+E)**
+
+**Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
+- Iterative Tarjan's SCC: each node and edge visited exactly once → O(V+E)
+- Condensation DAG construction: one pass over all V nodes and E edges → O(V+E)
+- Kahn's BFS layer assignment: one pass over condensed nodes and edges → O(V+E)
+- Pre-allocation and wiring: O(V) + O(V+E)
+- Total: **O(V+E)**
+
+### Graph-scale confirmation
+
+This subsection answers two questions: did the graph generator actually produce the expected
+graph size at each tier, and did the algorithms produce the complete output? The `smartCompare`
+verifier records how many nodes (`nodesProcessed`) and edges (`edgesTraversed`) it visits when
+walking the produced output graph. These counts directly measure the output size:
+
+| Tier | Nodes | Edges | Total ops | Scale ratio |
+|---|---|---|---|---|
+| stress (50K) | 50,000 | 99,981 | **149,981** | — |
+| extreme (250K) | 250,000 | 500,181 | **750,181** | 750,181 / 149,981 ≈ **5.00×** |
+
+The 5.00× scale ratio matches the 5× node-count increase exactly, confirming both that the
+graph generator produces consistent edge density across tiers, and that both algorithms output
+the complete, correct graph at every scale — not a truncated or partial result.
+
+### Time and memory (supporting evidence)
+
+| Algorithm | basic (10) | medium (5K) | stress (50K) | extreme (250K) |
+|---|---|---|---|---|
+| Map Tracker | 0.3 ms / 0.0 MB | 13 ms / 3.0 MB | ❌ | ❌ |
+| Tarjan SCC | 0.8 ms / 0.1 MB | 46 ms / 9.2 MB | 277 ms / 14.8 MB | 2,360 ms / 149 MB |
+| Two-Pass Wire | 0.2 ms / 0.0 MB | 13 ms / 2.9 MB | 67 ms / 7.4 MB | 502 ms / 54 MB |
+
+> Times are wall-clock (ms); RAM is heap-delta (MB). Naive Recursion omitted — fails all tiers.
+
+Both passing algorithms are fast enough for production use. The headline insight is not
+performance — it is correctness under scale: two of the four approaches fail entirely at
+production-scale graphs, including Map Tracker, which passes at small scale and gives false
+confidence before crashing.
 
 ---
 
@@ -154,42 +206,3 @@ Tarjan's auxiliary structures (per-node index/lowlink, SCC sets, condensation DA
 constant overhead per node that compounds with GC at 149 MB of live heap. Two-Pass Wire
 allocates exactly V+1 objects (the Map plus one shell per node) and nothing else.
 
-The advantage actually widens at scale: at 50K Two-Pass Wire is 4.1× faster; at 250K it is
-4.7× faster. If topological ordering of the output is not a requirement, there is no reason to
-pay the Tarjan premium.
-
-![Scaling: Time vs Node Count (log-log)](figures/scaling-curve.png)
-
-**Extrapolation to extreme node counts.** Both algorithms remain O(V+E) regardless of scale,
-so the dominant constraint eventually becomes available RAM rather than algorithm complexity.
-Two-Pass Wire's V+1 object allocation projects to roughly ~2 seconds at 1M nodes and ~10 seconds
-at 5M nodes (V8 GC pressure roughly doubles every additional 5× in node count based on the
-50K→250K ratio). At node counts approaching 1 billion+, a single-process in-memory graph
-ceases to be feasible — 250K nodes at 54 MB already implies ~200 bytes per node on average,
-putting 1B nodes at ~200 GB of heap. The correct architecture at that scale is a distributed
-graph store (e.g., Neo4j, Amazon Neptune) where the two-pass strategy maps naturally to a
-bulk-fetch + batch-wire pipeline across network boundaries.
-
----
-
-## §6 — Applicability to JS Frameworks
-
-Two-Pass Wire needs only a flat `{id, dependencies[]}` list and a Map — it is entirely
-framework-agnostic. The `ComponentFlat` → `ComponentPopulated` interface used in this
-experiment is a direct analogy to Mongoose's `Document` → `PopulatedDocument` pattern.
-
-**Mongoose** could expose a `cycleStrategy: 'iterative'` option on `populate()`. When set,
-the resolver would run a pre-pass to collect all referenced IDs, bulk-fetch them, and wire
-via Map lookup — the same two passes, just split across a network boundary.
-
-**Sequelize / TypeORM** follow the same pattern. Eager-loading association resolution is
-structurally identical: collect all foreign keys from the parent query result (Pass 1), issue
-a single `WHERE id IN (...)` query for each association (the network analog of allocation),
-then wire (Pass 2).
-
-**GraphQL** already applies the same philosophy via DataLoader: batch-collect IDs first,
-resolve in bulk, return results. Two-Pass Wire is the in-process equivalent — the insight
-is identical.
-
-The implementation barrier is low. Any library that can expose the flat ID list before
-resolving can adopt this pattern without a major architectural change.

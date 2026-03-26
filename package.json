@@ -9,7 +9,6 @@
     "generate": "NODE_OPTIONS='--max-old-space-size=4096' tsx src/generate.ts",
     "experiment": "NODE_OPTIONS='--max-old-space-size=4096' tsx src/runner.ts",
     "npm:reinstall": "node scripts/reinstall.js",
-    "charts": "tsx scripts/generate-charts.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
@@ -25,8 +24,6 @@
     "@eslint/js": "^9.37.0",
     "@types/node": "^25.4.0",
     "@types/seedrandom": "^3.0.8",
-    "chart.js": "^4.5.1",
-    "chartjs-node-canvas": "^5.0.0",
     "eslint": "^9.39.4",
     "eslint-plugin-unused-imports": "^4.3.0",
     "prettier": "^3.6.2",
