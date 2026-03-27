@@ -15,6 +15,10 @@ no partial result, no descriptive error, just a crash. A common workaround seen 
 trackers is a `maxDepth` guard, but this only shifts the problem: the traversal terminates, but
 the result is silently truncated, possibly producing an incomplete object graph.
 
+The root cause is that completeness is a global property of the graph, not a local property of
+any single node — a node cannot be fully resolved until every node it transitively depends on
+also exists.
+
 A two-pass allocate-then-wire strategy solves this in O(V+E) time with zero recursion: allocate
 every node shell first (Pass 1), then fill in the edges via Map lookup (Pass 2). Cycles resolve
 naturally because every object already exists before any edge is wired.
@@ -34,16 +38,29 @@ documentation:
 | Library | Issue / Discussion | Documentation | Failure Mode |
 |---|---|---|---|
 | **Mongoose** | [#16074](https://github.com/Automattic/mongoose/issues/16074) — schema-driven `populateAll()` with `maxDepth`; cites circular refs as motivation | [Population docs](https://mongoosejs.com/docs/populate.html) — no built-in recursive populate | No automatic cycle handling; manual depth management required |
-| **Sequelize** | — | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; must manually break circular includes |
-| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Bidirectional recursive eager loading causes infinite recursion; circular eager relations are unsupported |
+| **Sequelize** | — | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; developers must manually prune cyclic paths from the include definition |
+| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Disallows `eager: true` on both sides of a bidirectional relationship; circular eager relations are unsupported |
 | **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations) — no built-in recursive include; each nesting level must be explicitly written out | No automatic full-depth include; each depth level requires explicit nesting |
-| **MikroORM** | — | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required | No safe "populate all" for cyclic schemas; circular populate requires explicit hints to avoid graph explosion |
+| **MikroORM** | — | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required | Hydration via Identity Map + select-in strategy is cycle-safe, but downstream serialization (e.g., `JSON.stringify`) fails on the resulting cyclic graph |
+| **SQLAlchemy** (Python) | — | <a href="https://docs.sqlalchemy.org/en/20/orm/session_basics.html">Session Basics</a>, <a href="https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html">Relationship Persistence</a> | Session identity map resolves hydration cycles; mutual FK inserts raise `CircularDependencyError` — requires `post_update=True` (a two-pass insert strategy) |
+| **Hibernate** (Java) | — | <a href="https://docs.hibernate.org/orm/current/userguide/html_single/#fetching">Fetching strategies</a> | Persistence Context (L1 cache) acts as identity map — hydration is cycle-safe; however, Jackson serialization of cyclic graphs causes `StackOverflowError` without `@JsonIdentityInfo` or `@JsonBackReference` |
+| **EF Core** (.NET) | — | <a href="https://learn.microsoft.com/en-us/ef/core/querying/related-data/#related-data-and-serialization">Related Data &amp; Serialization</a> | `ChangeTracker` identity map resolves hydration cycles; `System.Text.Json` throws on circular navigation properties without `ReferenceHandler.IgnoreCycles` |
 
 These are ORM/ODM libraries operating at the data layer — the abstraction level where population
 and eager-loading live. Larger frameworks like Node.js core, Angular, and React operate at
 different levels of abstraction and may handle related graph problems internally in ways we have
 not investigated here. This experiment focuses specifically on the ORM/ODM population problem,
 where the challenge is well-documented and no general iterative solution is widely available.
+
+> **Scope note — hydration vs. serialization.** Several mature frameworks (SQLAlchemy, Hibernate,
+> EF Core) solve cyclic hydration via identity maps — architecturally the same principle as the
+> two-pass allocate-then-wire strategy tested here. However, their applications still crash when
+> the cyclic in-memory graph reaches a serializer (Jackson, `System.Text.Json`, native
+> `JSON.stringify`) that lacks its own cycle guard. This experiment measures hydration correctness
+> and does not test serialization. The serialization problem is real but architecturally distinct
+> — it is a consumer of the hydrated graph, not part of the population algorithm itself. For
+> extended ecosystem research including serialization and frontend technologies, see
+> <a href="./ECOSYSTEM_RESEARCH.md">Ecosystem Research</a>.
 
 ---
 
@@ -95,6 +112,10 @@ for (const comp of flatDatabaseState) {
 Cycles resolve automatically: if A depends on B and B depends on A, both JS objects already
 exist in the Map, so each side's `.push()` captures a reference to the same object — no cycle
 detection required. This is structurally identical to forward-declaration in compiled languages.
+
+By separating allocation from wiring, the algorithm guarantees deterministic termination — no
+risk of unbounded stack growth — and zero truncation — no silent `maxDepth` guards that produce
+incomplete results.
 
 ```mermaid
 graph LR
@@ -148,6 +169,22 @@ Both passing algorithms are O(V+E) by construction — this can be verified dire
 - Pass 1: one loop over all V nodes to allocate shells → O(V)
 - Pass 2: one loop over all V nodes, and for each node iterates over its outgoing edges — each of the E edges is visited exactly once → O(V+E)
 - Total: **O(V+E)**
+
+**Formal notation:**
+
+The allocation phase constructs an Identity Map M over the vertex set V:
+
+```
+M = { identity(v) : shell(v) | v ∈ V }    — O(V)
+```
+
+The wiring phase resolves every edge e = (u, v) ∈ E by a constant-time lookup in M:
+
+```
+∀ e = (u, v) ∈ E : wire(M[identity(u)], M[identity(v)])    — O(E)
+```
+
+Total: O(V) + O(E) = **O(V + E)**
 
 **Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
 - Iterative Tarjan's SCC: each node and edge visited exactly once → O(V+E)
