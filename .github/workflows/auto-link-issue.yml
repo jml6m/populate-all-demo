@@ -21,8 +21,8 @@ jobs:
               const prBody = context.payload.pull_request.body || "";
               const linkText = `Closes #${issueNumber}`;
               
-              const bodyLower = prBody.toLowerCase();
-              if (!bodyLower.includes(`closes #${issueNumber}`) && !bodyLower.includes(`fixes #${issueNumber}`) && !bodyLower.includes(`resolves #${issueNumber}`)) {
+              const closingRefRegex = /\b(closes|fixes|resolves)\s+#\d+\b/i;
+              if (!closingRefRegex.test(prBody)) {
                 await github.rest.pulls.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
