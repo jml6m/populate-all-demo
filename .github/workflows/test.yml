@@ -5,18 +5,18 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON }}
     permissions:
       contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@${{ vars.ACTION_CHECKOUT_VERSION }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@${{ vars.ACTION_SETUP_NODE_VERSION }}
         with:
-          node-version: '22'
+          node-version: ${{ vars.NODE_VERSION }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -30,7 +30,7 @@ jobs:
         run: npm run test
 
       - name: Upload trace logs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@${{ vars.ACTION_UPLOAD_ARTIFACT_VERSION }}
         with:
           name: accuracy-trace-logs
           path: analysis/
