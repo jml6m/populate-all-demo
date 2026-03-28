@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@${{ vars.ACTION_CHECKOUT_VERSION }}
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@${{ vars.ACTION_SETUP_NODE_VERSION }}
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ vars.NODE_VERSION }}
           cache: 'npm'
@@ -36,7 +36,7 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Upload benchmark reports
-        uses: actions/upload-artifact@${{ vars.ACTION_UPLOAD_ARTIFACT_VERSION }}
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-reports
           path: reports/
