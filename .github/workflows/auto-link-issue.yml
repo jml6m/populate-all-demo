@@ -1,0 +1,34 @@
+name: Auto-Link Issue
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  link-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const match = branch.match(/^(\d+)-/);
+            
+            if (match) {
+              const issueNumber = match[1];
+              const prBody = context.payload.pull_request.body || "";
+              const linkText = `Closes #${issueNumber}`;
+              
+              const bodyLower = prBody.toLowerCase();
+              if (!bodyLower.includes(`closes #${issueNumber}`) && !bodyLower.includes(`fixes #${issueNumber}`) && !bodyLower.includes(`resolves #${issueNumber}`)) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                  body: `${linkText}\n\n${prBody}`
+                });
+                console.log(`Linked PR to issue #${issueNumber}`);
+              }
+            }
