@@ -1,0 +1,39 @@
+name: Auto-Link Issue
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  link-issue:
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            if (context.payload.pull_request.head.repo.full_name !== context.payload.pull_request.base.repo.full_name) {
+              console.log('Skipping fork PR — no write permission on GITHUB_TOKEN.');
+              return;
+            }
+
+            const branch = context.payload.pull_request.head.ref;
+            const match = branch.match(/^(\d+)-/);
+            
+            if (match) {
+              const issueNumber = match[1];
+              const prBody = context.payload.pull_request.body || "";
+              const linkText = `Closes #${issueNumber}`;
+              
+              const closingRefRegex = /\b(closes|fixes|resolves)\s+#\d+\b/i;
+              if (!closingRefRegex.test(prBody)) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                  body: `${linkText}\n\n${prBody}`
+                });
+                console.log(`Linked PR to issue #${issueNumber}`);
+              }
+            }
