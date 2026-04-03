@@ -1,50 +1,29 @@
 # Cycle-Safe Graph Population in O(V+E): A Two-Pass Solution
 
-## §1 — The Problem
+## §1 — Problem Definition: The Need for Deterministic Pointer-to-Object Replacement in Cyclic Graphs
 
-`populateAll()` — replacing foreign-key IDs with fully resolved, nested object graphs — is the
-step between a flat database row and the structured data your application expects to work with.
-On trees and Directed Acyclic Graphs (DAGs) it is trivial: recurse into each dependency and
-return the resolved node. The catch is that real-world schemas are rarely acyclic. Component
-systems, org charts, and permission models all have bidirectional references. On these graphs,
-naive recursion does not terminate.
-
-The failure is not graceful. When the traversal revisits a node it has already started
-processing, the call stack grows without bound until the runtime raises a stack overflow error —
-no partial result, no descriptive error, just a crash. A common workaround seen in issue
-trackers is a `maxDepth` guard, but this only shifts the problem: the traversal terminates, but
+The transformation of [[flat relational tuples]] into fully populated objects (sometimes referred to as hydration) is a fundamental bridging step between persistence layers and application logic. While this process is computationally trivial for Directed Acyclic Graphs (DAGs) using simple recursive descent, the algorithm gets more complex when applied to real-world schemas containing bidirectional or self-referential dependencies.
+In the presence of cycles, naive recursive hydration is inherently non-deterministic. Because the termination condition relies on reaching a leaf node, cyclic references trigger unbounded recursion, leading to catastrophic stack exhaustion. Current industry workarounds typically rely on depth-limited heuristics (e.g., `maxDepth` guards). However, this is fundamentally flawed; the traversal terminates, but
 the result is silently truncated, possibly producing an incomplete object graph.
 
-The root cause is that completeness is a global property of the graph, not a local property of
-any single node — a node cannot be fully resolved until every node it transitively depends on
-also exists.
-
-A two-pass allocate-then-wire strategy solves this in O(V+E) time with zero recursion: allocate
-every node shell first (Pass 1), then fill in the edges via Map lookup (Pass 2). Cycles resolve
-naturally because every object already exists before any edge is wired.
+This research proposes a Two-Pass algorithm. By decoupling memory allocation (Pass 1: Vertex Creation) from reference assignment (Pass 2: Edge Wiring), we achieve a cycle-safe solution that operates in $O(V+E)$ time. This approach replaces recursive uncertainty with a deterministic object population algorithm, to be explained in more detail below.
 
 ---
 
 ## §2 — A Recognized Challenge in the Data Layer Ecosystem
 
-This research was motivated by [Mongoose issue #16074](https://github.com/Automattic/mongoose/issues/16074),
-which describes a `populate()` call on a self-referential model crashing with a stack overflow.
-It is a concrete, open example of the problem this experiment addresses.
+The limitations of current hydration strategies are not localized to a single library but represent a pervasive challenge in the data-layer ecosystem. One example is found in the Mongoose ODM JS library supporting MongoDB [Issue #16074](https://github.com/Automattic/mongoose/issues/16074), which does not have built in support for automatic, schema-driven popluation of all referenced paths in the model. Looking at the broader ORM/ODM landscape, the same pattern of cyclic reference challenges appears consistently across other data libraries — visible in their open issue trackers and documentation:
 
-Looking at the broader ORM/ODM landscape, the same pattern of cyclic reference challenges
-appears consistently across other data libraries — visible in their open issue trackers and
-documentation:
-
-| Library | Issue / Discussion | Documentation | Failure Mode |
-|---|---|---|---|
-| **Mongoose** | [#16074](https://github.com/Automattic/mongoose/issues/16074) — schema-driven `populateAll()` with `maxDepth`; cites circular refs as motivation | [Population docs](https://mongoosejs.com/docs/populate.html) — no built-in recursive populate | No automatic cycle handling; manual depth management required |
-| **Sequelize** | — | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; developers must manually prune cyclic paths from the include definition |
-| **TypeORM** | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq) | Disallows `eager: true` on both sides of a bidirectional relationship; circular eager relations are unsupported |
-| **Prisma** | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries | [Self-relations](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations) — no built-in recursive include; each nesting level must be explicitly written out | No automatic full-depth include; each depth level requires explicit nesting |
-| **MikroORM** | — | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required | Hydration via Identity Map + select-in strategy is cycle-safe, but downstream serialization (e.g., `JSON.stringify`) fails on the resulting cyclic graph |
-| **SQLAlchemy** (Python) | — | <a href="https://docs.sqlalchemy.org/en/20/orm/session_basics.html">Session Basics</a>, <a href="https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html">Relationship Persistence</a> | Session identity map resolves hydration cycles; mutual FK inserts raise `CircularDependencyError` — requires `post_update=True` (a two-pass insert strategy) |
-| **Hibernate** (Java) | — | <a href="https://docs.hibernate.org/orm/current/userguide/html_single/#fetching">Fetching strategies</a> | Persistence Context (L1 cache) acts as identity map — hydration is cycle-safe; however, Jackson serialization of cyclic graphs causes `StackOverflowError` without `@JsonIdentityInfo` or `@JsonBackReference` |
-| **EF Core** (.NET) | — | <a href="https://learn.microsoft.com/en-us/ef/core/querying/related-data/#related-data-and-serialization">Related Data &amp; Serialization</a> | `ChangeTracker` identity map resolves hydration cycles; `System.Text.Json` throws on circular navigation properties without `ReferenceHandler.IgnoreCycles` |
+| Library                 | Issue / Discussion                                                                                                                               | Documentation                                                                                                                                                                                                                                     | Failure Mode                                                                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mongoose**            | [#16074](https://github.com/Automattic/mongoose/issues/16074) — schema-driven `populateAll()` with `maxDepth`; cites circular refs as motivation | [Population docs](https://mongoosejs.com/docs/populate.html) — no built-in recursive populate                                                                                                                                                     | No automatic cycle handling; manual depth management required                                                                                                                                                  |
+| **Sequelize**           | —                                                                                                                                                | [Eager Loading — Including Everything](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [Constraints & Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | `{ include: { all: true, nested: true } }` does not support circular schemas; developers must manually prune cyclic paths from the include definition                                                          |
+| **TypeORM**             | [#3663](https://github.com/typeorm/typeorm/issues/3663) — `eager: true` on recursive relation causes infinite loop                               | [Eager/Lazy Relations](https://typeorm.io/eager-and-lazy-relations), [Relations FAQ](https://typeorm.io/relations-faq)                                                                                                                            | Disallows `eager: true` on both sides of a bidirectional relationship; circular eager relations are unsupported                                                                                                |
+| **Prisma**              | [#3725](https://github.com/prisma/prisma/issues/3725) — feature request: support recursive relationships in queries                              | [Self-relations](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations) — no built-in recursive include; each nesting level must be explicitly written out                                                             | No automatic full-depth include; each depth level requires explicit nesting                                                                                                                                    |
+| **MikroORM**            | —                                                                                                                                                | [Populating relations](https://mikro-orm.io/docs/populating-relations) — `populate: ['*']` on circular entities produces an unserialisable cyclic graph; explicit populate hints required                                                         | Hydration via Identity Map + select-in strategy is cycle-safe, but downstream serialization (e.g., `JSON.stringify`) fails on the resulting cyclic graph                                                       |
+| **SQLAlchemy** (Python) | —                                                                                                                                                | <a href="https://docs.sqlalchemy.org/en/20/orm/session_basics.html">Session Basics</a>, <a href="https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html">Relationship Persistence</a>                                                | Session identity map resolves hydration cycles; mutual FK inserts raise `CircularDependencyError` — requires `post_update=True` (a two-pass insert strategy)                                                   |
+| **Hibernate** (Java)    | —                                                                                                                                                | <a href="https://docs.hibernate.org/orm/current/userguide/html_single/#fetching">Fetching strategies</a>                                                                                                                                          | Persistence Context (L1 cache) acts as identity map — hydration is cycle-safe; however, Jackson serialization of cyclic graphs causes `StackOverflowError` without `@JsonIdentityInfo` or `@JsonBackReference` |
+| **EF Core** (.NET)      | —                                                                                                                                                | <a href="https://learn.microsoft.com/en-us/ef/core/querying/related-data/#related-data-and-serialization">Related Data &amp; Serialization</a>                                                                                                    | `ChangeTracker` identity map resolves hydration cycles; `System.Text.Json` throws on circular navigation properties without `ReferenceHandler.IgnoreCycles`                                                    |
 
 These are ORM/ODM libraries operating at the data layer — the abstraction level where population
 and eager-loading live. Larger frameworks like Node.js core, Angular, and React operate at
@@ -150,12 +129,12 @@ Benchmark #1 — CI run (ubuntu-latest, Node 22, 4 GB heap). 250K graph: 250,000
 The primary result is which algorithms survive at each tier. Two of four crash at production
 scale.
 
-| Algorithm | basic (10) | medium (5K) | stress (50K) | extreme (250K) |
-|---|---|---|---|---|
+| Algorithm       | basic (10)        | medium (5K)       | stress (50K)      | extreme (250K)    |
+| --------------- | ----------------- | ----------------- | ----------------- | ----------------- |
 | Naive Recursion | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow |
-| Map Tracker | ✅ Pass | ✅ Pass | ❌ Stack overflow | ❌ Stack overflow |
-| Tarjan SCC | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
-| Two-Pass Wire | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
+| Map Tracker     | ✅ Pass           | ✅ Pass           | ❌ Stack overflow | ❌ Stack overflow |
+| Tarjan SCC      | ✅ Pass           | ✅ Pass           | ✅ Pass           | ✅ Pass           |
+| Two-Pass Wire   | ✅ Pass           | ✅ Pass           | ✅ Pass           | ✅ Pass           |
 
 Map Tracker is especially deceptive: it passes at small scale (10–5K nodes), giving false
 confidence, then crashes at production scale (50K+). The call stack depth, not the cycle guard,
@@ -166,6 +145,7 @@ is the binding constraint.
 Both passing algorithms are O(V+E) by construction — this can be verified directly in the source code:
 
 **Two-Pass Wire** (`src/algorithms/schema-driven/01-two-pass-wire.ts`):
+
 - Pass 1: one loop over all V nodes to allocate shells → O(V)
 - Pass 2: one loop over all V nodes, and for each node iterates over its outgoing edges — each of the E edges is visited exactly once → O(V+E)
 - Total: **O(V+E)**
@@ -187,6 +167,7 @@ The wiring phase resolves every edge e = (u, v) ∈ E by a constant-time lookup 
 Total: O(V) + O(E) = **O(V + E)**
 
 **Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
+
 - Iterative Tarjan's SCC: each node and edge visited exactly once → O(V+E)
 - Condensation DAG construction: one pass over all V nodes and E edges → O(V+E)
 - Kahn's BFS layer assignment: one pass over condensed nodes and edges → O(V+E)
@@ -200,9 +181,9 @@ graph size at each tier, and did the algorithms produce the complete output? The
 verifier records how many nodes (`nodesProcessed`) and edges (`edgesTraversed`) it visits when
 walking the produced output graph. These counts directly measure the output size:
 
-| Tier | Nodes | Edges | Total ops | Scale ratio |
-|---|---|---|---|---|
-| stress (50K) | 50,000 | 99,981 | **149,981** | — |
+| Tier           | Nodes   | Edges   | Total ops   | Scale ratio                   |
+| -------------- | ------- | ------- | ----------- | ----------------------------- |
+| stress (50K)   | 50,000  | 99,981  | **149,981** | —                             |
 | extreme (250K) | 250,000 | 500,181 | **750,181** | 750,181 / 149,981 ≈ **5.00×** |
 
 The 5.00× scale ratio matches the 5× node-count increase exactly, confirming both that the
@@ -211,11 +192,11 @@ the complete, correct graph at every scale — not a truncated or partial result
 
 ### Time and memory (supporting evidence)
 
-| Algorithm | basic (10) | medium (5K) | stress (50K) | extreme (250K) |
-|---|---|---|---|---|
-| Map Tracker | 0.3 ms / 0.0 MB | 13 ms / 3.0 MB | ❌ | ❌ |
-| Tarjan SCC | 0.8 ms / 0.1 MB | 46 ms / 9.2 MB | 277 ms / 14.8 MB | 2,360 ms / 149 MB |
-| Two-Pass Wire | 0.2 ms / 0.0 MB | 13 ms / 2.9 MB | 67 ms / 7.4 MB | 502 ms / 54 MB |
+| Algorithm     | basic (10)      | medium (5K)    | stress (50K)     | extreme (250K)    |
+| ------------- | --------------- | -------------- | ---------------- | ----------------- |
+| Map Tracker   | 0.3 ms / 0.0 MB | 13 ms / 3.0 MB | ❌               | ❌                |
+| Tarjan SCC    | 0.8 ms / 0.1 MB | 46 ms / 9.2 MB | 277 ms / 14.8 MB | 2,360 ms / 149 MB |
+| Two-Pass Wire | 0.2 ms / 0.0 MB | 13 ms / 2.9 MB | 67 ms / 7.4 MB   | 502 ms / 54 MB    |
 
 > Times are wall-clock (ms); RAM is heap-delta (MB). Naive Recursion omitted — fails all tiers.
 
@@ -231,15 +212,14 @@ confidence before crashing.
 Both algorithms are O(V+E). The super-linear constant at 250K is V8 GC pressure on 54–149 MB
 of live heap, not algorithmic complexity.
 
-| Metric | Two-Pass Wire | Tarjan SCC |
-|---|---|---|
-| 50K → 250K time ratio | 7.5× (for 5× nodes) | 8.5× |
-| 50K → 250K RAM ratio | 7.3× | 10.1× |
-| Head-to-head at 250K | **502 ms / 54 MB** | 2,360 ms / 149 MB |
-| Speed advantage | **4.7× faster** | — |
-| RAM advantage | **2.8× less** | — |
+| Metric                | Two-Pass Wire       | Tarjan SCC        |
+| --------------------- | ------------------- | ----------------- |
+| 50K → 250K time ratio | 7.5× (for 5× nodes) | 8.5×              |
+| 50K → 250K RAM ratio  | 7.3×                | 10.1×             |
+| Head-to-head at 250K  | **502 ms / 54 MB**  | 2,360 ms / 149 MB |
+| Speed advantage       | **4.7× faster**     | —                 |
+| RAM advantage         | **2.8× less**       | —                 |
 
 Tarjan's auxiliary structures (per-node index/lowlink, SCC sets, condensation DAG) add a
 constant overhead per node that compounds with GC at 149 MB of live heap. Two-Pass Wire
 allocates exactly V+1 objects (the Map plus one shell per node) and nothing else.
-
