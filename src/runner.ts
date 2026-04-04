@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { iterativeMapTracker } from './algorithms/reference-tracking/03-iterative-map-tracker';
 import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
 import { naiveRecursion } from './algorithms/reference-tracking/01-naive-recursion';
 import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
@@ -9,8 +10,9 @@ import { buildPopulatedFromAnswer } from './utils/answer-builder';
 import { smartCompare } from './utils/compare';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
+import { serializeCheck } from './utils/serialize-check';
 
-const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
+const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, iterativeMapTracker, tarjanSccLayering, twoPassWire];
 
 const INPUT_SUFFIX = '_input';
 const ANSWER_SUFFIX = '_answer';
@@ -38,6 +40,15 @@ interface BenchmarkReport {
       errorDetail: string | null;
     };
     doubleVerified: boolean;
+    // Tracks whether JSON.stringify succeeds on the hydration output.
+    // This is intentionally separate from hydration correctness: algorithms
+    // that produce correct cyclic JS object graphs will always fail here — that
+    // is expected and informative, not a hydration failure.
+    // See EXPERIMENT_ANALYSIS.md §4 and ECOSYSTEM_RESEARCH.md for context.
+    serializationCheck: {
+      pass: boolean;
+      errorDetail: string | null;
+    };
   };
 }
 
@@ -204,12 +215,14 @@ function runBenchmark() {
       let ramUsedMb = 0;
       let smartResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
       let flatResult = { pass: false, errorDetail: null as string | null };
+      let serializationResult = { pass: false, errorDetail: null as string | null };
+      let executionResult: ComponentPopulated[] | null = null;
 
       try {
         const startMem = process.memoryUsage().heapUsed;
         const startTime = performance.now();
 
-        const result = algo.execute(inputData);
+        executionResult = algo.execute(inputData);
 
         const endTime = performance.now();
         const endMem = process.memoryUsage().heapUsed;
@@ -220,8 +233,16 @@ function runBenchmark() {
         if (traceCompare) {
           console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
         }
-        smartResult = smartCompare(result, answerData, traceCompare);
-        flatResult = flatCompare(result as ComponentPopulated[], rawAnswerEntries);
+        smartResult = smartCompare(executionResult, answerData, traceCompare);
+        flatResult = flatCompare(executionResult as ComponentPopulated[], rawAnswerEntries);
+
+        // Serialization check — intentionally separate from hydration correctness.
+        // Algorithms that produce correct cyclic JS object graphs always fail here
+        // (JSON.stringify throws on circular structures).  This is expected and
+        // informative: it mirrors the real-world issue documented in
+        // ECOSYSTEM_RESEARCH.md where MikroORM, Hibernate, and EF Core successfully
+        // hydrate cyclic graphs but downstream serializers crash.
+        serializationResult = serializeCheck(executionResult);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         smartResult = {
@@ -231,6 +252,10 @@ function runBenchmark() {
           edgesTraversed: 0,
         };
         flatResult = {
+          pass: false,
+          errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
+        };
+        serializationResult = {
           pass: false,
           errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
         };
@@ -244,6 +269,7 @@ function runBenchmark() {
         smartCompare: smartResult,
         flatCompare: flatResult,
         doubleVerified: bothPass,
+        serializationCheck: serializationResult,
       };
 
       const report: BenchmarkReport = {
@@ -273,6 +299,10 @@ function runBenchmark() {
       }
 
       console.log(`  Result: ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      // Report serialization check separately — a ❌ here is expected for any algorithm that
+      // produces correct cyclic JS object references, and does NOT indicate a hydration failure.
+      const serLabel = serializationResult.pass ? '✅ serializable' : '❌ not serializable (cyclic refs — expected)';
+      console.log(`  Serialization: ${serLabel}`);
 
       if (!bothPass && !disagree) {
         if (!smartResult.pass && smartResult.errorDetail !== null) {
