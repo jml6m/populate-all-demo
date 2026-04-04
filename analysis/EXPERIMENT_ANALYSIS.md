@@ -35,11 +35,12 @@ where the challenge is well-documented and no general iterative solution is wide
 > EF Core) solve cyclic hydration via identity maps — architecturally the same principle as the
 > two-pass allocate-then-wire strategy tested here. However, their applications still crash when
 > the cyclic in-memory graph reaches a serializer (Jackson, `System.Text.Json`, native
-> `JSON.stringify`) that lacks its own cycle guard. This experiment measures hydration correctness
-> and does not test serialization. The serialization problem is real but architecturally distinct
-> — it is a consumer of the hydrated graph, not part of the population algorithm itself. For
-> extended ecosystem research including serialization and frontend technologies, see
-> <a href="./ECOSYSTEM_RESEARCH.md">Ecosystem Research</a>.
+> `JSON.stringify`) that lacks its own cycle guard. Hydration correctness and consumer/serialization
+> viability are architecturally distinct concerns. This experiment measures both as separate stages:
+> **Stage 1 — Hydration** (does the algorithm produce a correct cyclic graph?) and **Stage 2 —
+> Serialization** (can a downstream consumer process that graph?). See §4 for the two-stage results
+> and [Ecosystem Research](./ECOSYSTEM_RESEARCH.md) §3 for extended analysis of the serialization
+> boundary.
 
 ---
 
@@ -124,7 +125,32 @@ graph LR
 Benchmark #1 — CI run (ubuntu-latest, Node 22, 4 GB heap). 250K graph: 250,000 nodes,
 500,181 edges. All passing results double-verified (smartCompare + flatCompare).
 
-### Scale Survivability — which algorithms make it to production?
+### Two-Stage Experiment Paradigm
+
+The experiment runner measures each algorithm across two distinct stages:
+
+1. **Stage 1 — Hydration**: did the algorithm produce a correct cyclic in-memory graph?  
+   Verified by two independent comparers: `smartCompare` (cycle-aware iterative DFS) and
+   `flatCompare` (index-based flat comparison against the raw answer file).  A result is
+   *double-verified* only when both comparers agree.
+
+2. **Stage 2 — Serialization**: can a downstream consumer process the hydrated graph?  
+   Runs only when hydration passes.  The experiment tests two consumer probes
+   (see `src/utils/consumer.ts`):
+   - **`naive-json`** — attempts `JSON.stringify` on the raw cyclic graph.  This probe will
+     always fail on any cyclic graph regardless of which algorithm produced it.  Its purpose
+     is to demonstrate that hydration success ≠ serialization safety — the same failure mode
+     documented for MikroORM, Hibernate, and EF Core in §2.
+   - **`cycle-flat`** — converts the graph to an index-based flat representation (the
+     `AnswerEntry` format) using an iterative O(V+E) traversal with no recursion.  This models
+     the ID-Substitution / Custom Cycle-Aware Serialization strategies from
+     [Ecosystem Research §3.3](./ECOSYSTEM_RESEARCH.md) and succeeds at any graph scale.
+
+Serialization is modeled as a *consumer* concern, not an algorithm correctness criterion.
+A `naive-json` failure does not mean the algorithm is wrong — it means a naive downstream
+consumer would crash on the correctly hydrated result.
+
+### Scale Survivability — Stage 1 (Hydration)
 
 The primary result is which algorithms survive at each tier. Two of four crash at production
 scale.
@@ -139,6 +165,26 @@ scale.
 Map Tracker is especially deceptive: it passes at small scale (10–5K nodes), giving false
 confidence, then crashes at production scale (50K+). The call stack depth, not the cycle guard,
 is the binding constraint.
+
+### Consumer Viability — Stage 2 (Serialization)
+
+Stage 2 runs only for tiers where hydration passed.  The key insight is that even a correctly
+hydrated cyclic graph crashes a naive consumer — the ORM did its job, but the response layer did
+not.
+
+| Algorithm     | Tier where hydration ✅ | naive-json | cycle-flat |
+| ------------- | ----------------------- | ---------- | ---------- |
+| Map Tracker   | basic, medium           | ❌ Circular reference error | ✅ Pass |
+| Tarjan SCC    | all tiers               | ❌ Circular reference error | ✅ Pass |
+| Two-Pass Wire | all tiers               | ❌ Circular reference error | ✅ Pass |
+
+The `naive-json` column is uniformly ❌ for all algorithms that succeed hydration, because
+`JSON.stringify` has no cycle guard.  This is the exact failure mode described for MikroORM
+(`populate: ['*']` produces a cyclic graph that crashes `JSON.stringify`), Hibernate (requires
+`@JsonIdentityInfo`), and EF Core (requires `ReferenceHandler.IgnoreCycles`).
+
+The `cycle-flat` column is uniformly ✅, confirming that the verification pipeline itself
+(which uses the same index-based format) is serialization-safe by construction.
 
 ### O(V+E) complexity: analytical proof
 

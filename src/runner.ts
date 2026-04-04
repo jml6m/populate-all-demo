@@ -7,6 +7,7 @@ import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layeri
 import { AnswerEntry, ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
 import { buildPopulatedFromAnswer } from './utils/answer-builder';
 import { smartCompare } from './utils/compare';
+import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
 
@@ -25,7 +26,11 @@ interface BenchmarkReport {
     timeMs: number;
     ramMb: number;
   };
-  verification: {
+  /**
+   * Stage 1 — Hydration: did the algorithm produce a correct cyclic graph?
+   * Verified by two independent comparers (smartCompare + flatCompare).
+   */
+  hydration: {
     pass: boolean;
     smartCompare: {
       pass: boolean;
@@ -38,6 +43,24 @@ interface BenchmarkReport {
       errorDetail: string | null;
     };
     doubleVerified: boolean;
+  };
+  /**
+   * Stage 2 — Serialization: can the hydrated graph be consumed downstream?
+   * Only runs when hydration passes.  Each probe tests a different consumer
+   * strategy (see src/utils/consumer.ts for the ConsumerProbe abstraction).
+   *
+   * Key insight: hydration success ≠ serialization safety.  A correctly
+   * hydrated cyclic graph still crashes naive consumers (e.g. JSON.stringify).
+   * Only cycle-aware consumers (e.g. index-based export) handle it safely.
+   */
+  serialization: {
+    /** false when hydration failed — serialization probes are skipped. */
+    ran: boolean;
+    probes: {
+      name: string;
+      pass: boolean;
+      errorDetail: string | null;
+    }[];
   };
 }
 
@@ -204,12 +227,13 @@ function runBenchmark() {
       let ramUsedMb = 0;
       let smartResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
       let flatResult = { pass: false, errorDetail: null as string | null };
+      let executionResult: ComponentPopulated[] | null = null;
 
       try {
         const startMem = process.memoryUsage().heapUsed;
         const startTime = performance.now();
 
-        const result = algo.execute(inputData);
+        executionResult = algo.execute(inputData);
 
         const endTime = performance.now();
         const endMem = process.memoryUsage().heapUsed;
@@ -220,8 +244,8 @@ function runBenchmark() {
         if (traceCompare) {
           console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
         }
-        smartResult = smartCompare(result, answerData, traceCompare);
-        flatResult = flatCompare(result as ComponentPopulated[], rawAnswerEntries);
+        smartResult = smartCompare(executionResult, answerData, traceCompare);
+        flatResult = flatCompare(executionResult as ComponentPopulated[], rawAnswerEntries);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         smartResult = {
@@ -239,12 +263,27 @@ function runBenchmark() {
       const bothPass = smartResult.pass && flatResult.pass;
       const disagree = smartResult.pass !== flatResult.pass;
 
-      const verification: BenchmarkReport['verification'] = {
+      const hydration: BenchmarkReport['hydration'] = {
         pass: bothPass,
         smartCompare: smartResult,
         flatCompare: flatResult,
         doubleVerified: bothPass,
       };
+
+      // Stage 2 — Serialization: run consumer probes only when hydration passed.
+      // Reuses the execution result from Stage 1 — no second algorithm run.
+      // Probes are defined in src/utils/consumer.ts.
+      let serialization: BenchmarkReport['serialization'];
+      if (bothPass && executionResult !== null) {
+        const captured = executionResult;
+        const probeResults = consumerProbes.map((probe) => {
+          const r = probe.consume(captured);
+          return { name: probe.name, pass: r.pass, errorDetail: r.errorDetail };
+        });
+        serialization = { ran: true, probes: probeResults };
+      } else {
+        serialization = { ran: false, probes: [] };
+      }
 
       const report: BenchmarkReport = {
         algorithmCategory: algo.category,
@@ -256,7 +295,8 @@ function runBenchmark() {
           timeMs: Number(executionTimeMs.toFixed(3)),
           ramMb: Number(ramUsedMb.toFixed(3)),
         },
-        verification,
+        hydration,
+        serialization,
       };
 
       datasetReports.push(report);
@@ -272,7 +312,7 @@ function runBenchmark() {
         resultLine = `❌ FAIL [${smartErr}] [${flatErr}]`;
       }
 
-      console.log(`  Result: ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      console.log(`  Hydration:     ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
 
       if (!bothPass && !disagree) {
         if (!smartResult.pass && smartResult.errorDetail !== null) {
@@ -283,6 +323,15 @@ function runBenchmark() {
           const previewError = flatResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
           console.log(`  flatCompare Error: ${previewError}...`);
         }
+      }
+
+      if (serialization.ran) {
+        const probeSummary = serialization.probes
+          .map((p) => `${p.pass ? '✅' : '❌'} ${p.name}`)
+          .join('  ');
+        console.log(`  Serialization: ${probeSummary}`);
+      } else {
+        console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
       }
     }
 
