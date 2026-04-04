@@ -245,7 +245,7 @@ function runBenchmark() {
           console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
         }
         smartResult = smartCompare(executionResult, answerData, traceCompare);
-        flatResult = flatCompare(executionResult as ComponentPopulated[], rawAnswerEntries);
+        flatResult = flatCompare(executionResult, rawAnswerEntries);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         smartResult = {
