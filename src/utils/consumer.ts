@@ -1,11 +1,24 @@
-import { ComponentPopulated } from '../algorithms/types';
+import { AnswerEntry, ComponentPopulated } from '../algorithms/types';
 
 /**
  * The result of a single consumer probe run against a hydrated graph.
+ *
+ * Probes perform two distinct validations:
+ *   1. Did the probe generate a valid output?  (pass / errorDetail)
+ *   2. Is that output accurate?  (serializedOutput — returned to the caller for
+ *      comparison against the expected answer; null when not applicable or when
+ *      the probe fails to produce output.)
  */
 export interface ConsumerResult {
   pass: boolean;
   errorDetail: string | null;
+  /**
+   * The serialized flat representation produced by the probe.
+   * Present (non-null) only when the probe successfully builds an AnswerEntry[].
+   * The runner compares this against the known-correct rawAnswerEntries to verify
+   * accuracy of the serialized output.
+   */
+  serializedOutput: AnswerEntry[] | null;
 }
 
 /**
@@ -53,10 +66,10 @@ export const naiveJsonProbe: ConsumerProbe = {
   consume: (graph: ComponentPopulated[]): ConsumerResult => {
     try {
       JSON.stringify(graph);
-      return { pass: true, errorDetail: null };
+      return { pass: true, errorDetail: null, serializedOutput: null };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { pass: false, errorDetail: msg };
+      return { pass: false, errorDetail: msg, serializedOutput: null };
     }
   },
 };
@@ -89,22 +102,30 @@ export const cycleFlatProbe: ConsumerProbe = {
         indexMap.set(graph[i], i);
       }
 
-      // Validate + export each node's dependency list in O(V + E)
+      // Build the AnswerEntry[] output in O(V + E).
+      // Each node's dependencies are stored as integer indices into the top-level
+      // array rather than object references, eliminating circular references.
+      const entries: AnswerEntry[] = [];
       for (const node of graph) {
+        const depIndices: number[] = [];
         for (const dep of node.dependencies) {
-          if (!indexMap.has(dep)) {
+          const idx = indexMap.get(dep);
+          if (idx === undefined) {
             return {
               pass: false,
               errorDetail: `Dependency "${dep.id}" of node "${node.id}" is not present in the top-level graph array`,
+              serializedOutput: null,
             };
           }
+          depIndices.push(idx);
         }
+        entries.push({ id: node.id, depIndices });
       }
 
-      return { pass: true, errorDetail: null };
+      return { pass: true, errorDetail: null, serializedOutput: entries };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { pass: false, errorDetail: msg };
+      return { pass: false, errorDetail: msg, serializedOutput: null };
     }
   },
 };

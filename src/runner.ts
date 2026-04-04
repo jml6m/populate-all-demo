@@ -52,6 +52,11 @@ interface BenchmarkReport {
    * Key insight: hydration success ≠ serialization safety.  A correctly
    * hydrated cyclic graph still crashes naive consumers (e.g. JSON.stringify).
    * Only cycle-aware consumers (e.g. index-based export) handle it safely.
+   *
+   * Each probe is evaluated in two steps:
+   *   1. Did it generate a valid output?  (pass / errorDetail)
+   *   2. Is that output accurate?  (outputVerification — present when the probe
+   *      produced a serializedOutput that was compared against rawAnswerEntries)
    */
   serialization: {
     /** false when hydration failed — serialization probes are skipped. */
@@ -60,6 +65,15 @@ interface BenchmarkReport {
       name: string;
       pass: boolean;
       errorDetail: string | null;
+      /**
+       * Accuracy check of the probe's serialized output against the expected
+       * answer entries.  null when the probe does not produce a serializedOutput
+       * (e.g. naive-json) or when the probe itself failed.
+       */
+      outputVerification: {
+        pass: boolean;
+        errorDetail: string | null;
+      } | null;
     }[];
   };
 }
@@ -132,6 +146,49 @@ function parseAnswerData(raw: unknown, filename: string): AnswerEntry[] {
     });
     return { id, depIndices };
   });
+}
+
+/**
+ * Compares a probe-generated AnswerEntry[] against the known-correct raw answer
+ * entries loaded from the manifest YAML file.  This is the accuracy check for
+ * Stage 2 serialization: verifying that the output the probe produced is not just
+ * structurally valid but also topologically correct.
+ */
+function compareAnswerEntries(
+  generated: AnswerEntry[],
+  expected: AnswerEntry[],
+): { pass: boolean; errorDetail: string | null } {
+  if (generated.length !== expected.length) {
+    return {
+      pass: false,
+      errorDetail: `Length mismatch: generated ${generated.length} entries, expected ${expected.length}`,
+    };
+  }
+  for (let i = 0; i < generated.length; i++) {
+    const g = generated[i];
+    const e = expected[i];
+    if (g.id !== e.id) {
+      return {
+        pass: false,
+        errorDetail: `Entry[${i}] id mismatch: generated "${g.id}", expected "${e.id}"`,
+      };
+    }
+    if (g.depIndices.length !== e.depIndices.length) {
+      return {
+        pass: false,
+        errorDetail: `Entry[${i}] ("${g.id}") depIndices length mismatch: generated ${g.depIndices.length}, expected ${e.depIndices.length}`,
+      };
+    }
+    for (let j = 0; j < g.depIndices.length; j++) {
+      if (g.depIndices[j] !== e.depIndices[j]) {
+        return {
+          pass: false,
+          errorDetail: `Entry[${i}] ("${g.id}") depIndices[${j}] mismatch: generated ${g.depIndices[j]}, expected ${e.depIndices[j]}`,
+        };
+      }
+    }
+  }
+  return { pass: true, errorDetail: null };
 }
 
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
@@ -277,8 +334,37 @@ function runBenchmark() {
       if (bothPass && executionResult !== null) {
         const captured = executionResult;
         const probeResults = consumerProbes.map((probe) => {
-          const r = probe.consume(captured);
-          return { name: probe.name, pass: r.pass, errorDetail: r.errorDetail };
+          try {
+            const r = probe.consume(captured);
+
+            // Step 2: if the probe produced a serialized output, verify its accuracy
+            // against the known-correct raw answer entries from the manifest.
+            let outputVerification: { pass: boolean; errorDetail: string | null } | null = null;
+            if (r.pass && r.serializedOutput !== null) {
+              outputVerification = compareAnswerEntries(r.serializedOutput, rawAnswerEntries);
+            }
+
+            // A probe's overall pass requires: (1) generation succeeded AND
+            // (2) output accuracy check passed (if applicable).
+            const overallPass = r.pass && (outputVerification === null || outputVerification.pass);
+            const overallError =
+              r.errorDetail ?? (outputVerification !== null && !outputVerification.pass ? outputVerification.errorDetail : null);
+
+            return {
+              name: probe.name,
+              pass: overallPass,
+              errorDetail: overallError,
+              outputVerification,
+            };
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return {
+              name: probe.name,
+              pass: false,
+              errorDetail: errorMessage !== '' ? errorMessage : `Probe '${probe.name}' encountered a fatal error`,
+              outputVerification: null,
+            };
+          }
         });
         serialization = { ran: true, probes: probeResults };
       } else {
@@ -327,7 +413,16 @@ function runBenchmark() {
 
       if (serialization.ran) {
         const probeSummary = serialization.probes
-          .map((p) => `${p.pass ? '✅' : '❌'} ${p.name}`)
+          .map((p) => {
+            const probeIcon = p.pass ? '✅' : '❌';
+            const verifyIcon =
+              p.outputVerification !== null
+                ? p.outputVerification.pass
+                  ? ' (output ✅)'
+                  : ' (output ❌)'
+                : '';
+            return `${probeIcon} ${p.name}${verifyIcon}`;
+          })
           .join('  ');
         console.log(`  Serialization: ${probeSummary}`);
       } else {
