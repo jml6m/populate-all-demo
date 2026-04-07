@@ -172,11 +172,16 @@ Stage 2 runs only for tiers where hydration passed.  The key insight is that eve
 hydrated cyclic graph crashes a naive consumer — the ORM did its job, but the response layer did
 not.
 
+Serialization probe behavior is **scale-invariant**: the outcome of `naive-json` and `cycle-flat`
+depends on whether the graph contains cycles, not on how many nodes it has.  Both probes are
+evaluated in full on the basic (10-node) tier, where correctness is easiest to inspect; the same
+results are confirmed at every larger scale without reprinting.
+
 | Algorithm     | Tier where hydration ✅ | naive-json | cycle-flat |
 | ------------- | ----------------------- | ---------- | ---------- |
-| Map Tracker   | basic, medium           | ❌ Circular reference error | ✅ Pass |
-| Tarjan SCC    | all tiers               | ❌ Circular reference error | ✅ Pass |
-| Two-Pass Wire | all tiers               | ❌ Circular reference error | ✅ Pass |
+| Map Tracker   | basic, medium (fails stress+) | ❌ Circular reference error | ✅ Pass (output verified) |
+| Tarjan SCC    | all tiers               | ❌ Circular reference error | ✅ Pass (output verified) |
+| Two-Pass Wire | all tiers               | ❌ Circular reference error | ✅ Pass (output verified) |
 
 The `naive-json` column is uniformly ❌ for all algorithms that succeed hydration, because
 `JSON.stringify` has no cycle guard.  This is the exact failure mode described for MikroORM

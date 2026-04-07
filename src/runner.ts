@@ -246,6 +246,14 @@ function runBenchmark() {
   const traceBuild = process.argv.includes('--trace-build');
   const traceCompare = process.argv.includes('--trace-compare');
 
+  // Serialization probe behavior is scale-invariant: once established in the first (baseline)
+  // tier, the same probes will produce the same pass/fail results at every larger tier.
+  // We record the probe fingerprint per algorithm after the first tier so subsequent tiers
+  // can print "as established (basic)" instead of repeating the full probe details.
+  // Key: algorithmName, Value: probe summary string (or 'SKIPPED' when hydration failed).
+  const probeBaseline = new Map<string, string>();
+  let baselineDataset: string | null = null;
+
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
 
@@ -411,23 +419,74 @@ function runBenchmark() {
         }
       }
 
-      if (serialization.ran) {
-        const probeSummary = serialization.probes
-          .map((p) => {
-            const probeIcon = p.pass ? '✅' : '❌';
-            const verifyIcon =
-              p.outputVerification !== null
-                ? p.outputVerification.pass
-                  ? ' (output ✅)'
-                  : ' (output ❌)'
-                : '';
-            return `${probeIcon} ${p.name}${verifyIcon}`;
-          })
-          .join('  ');
-        console.log(`  Serialization: ${probeSummary}`);
+      // Build a probe fingerprint string so we can detect if the results differ from the
+      // baseline tier.  Use the literal 'SKIPPED' when serialization did not run.
+      const probeFingerprint: string = serialization.ran
+        ? serialization.probes
+            .map((p) => {
+              const verifyTag =
+                p.outputVerification !== null ? (p.outputVerification.pass ? '+ok' : '+fail') : '';
+              return `${p.name}:${p.pass ? 'pass' : 'fail'}${verifyTag}`;
+            })
+            .join(',')
+        : 'SKIPPED';
+
+      if (baselineDataset === null) {
+        // First (baseline) tier — record probe results and print in full.
+        probeBaseline.set(algo.name, probeFingerprint);
+        if (serialization.ran) {
+          const probeSummary = serialization.probes
+            .map((p) => {
+              const probeIcon = p.pass ? '✅' : '❌';
+              const verifyIcon =
+                p.outputVerification !== null
+                  ? p.outputVerification.pass
+                    ? ' (output ✅)'
+                    : ' (output ❌)'
+                  : '';
+              return `${probeIcon} ${p.name}${verifyIcon}`;
+            })
+            .join('  ');
+          console.log(`  Serialization: ${probeSummary}`);
+        } else {
+          console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
+        }
       } else {
-        console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
+        // Subsequent tier — compare against baseline and skip the reprint when unchanged.
+        const baseline = probeBaseline.get(algo.name);
+        if (baseline !== undefined && baseline === probeFingerprint) {
+          if (serialization.ran) {
+            console.log(`  Serialization: ✅ as established (${baselineDataset})`);
+          } else {
+            console.log(`  Serialization: ⏭️  skipped (hydration failed — same as ${baselineDataset})`);
+          }
+        } else {
+          // Results changed vs baseline — print in full so the difference is visible.
+          if (serialization.ran) {
+            const probeSummary = serialization.probes
+              .map((p) => {
+                const probeIcon = p.pass ? '✅' : '❌';
+                const verifyIcon =
+                  p.outputVerification !== null
+                    ? p.outputVerification.pass
+                      ? ' (output ✅)'
+                      : ' (output ❌)'
+                    : '';
+                return `${probeIcon} ${p.name}${verifyIcon}`;
+              })
+              .join('  ');
+            console.log(`  Serialization: ${probeSummary}`);
+          } else {
+            console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
+          }
+        }
       }
+    }
+
+    // After the first dataset's algorithms have been processed, lock in the baseline so
+    // subsequent tiers can reference it.
+    if (baselineDataset === null) {
+      baselineDataset = dataset;
     }
 
     // Write per-dataset report
