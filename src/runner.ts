@@ -362,6 +362,12 @@ export interface LaterAlgoOutcome {
    */
   isNewFailure: boolean;
   /**
+   * True when the two comparers disagree on this dataset (one passes, one fails).
+   * Conflicts are always surfaced as notable outcome changes — they are never
+   * suppressed or collapsed into the stable-pass summary.
+   */
+  isConflict: boolean;
+  /**
    * Full formatted hydration line ready for console output, e.g.
    *   "  Hydration:     ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
    * null only when baselineSkipped is true.
@@ -382,19 +388,24 @@ export interface LaterAlgoOutcome {
  *    a single "Known failure(s) omitted: …" line.
  *  - New failures (first divergence on this tier) are printed as full blocks
  *    with a "Hydration changed: ✅ PASS → ❌ FAIL" change indicator.
+ *  - Conflicts (comparers disagree) are always printed as full blocks — they are
+ *    never suppressed, as disagreement between comparers is always notable.
  *  - Stable passing algorithms are:
  *      · Collapsed to a single "… continued to pass — experiment stable." sentence
- *        when nothing else changed on this tier (no new or known-prior failures).
+ *        when nothing else changed on this tier (no new or known-prior failures,
+ *        no conflicts).
  *      · Shown as individual compact entries (hydration line + timing) when there
- *        are known-prior failures or new failures — so the survivor picture is clear.
+ *        are known-prior failures, new failures, or conflicts — so the survivor
+ *        picture is clear.
  */
 export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
   const lines: string[] = [];
 
   const omitted = outcomes.filter((o) => o.baselineSkipped || o.knownPriorFailure);
   const newFails = outcomes.filter((o) => o.isNewFailure);
+  const conflicts = outcomes.filter((o) => o.isConflict);
   const stablePasses = outcomes.filter(
-    (o) => !o.baselineSkipped && !o.knownPriorFailure && !o.isNewFailure,
+    (o) => !o.baselineSkipped && !o.knownPriorFailure && !o.isNewFailure && !o.isConflict,
   );
 
   // ── Compact note for omitted algorithms ──────────────────────────────────
@@ -406,7 +417,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
 
   const hasKnownPriorFails = omitted.some((o) => o.knownPriorFailure);
 
-  if (newFails.length === 0 && !hasKnownPriorFails) {
+  if (newFails.length === 0 && conflicts.length === 0 && !hasKnownPriorFails) {
     // Nothing materially changed — collapse passing algorithms to a compact
     // summary sentence (avoids repeating blocks that add no new information).
     if (stablePasses.length > 0) {
@@ -417,6 +428,14 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
   } else {
     // Something changed or dropped out — show individual entries so the
     // full survivor picture is visible.
+
+    // Conflicts: full block (comparers disagreeing is always notable).
+    for (const c of conflicts) {
+      lines.push(`[${c.algoCategory}] ${c.algoName}`);
+      lines.push(`  Hydration: 🚨 CONFLICT — comparers disagree`);
+      if (c.hydrationLine !== null) lines.push(c.hydrationLine);
+      if (c.probeChangeLine !== null) lines.push(c.probeChangeLine);
+    }
 
     // New failures: full block with change indicator.
     for (const f of newFails) {
@@ -692,6 +711,7 @@ function runBenchmark() {
           baselineSkipped: true,
           knownPriorFailure: false,
           isNewFailure: false,
+          isConflict: false,
           hydrationLine: null,
           failureDetailLines: [],
           probeChangeLine: null,
@@ -928,6 +948,7 @@ function runBenchmark() {
           baselineSkipped: false,
           knownPriorFailure: knownPrior,
           isNewFailure: isNewFail,
+          isConflict: disagree,
           hydrationLine,
           failureDetailLines: isNewFail ? failureDetailLines : [],
           probeChangeLine,

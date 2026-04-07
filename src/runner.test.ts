@@ -413,10 +413,9 @@ describe('formatHydrationFailTag — de-duplication', () => {
     assert.equal(tag, '[both comparers: Hello]');
   });
 
-  it('does NOT consolidate when errors are identical after truncation but differ in full', () => {
-    // "AAAA..." and "AAAAB..." both truncate to "AAAA" at truncateAt=4 — treated as same
+  it('consolidates errors that differ in full but match after truncation', () => {
+    // "AAAAX" and "AAAAY" both truncate to "AAAA" at truncateAt=4 — treated as same
     const tag = formatHydrationFailTag('AAAAX', 'AAAAY', 4);
-    // Both truncate to "AAAA" — they ARE treated as the same
     assert.equal(tag, '[both comparers: AAAA]');
   });
 });
@@ -479,6 +478,7 @@ function makePassOutcome(name: string, category: string, time = '10ms', ram = '1
     baselineSkipped: false,
     knownPriorFailure: false,
     isNewFailure: false,
+    isConflict: false,
     hydrationLine: `  Hydration:     ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -492,6 +492,7 @@ function makeSkippedOutcome(name: string, category: string): LaterAlgoOutcome {
     baselineSkipped: true,
     knownPriorFailure: false,
     isNewFailure: false,
+    isConflict: false,
     hydrationLine: null,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -505,6 +506,7 @@ function makeKnownPriorOutcome(name: string, category: string): LaterAlgoOutcome
     baselineSkipped: false,
     knownPriorFailure: true,
     isNewFailure: false,
+    isConflict: false,
     hydrationLine: `  Hydration:     ❌ FAIL [both comparers: stack overflow] | Time: < 0.1ms | RAM: < 0.1 MB`,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -518,8 +520,23 @@ function makeNewFailOutcome(name: string, category: string): LaterAlgoOutcome {
     baselineSkipped: false,
     knownPriorFailure: false,
     isNewFailure: true,
+    isConflict: false,
     hydrationLine: `  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded] | Time: < 0.1ms | RAM: < 0.1 MB`,
     failureDetailLines: ['  Both comparers: Maximum call stack size exceeded...'],
+    probeChangeLine: null,
+  };
+}
+
+function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: false,
+    isNewFailure: false,
+    isConflict: true,
+    hydrationLine: `  Hydration:     🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
+    failureDetailLines: [],
     probeChangeLine: null,
   };
 }
@@ -658,6 +675,48 @@ describe('buildLaterDatasetLines — edge cases', () => {
       outcome,
     ];
     const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
+  });
+});
+
+describe('buildLaterDatasetLines — conflict handling', () => {
+  it('prints a full block for a conflict and does not collapse it into stable-pass summary', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeConflictOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Conflict block must appear
+    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(lines.some((l) => l.includes('CONFLICT — comparers disagree')));
+    assert.ok(lines.some((l) => l.includes('🚨 CONFLICT')));
+
+    // No compact "continued to pass" sentence — a conflict triggers expansion mode
+    assert.ok(!lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
+
+    // Stable survivors shown individually
+    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
+    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
+  });
+
+  it('does not include a conflict in the omission note', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeConflictOutcome('Map Tracker', 'Reference Tracking'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    // Conflicts are NOT omitted — they should not appear in the "Known failure omitted" note
+    assert.ok(!lines.some((l) => l.includes('Known failure')));
+  });
+
+  it('includes a probe change line for a conflict when provided', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makeConflictOutcome('Map Tracker', 'Reference Tracking'),
+      probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
+    };
+    const lines = buildLaterDatasetLines([outcome]);
     assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
   });
 });
