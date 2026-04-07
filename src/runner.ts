@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
@@ -10,11 +11,57 @@ import { smartCompare } from './utils/compare';
 import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
+import { Manifest } from './types';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
 const INPUT_SUFFIX = '_input';
 const ANSWER_SUFFIX = '_answer';
+
+// ---------------------------------------------------------------------------
+// Metadata + report types
+// ---------------------------------------------------------------------------
+
+/**
+ * Metadata captured once per experiment run.
+ *
+ * Fields used for the skip/reuse fingerprint decision are documented separately
+ * from fields included only for user inspection.
+ */
+export interface RunMetadata {
+  /**
+   * Deterministic fingerprint used to decide whether the experiment needs to
+   * re-run.  Computed from: manifest content hashes, selected dataset names,
+   * algorithm names, consumer probe names, and Node.js version.
+   * Platform / timing / memory are NOT part of the fingerprint.
+   */
+  fingerprint: string;
+  /** ISO-8601 timestamp of when this run started.  User context only. */
+  runAt: string;
+  /** Node.js version string (e.g. "v22.0.0").  Part of the fingerprint. */
+  nodeVersion: string;
+  /** OS platform (e.g. "linux", "win32").  User context only. */
+  platform: string;
+  /** Dataset tiers included in this run. */
+  datasets: string[];
+  /** Algorithm names included in this run. */
+  algorithms: string[];
+  /** Consumer probe names included in this run. */
+  probes: string[];
+  /** `generatedAt` timestamp from the data manifest.  User context only. */
+  manifestGeneratedAt: string;
+}
+
+/**
+ * Top-level index file written at the end of every successful run to
+ * `reports/experiment-run.json`.  Used by the next invocation to decide
+ * whether to skip.
+ */
+export interface ExperimentIndex {
+  metadata: RunMetadata;
+  /** Per-dataset report paths, relative to the project root (e.g. "reports/basic/benchmark-1234.json"). */
+  reports: Record<string, string>;
+}
 
 interface BenchmarkReport {
   algorithmCategory: string;
@@ -45,21 +92,21 @@ interface BenchmarkReport {
     doubleVerified: boolean;
   };
   /**
-   * Stage 2 — Serialization: can the hydrated graph be consumed downstream?
+   * Stage 2 — Consumer probes: can the hydrated graph be processed downstream?
    * Only runs when hydration passes.  Each probe tests a different consumer
    * strategy (see src/utils/consumer.ts for the ConsumerProbe abstraction).
    *
-   * Key insight: hydration success ≠ serialization safety.  A correctly
-   * hydrated cyclic graph still crashes naive consumers (e.g. JSON.stringify).
-   * Only cycle-aware consumers (e.g. index-based export) handle it safely.
+   * Key insight: hydration success ≠ consumer viability.  A correctly hydrated
+   * cyclic graph still crashes naive consumers (e.g. JSON.stringify).  Only
+   * cycle-aware consumers (e.g. index-based export) handle it safely.
    *
    * Each probe is evaluated in two steps:
    *   1. Did it generate a valid output?  (pass / errorDetail)
    *   2. Is that output accurate?  (outputVerification — present when the probe
    *      produced a serializedOutput that was compared against rawAnswerEntries)
    */
-  serialization: {
-    /** false when hydration failed — serialization probes are skipped. */
+  consumerProbes: {
+    /** false when hydration failed — consumer probes are skipped. */
     ran: boolean;
     probes: {
       name: string;
@@ -76,6 +123,12 @@ interface BenchmarkReport {
       } | null;
     }[];
   };
+}
+
+/** Shape of a per-dataset report file (wraps results with run metadata). */
+interface DatasetReportFile {
+  metadata: RunMetadata;
+  results: BenchmarkReport[];
 }
 
 // --- YAML validation helpers ---
@@ -208,12 +261,79 @@ function formatRam(mb: number): string {
   return `${(mb / 1024).toFixed(1)} GB`;
 }
 
+// ---------------------------------------------------------------------------
+// Fingerprint + idempotency helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes a deterministic fingerprint for an experiment configuration.
+ *
+ * Inputs that affect outcomes and are therefore included:
+ *   - Content hashes of every data file for the selected datasets (from the manifest)
+ *   - The `generatedAt` timestamp of the manifest (catches regenerations)
+ *   - Selected dataset names, algorithm names, and probe names (sorted for stability)
+ *   - Node.js version (stack-overflow thresholds are engine-specific)
+ *
+ * Inputs that are volatile and intentionally excluded:
+ *   - Wall-clock time, RAM measurements, OS platform, run timestamps
+ */
+export function computeFingerprint(
+  manifest: Manifest,
+  datasets: string[],
+  algorithmNames: string[],
+  probeNames: string[],
+): string {
+  const relevantFileHashes = Object.fromEntries(
+    Object.entries(manifest.files)
+      .filter(([k]) => datasets.some((d) => k === `${d}${INPUT_SUFFIX}` || k === `${d}${ANSWER_SUFFIX}`))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, v?.contentHash ?? null]),
+  );
+
+  const input = JSON.stringify({
+    manifestGeneratedAt: manifest.generatedAt,
+    fileHashes: relevantFileHashes,
+    datasets: [...datasets].sort(),
+    algorithms: [...algorithmNames].sort(),
+    probes: [...probeNames].sort(),
+    nodeVersion: process.version,
+  });
+
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
+}
+
+/**
+ * Returns true when an existing experiment-run.json index matches the current
+ * fingerprint AND every referenced per-dataset report file exists on disk.
+ */
+export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datasets: string[]): boolean {
+  const indexPath = path.join(reportsDir, 'experiment-run.json');
+  if (!fs.existsSync(indexPath)) return false;
+
+  try {
+    const index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ExperimentIndex;
+    if (index.metadata.fingerprint !== fingerprint) return false;
+
+    for (const dataset of datasets) {
+      const reportRelPath = index.reports[dataset];
+      if (typeof reportRelPath !== 'string') return false;
+      const absPath = path.join(reportsDir, '..', reportRelPath);
+      if (!fs.existsSync(absPath)) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main benchmark runner
+// ---------------------------------------------------------------------------
+
 function runBenchmark() {
   const manifest = loadManifest();
   const reportsDir = path.join(__dirname, '../reports');
-  if (!fs.existsSync(reportsDir)) {
-    fs.mkdirSync(reportsDir);
-  }
 
   // Derive dataset names from manifest keys (e.g. "basic_input" -> "basic")
   const allDatasets = [
@@ -240,19 +360,69 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
+  // Parse --force CLI flag: bypass idempotency check and always run.
+  const forceRun = process.argv.includes('--force');
+
   // Parse trace-mode CLI flags:
   //   --trace-build    enables buildPopulatedFromAnswer verbose trace (expected-graph wiring)
   //   --trace-compare  enables smartCompare verbose trace (per-node pairing and back-edges)
   const traceBuild = process.argv.includes('--trace-build');
   const traceCompare = process.argv.includes('--trace-compare');
 
-  // Serialization probe behavior is scale-invariant: once established in the first (baseline)
-  // tier, the same probes will produce the same pass/fail results at every larger tier.
-  // We record the probe fingerprint per algorithm after the first tier so subsequent tiers
-  // can print "as established (basic)" instead of repeating the full probe details.
-  // Key: algorithmName, Value: probe summary string (or 'SKIPPED' when hydration failed).
+  if (!fs.existsSync(reportsDir)) {
+    fs.mkdirSync(reportsDir);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Idempotency check — skip the whole run if results are already up-to-date.
+  // ---------------------------------------------------------------------------
+  const algorithmNames = algorithms.map((a) => a.name);
+  const probeNames = consumerProbes.map((p) => p.name);
+  const fingerprint = computeFingerprint(manifest, datasets, algorithmNames, probeNames);
+
+  if (!forceRun && isAlreadyUpToDate(reportsDir, fingerprint, datasets)) {
+    console.log(`⚡ Experiment results are already up-to-date — skipping run.`);
+    console.log(`   (Pass --force to re-run the experiment regardless.)`);
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build run metadata (written into every report and the experiment index).
+  // ---------------------------------------------------------------------------
+  const runAt = new Date().toISOString();
+  const runMetadata: RunMetadata = {
+    fingerprint,
+    runAt,
+    nodeVersion: process.version,
+    platform: process.platform,
+    datasets,
+    algorithms: algorithmNames,
+    probes: probeNames,
+    manifestGeneratedAt: manifest.generatedAt,
+  };
+
+  // ---------------------------------------------------------------------------
+  // Print one-time note about serialization probe output scope.
+  // ---------------------------------------------------------------------------
+  console.log(
+    `\nNote: Consumer probe details are printed in full for the first (baseline) dataset only.`,
+  );
+  console.log(`      Later datasets omit probe output — probe behavior is scale-invariant.\n`);
+
+  // Per-algorithm baseline fingerprints for hydration failures and consumer probes.
+  // Used to suppress repeated identical detail lines on subsequent datasets.
+  // Key: algorithmName, Value: fingerprint string.
   const probeBaseline = new Map<string, string>();
+  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> error summary
   let baselineDataset: string | null = null;
+
+  // Summary data collected for the final table.
+  const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
+    (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
+  );
+
+  // Track per-dataset report paths for the experiment index.
+  const reportPaths: Record<string, string> = {};
 
   for (const dataset of datasets) {
     assertSafePathSegment(dataset, 'dataset');
@@ -266,7 +436,7 @@ function runBenchmark() {
       continue;
     }
 
-    console.log(`\n--- Loading ${dataset} dataset ---`);
+    console.log(`--- ${dataset} dataset ---`);
     let inputData: ComponentFlat[];
     let rawAnswerEntries: AnswerEntry[];
     let answerData: ComponentPopulated[];
@@ -283,10 +453,11 @@ function runBenchmark() {
       continue;
     }
 
-    const datasetReports: BenchmarkReport[] = [];
+    const datasetResults: BenchmarkReport[] = [];
 
-    for (const algo of algorithms) {
-      console.log(`Running:[${algo.category}] ${algo.name}...`);
+    for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
+      const algo = algorithms[algoIdx];
+      console.log(`[${algo.category}] ${algo.name}`);
 
       let executionTimeMs = 0;
       let ramUsedMb = 0;
@@ -335,17 +506,20 @@ function runBenchmark() {
         doubleVerified: bothPass,
       };
 
-      // Stage 2 — Serialization: run consumer probes only when hydration passed.
+      // Record hydration result for the summary table.
+      summaryRows[algoIdx].results.set(dataset, disagree ? null : bothPass);
+
+      // Stage 2 — Consumer probes: run only when hydration passed.
       // Reuses the execution result from Stage 1 — no second algorithm run.
       // Probes are defined in src/utils/consumer.ts.
-      let serialization: BenchmarkReport['serialization'];
+      let consumerProbeResult: BenchmarkReport['consumerProbes'];
       if (bothPass && executionResult !== null) {
         const captured = executionResult;
         const probeResults = consumerProbes.map((probe) => {
           try {
             const r = probe.consume(captured);
 
-            // Step 2: if the probe produced a serialized output, verify its accuracy
+            // If the probe produced a serialized output, verify its accuracy
             // against the known-correct raw answer entries from the manifest.
             let outputVerification: { pass: boolean; errorDetail: string | null } | null = null;
             if (r.pass && r.serializedOutput !== null) {
@@ -374,9 +548,9 @@ function runBenchmark() {
             };
           }
         });
-        serialization = { ran: true, probes: probeResults };
+        consumerProbeResult = { ran: true, probes: probeResults };
       } else {
-        serialization = { ran: false, probes: [] };
+        consumerProbeResult = { ran: false, probes: [] };
       }
 
       const report: BenchmarkReport = {
@@ -390,14 +564,18 @@ function runBenchmark() {
           ramMb: Number(ramUsedMb.toFixed(3)),
         },
         hydration,
-        serialization,
+        consumerProbes: consumerProbeResult,
       };
 
-      datasetReports.push(report);
+      datasetResults.push(report);
+
+      // -----------------------------------------------------------------------
+      // Console output for this algorithm
+      // -----------------------------------------------------------------------
 
       let resultLine: string;
       if (disagree) {
-        resultLine = `🚨 VERIFICATION CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
+        resultLine = `🚨 CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
       } else if (bothPass) {
         resultLine = `✅ PASS (double-verified)`;
       } else {
@@ -408,21 +586,41 @@ function runBenchmark() {
 
       console.log(`  Hydration:     ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
 
+      // Print error detail lines for failures.
+      // On the baseline dataset: always print.
+      // On subsequent datasets: only print when the failure is different from the baseline
+      //   (same failure as baseline → suppress to keep output clean).
       if (!bothPass && !disagree) {
-        if (!smartResult.pass && smartResult.errorDetail !== null) {
-          const previewError = smartResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
-          console.log(`  smartCompare Error: ${previewError}...`);
+        const failFingerprint =
+          `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
+
+        const baselineFail = hydrationFailBaseline.get(algo.name);
+        const isKnownFail = baselineDataset !== null && baselineFail === failFingerprint;
+
+        if (!isKnownFail) {
+          if (baselineDataset !== null && baselineFail !== undefined) {
+            // Different failure from baseline — flag it clearly.
+            console.log(`  ⚠️  Failure differs from baseline:`);
+          }
+          if (!smartResult.pass && smartResult.errorDetail !== null) {
+            const previewError = smartResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
+            console.log(`  smartCompare Error: ${previewError}...`);
+          }
+          if (!flatResult.pass && flatResult.errorDetail !== null) {
+            const previewError = flatResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
+            console.log(`  flatCompare Error: ${previewError}...`);
+          }
         }
-        if (!flatResult.pass && flatResult.errorDetail !== null) {
-          const previewError = flatResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
-          console.log(`  flatCompare Error: ${previewError}...`);
+
+        if (baselineDataset === null) {
+          hydrationFailBaseline.set(algo.name, failFingerprint);
         }
       }
 
-      // Build a probe fingerprint string so we can detect if the results differ from the
-      // baseline tier.  Use the literal 'SKIPPED' when serialization did not run.
-      const probeFingerprint: string = serialization.ran
-        ? serialization.probes
+      // Build a probe fingerprint for change-detection against the baseline.
+      // Use the literal 'SKIPPED' when hydration failed and probes did not run.
+      const probeFingerprint: string = consumerProbeResult.ran
+        ? consumerProbeResult.probes
             .map((p) => {
               const verifyTag =
                 p.outputVerification !== null ? (p.outputVerification.pass ? '+ok' : '+fail') : '';
@@ -432,10 +630,11 @@ function runBenchmark() {
         : 'SKIPPED';
 
       if (baselineDataset === null) {
-        // First (baseline) tier — record probe results and print in full.
+        // First (baseline) dataset — record probe baseline and print details in full.
         probeBaseline.set(algo.name, probeFingerprint);
-        if (serialization.ran) {
-          const probeSummary = serialization.probes
+
+        if (consumerProbeResult.ran) {
+          const probeSummary = consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
               const verifyIcon =
@@ -447,23 +646,17 @@ function runBenchmark() {
               return `${probeIcon} ${p.name}${verifyIcon}`;
             })
             .join('  ');
-          console.log(`  Serialization: ${probeSummary}`);
+          console.log(`  Consumer probes: ${probeSummary}`);
         } else {
-          console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
+          console.log(`  Consumer probes: not run (hydration failed)`);
         }
       } else {
-        // Subsequent tier — compare against baseline and skip the reprint when unchanged.
+        // Subsequent dataset — probe outcomes are omitted when unchanged from baseline.
+        // When the result changed vs. baseline, print in full so the difference is visible.
         const baseline = probeBaseline.get(algo.name);
-        if (baseline !== undefined && baseline === probeFingerprint) {
-          if (serialization.ran) {
-            console.log(`  Serialization: ✅ as established (${baselineDataset})`);
-          } else {
-            console.log(`  Serialization: ⏭️  skipped — as established (${baselineDataset})`);
-          }
-        } else {
-          // Results changed vs baseline — print in full so the difference is visible.
-          if (serialization.ran) {
-            const probeSummary = serialization.probes
+        if (baseline === undefined || baseline !== probeFingerprint) {
+          if (consumerProbeResult.ran) {
+            const probeSummary = consumerProbeResult.probes
               .map((p) => {
                 const probeIcon = p.pass ? '✅' : '❌';
                 const verifyIcon =
@@ -475,27 +668,76 @@ function runBenchmark() {
                 return `${probeIcon} ${p.name}${verifyIcon}`;
               })
               .join('  ');
-            console.log(`  Serialization: ${probeSummary}`);
+            console.log(`  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`);
           } else {
-            console.log(`  Serialization: ⏭️  skipped (hydration failed)`);
+            console.log(`  Consumer probes: ⚠️  changed from baseline — not run (hydration failed)`);
           }
         }
+        // Unchanged from baseline: intentionally no output line.
       }
     }
 
-    // After the first dataset's algorithms have been processed, lock in the baseline so
-    // subsequent tiers can reference it.
+    // After the first dataset's algorithms have been processed, lock in the baseline.
     if (baselineDataset === null) {
       baselineDataset = dataset;
     }
 
-    // Write per-dataset report
+    // Write per-dataset report (wrapped with run metadata).
     const datasetReportsDir = path.join(reportsDir, dataset);
     fs.mkdirSync(datasetReportsDir, { recursive: true });
-    const reportPath = path.join(datasetReportsDir, `benchmark-${Date.now()}.json`);
-    fs.writeFileSync(reportPath, JSON.stringify(datasetReports, null, 2));
-    console.log(`\n✅ Report saved to ${reportPath}`);
+    const reportFilename = `benchmark-${Date.now()}.json`;
+    const reportPath = path.join(datasetReportsDir, reportFilename);
+    const datasetReportFile: DatasetReportFile = { metadata: runMetadata, results: datasetResults };
+    fs.writeFileSync(reportPath, JSON.stringify(datasetReportFile, null, 2));
+    reportPaths[dataset] = `reports/${dataset}/${reportFilename}`;
+    console.log(`\n✅ Report saved to ${reportPath}\n`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Write experiment-run.json index (enables skip check on next invocation).
+  // ---------------------------------------------------------------------------
+  const experimentIndex: ExperimentIndex = {
+    metadata: runMetadata,
+    reports: reportPaths,
+  };
+  fs.writeFileSync(
+    path.join(reportsDir, 'experiment-run.json'),
+    JSON.stringify(experimentIndex, null, 2),
+  );
+
+  // ---------------------------------------------------------------------------
+  // Post-run summary table
+  // ---------------------------------------------------------------------------
+  const processedDatasets = datasets.filter((d) =>
+    summaryRows.some((r) => r.results.has(d)),
+  );
+
+  if (processedDatasets.length > 0) {
+    const COL_WIDTH = 10;
+    const algoColWidth = Math.max(...summaryRows.map((r) => r.algoName.length)) + 2;
+
+    const header =
+      `Algorithm`.padEnd(algoColWidth) +
+      processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
+    const divider = '─'.repeat(algoColWidth + COL_WIDTH * processedDatasets.length);
+
+    console.log(`=== Run Summary ===`);
+    console.log(header);
+    console.log(divider);
+
+    for (const row of summaryRows) {
+      const cols = processedDatasets.map((d) => {
+        const result = row.results.get(d);
+        if (result === undefined) return '  —  '.padStart(COL_WIDTH);
+        if (result === null) return '⚠️CONFLICT'.padStart(COL_WIDTH);
+        return (result ? '✅ PASS' : '❌ FAIL').padStart(COL_WIDTH);
+      });
+      console.log(row.algoName.padEnd(algoColWidth) + cols.join(''));
+    }
   }
 }
 
-runBenchmark();
+// Execute only when invoked directly; not when imported by tests or other modules.
+if (require.main === module) {
+  runBenchmark();
+}
