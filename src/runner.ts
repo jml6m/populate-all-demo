@@ -345,6 +345,20 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
 // Main benchmark runner
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns true when force mode is active.
+ *
+ * Force mode is detected from two sources (in priority order):
+ *   1. The `POPULATE_ALL_FORCE` environment variable set to `"1"` — used by the
+ *      `npm run experiment:force` script, because npm intercepts `--force` before
+ *      the Node process can see it.
+ *   2. The `--force` CLI argument — works when the script is invoked directly
+ *      (e.g. `tsx src/runner.ts --force`) without going through npm.
+ */
+export function isForceMode(): boolean {
+  return process.env.POPULATE_ALL_FORCE === '1' || process.argv.includes('--force');
+}
+
 function runBenchmark() {
   const manifest = loadManifest();
   const reportsDir = path.join(__dirname, '../reports');
@@ -375,7 +389,10 @@ function runBenchmark() {
   }
 
   // Parse --force CLI flag: bypass idempotency check and always run.
-  const forceRun = process.argv.includes('--force');
+  // Also supported via the POPULATE_ALL_FORCE=1 environment variable for
+  // npm-script invocations (npm intercepts --force before the Node process sees it).
+  // Use `npm run experiment:force` for reliable force mode through npm.
+  const forceRun = isForceMode();
 
   // Parse trace-mode CLI flags:
   //   --trace-build    enables buildPopulatedFromAnswer verbose trace (expected-graph wiring)
@@ -396,7 +413,7 @@ function runBenchmark() {
 
   if (!forceRun && isAlreadyUpToDate(reportsDir, fingerprint, datasets)) {
     console.log(`⚡ Experiment results are already up-to-date — skipping run.`);
-    console.log(`   (Pass --force to re-run the experiment regardless.)`);
+    console.log(`   (Run \`npm run experiment:force\` to re-run the experiment regardless.)`);
     return;
   }
 
@@ -417,12 +434,12 @@ function runBenchmark() {
   };
 
   // ---------------------------------------------------------------------------
-  // Print one-time note about serialization probe output scope.
+  // Print one-time note about consumer probe output scope.
   // ---------------------------------------------------------------------------
   console.log(
     `\nNote: Consumer probe details are printed in full for the first (baseline) dataset only.`,
   );
-  console.log(`      Later datasets omit probe output — probe behavior is scale-invariant.\n`);
+  console.log(`      Later datasets focus on hydration scalability — probe results are scale-invariant.\n`);
 
   // Per-algorithm baseline fingerprints for hydration failures and consumer probes.
   // Used to suppress repeated identical detail lines on subsequent datasets.
@@ -430,6 +447,12 @@ function runBenchmark() {
   const probeBaseline = new Map<string, string>();
   const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> error summary
   let baselineDataset: string | null = null;
+
+  // Algorithms that failed at the baseline (first/smallest) dataset.
+  // These are skipped on subsequent datasets: if an algorithm fails on the smallest
+  // cyclic dataset, larger datasets will also fail — re-executing adds no new information.
+  // (Map Tracker passes at small scale and only fails at large scale, so it is NOT skipped.)
+  const baselineFailedAlgorithms = new Set<string>();
 
   // Summary data collected for the final table.
   const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
@@ -472,6 +495,35 @@ function runBenchmark() {
 
     for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
       const algo = algorithms[algoIdx];
+
+      // Skip algorithms that failed on the baseline dataset — they deterministically fail
+      // at all scales, so re-executing on larger datasets adds no new information.
+      // Map Tracker passes at small scale and only fails at large scale, so it continues running.
+      if (baselineDataset !== null && baselineFailedAlgorithms.has(algo.name)) {
+        console.log(`[${algo.category}] ${algo.name}`);
+        console.log(`  Hydration:     ❌ FAIL (baseline)`);
+        summaryRows[algoIdx].results.set(dataset, false);
+        // Record a minimal report using the cached baseline failure detail.
+        const cachedFail = hydrationFailBaseline.get(algo.name);
+        const failDetail = cachedFail !== undefined ? cachedFail.split('|')[0].replace('smart:', '') : null;
+        datasetResults.push({
+          algorithmCategory: algo.category,
+          algorithmName: algo.name,
+          timeComplexity: algo.timeComplexity,
+          spaceComplexity: algo.spaceComplexity,
+          dataset: dataset,
+          metrics: { timeMs: 0, ramMb: 0 },
+          hydration: {
+            pass: false,
+            smartCompare: { pass: false, errorDetail: failDetail, nodesProcessed: 0, edgesTraversed: 0 },
+            flatCompare: { pass: false, errorDetail: failDetail },
+            doubleVerified: false,
+          },
+          consumerProbes: { ran: false, probes: [] },
+        });
+        continue;
+      }
+
       console.log(`[${algo.category}] ${algo.name}`);
 
       let executionTimeMs = 0;
@@ -629,6 +681,9 @@ function runBenchmark() {
 
         if (baselineDataset === null) {
           hydrationFailBaseline.set(algo.name, failFingerprint);
+          // Mark this algorithm as a deterministic baseline failure so it will
+          // be skipped (not re-executed) on all subsequent, larger datasets.
+          baselineFailedAlgorithms.add(algo.name);
         }
       }
 
@@ -667,7 +722,10 @@ function runBenchmark() {
         }
       } else {
         // Subsequent dataset — probe outcomes are omitted when unchanged from baseline.
-        // When the result changed vs. baseline, print in full so the difference is visible.
+        // When the result changed vs. baseline AND probes still ran (different outcome),
+        // print in full so the divergence is visible.
+        // When probes went from "ran" to "not run" due to hydration failure, that is
+        // already communicated by the hydration output line above — no probe line needed.
         const baseline = probeBaseline.get(algo.name);
         if (baseline === undefined || baseline !== probeFingerprint) {
           if (consumerProbeResult.ran) {
@@ -684,9 +742,8 @@ function runBenchmark() {
               })
               .join('  ');
             console.log(`  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`);
-          } else {
-            console.log(`  Consumer probes: ⚠️  changed from baseline — not run (hydration failed)`);
           }
+          // else: hydration failed — probes not run; already shown in the hydration line above.
         }
         // Unchanged from baseline: intentionally no output line.
       }
