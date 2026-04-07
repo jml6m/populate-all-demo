@@ -681,8 +681,13 @@ function runBenchmark() {
 
         if (baselineDataset === null) {
           hydrationFailBaseline.set(algo.name, failFingerprint);
-          // Store the error message separately for clean re-use in baseline-skip reports.
-          hydrationErrorBaseline.set(algo.name, smartResult.errorDetail);
+          // Store both hydration error messages so baseline-skip reports can
+          // accurately re-use the original smartCompare and flatCompare details.
+          const baselineHydrationErrorDetail = JSON.stringify({
+            smartErrorDetail: smartResult.errorDetail,
+            flatErrorDetail: flatResult.errorDetail,
+          });
+          hydrationErrorBaseline.set(algo.name, baselineHydrationErrorDetail);
           // Mark this algorithm as a deterministic baseline failure so it will
           // be skipped (not re-executed) on all subsequent, larger datasets.
           baselineFailedAlgorithms.add(algo.name);
