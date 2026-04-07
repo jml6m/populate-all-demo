@@ -277,6 +277,187 @@ function formatRam(mb: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Failure-detail formatting helpers (exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Formats the error tag(s) for a hydration failure summary line.
+ *
+ * When both comparers fail with the same error text, consolidates to a single
+ * `[both comparers: …]` tag so the same message is not repeated twice.
+ * When they differ, returns individual tags for each comparer.
+ *
+ * @param smartErr - errorDetail from smartCompare (null if comparer passed or no detail)
+ * @param flatErr  - errorDetail from flatCompare  (null if comparer passed or no detail)
+ * @param truncateAt - max characters per error string before truncation (default 60)
+ */
+export function formatHydrationFailTag(
+  smartErr: string | null,
+  flatErr: string | null,
+  truncateAt = 60,
+): string {
+  const normalizeSummaryError = (errorDetail: string): string =>
+    errorDetail.replace(/\r?\n/g, ' ');
+
+  const s = smartErr !== null ? normalizeSummaryError(smartErr).substring(0, truncateAt) : null;
+  const f = flatErr !== null ? normalizeSummaryError(flatErr).substring(0, truncateAt) : null;
+  if (s !== null && f !== null && s === f) {
+    return `[both comparers: ${s}]`;
+  }
+
+  const parts: string[] = [];
+  if (s !== null) parts.push(`[smartCompare: ${s}]`);
+  if (f !== null) parts.push(`[flatCompare: ${f}]`);
+  return parts.join(' ');
+}
+
+/**
+ * Builds de-duplicated failure detail lines for a hydration failure.
+ *
+ * When both comparers produce the same error message, returns one combined
+ * line instead of printing the same error twice.  When they differ, returns
+ * individual lines for each failing comparer.
+ *
+ * @param smartErr   - errorDetail from smartCompare (null if passed or no detail)
+ * @param flatErr    - errorDetail from flatCompare  (null if passed or no detail)
+ * @param truncateAt - max characters to preview before "…" (default 100)
+ */
+export function buildFailureDetailLines(
+  smartErr: string | null,
+  flatErr: string | null,
+  truncateAt = 100,
+): string[] {
+  const s = smartErr !== null ? smartErr.substring(0, truncateAt).replace(/\n/g, ' ') : null;
+  const f = flatErr !== null ? flatErr.substring(0, truncateAt).replace(/\n/g, ' ') : null;
+
+  if (s !== null && f !== null && s === f) {
+    return [`  Both comparers: ${s}...`];
+  }
+
+  const lines: string[] = [];
+  if (s !== null) lines.push(`  smartCompare Error: ${s}...`);
+  if (f !== null) lines.push(`  flatCompare Error: ${f}...`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Later-dataset output helpers (exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/** Describes a single algorithm's outcome on a later (non-baseline) dataset. */
+export interface LaterAlgoOutcome {
+  algoName: string;
+  algoCategory: string;
+  /** True when not executed because the algorithm failed at the baseline tier. */
+  baselineSkipped: boolean;
+  /**
+   * True when the algorithm failed and its failure was already fully documented
+   * on a prior dataset (baseline or subsequent).  Suppressed here to avoid
+   * repeating the same information.
+   */
+  knownPriorFailure: boolean;
+  /**
+   * True when the algorithm fails for the first time on this dataset — a new
+   * divergence from prior passing behavior (or a changed failure fingerprint).
+   */
+  isNewFailure: boolean;
+  /**
+   * True when the two comparers disagree on this dataset (one passes, one fails).
+   * Conflicts are always surfaced as notable outcome changes — they are never
+   * suppressed or collapsed into the stable-pass summary.
+   */
+  isConflict: boolean;
+  /**
+   * Full formatted hydration line ready for console output, e.g.
+   *   "  Hydration:     ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
+   * null only when baselineSkipped is true.
+   */
+  hydrationLine: string | null;
+  /** De-duplicated failure detail lines (non-empty only when isNewFailure is true). */
+  failureDetailLines: string[];
+  /** Probe-change note line, or null when probes are unchanged / not applicable. */
+  probeChangeLine: string | null;
+}
+
+/**
+ * Formats the console output lines for a later (non-baseline) dataset.
+ * Returns an array of lines (no trailing newlines).
+ *
+ * Formatting rules:
+ *  - Baseline-skipped and known-prior-failure algorithms are noted compactly as
+ *    a single "Known failure(s) omitted: …" line.
+ *  - New failures (first divergence on this tier) are printed as full blocks
+ *    with a "Hydration changed: ✅ PASS → ❌ FAIL" change indicator.
+ *  - Conflicts (comparers disagree) are always printed as full blocks — they are
+ *    never suppressed, as disagreement between comparers is always notable.
+ *  - Stable passing algorithms are:
+ *      · Collapsed to a single "… continued to pass — experiment stable." sentence
+ *        when nothing else changed on this tier (no new or known-prior failures,
+ *        no conflicts).
+ *      · Shown as individual compact entries (hydration line + timing) when there
+ *        are known-prior failures, new failures, or conflicts — so the survivor
+ *        picture is clear.
+ */
+export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
+  const lines: string[] = [];
+
+  const omitted = outcomes.filter((o) => o.baselineSkipped || o.knownPriorFailure);
+  const newFails = outcomes.filter((o) => o.isNewFailure);
+  const conflicts = outcomes.filter((o) => o.isConflict);
+  const stablePasses = outcomes.filter(
+    (o) => !o.baselineSkipped && !o.knownPriorFailure && !o.isNewFailure && !o.isConflict,
+  );
+
+  // ── Compact note for omitted algorithms ──────────────────────────────────
+  if (omitted.length > 0) {
+    const names = omitted.map((o) => o.algoName).join(', ');
+    const label = omitted.length === 1 ? 'Known failure omitted' : 'Known failures omitted';
+    lines.push(`  ${label}: ${names}`);
+  }
+
+  const hasKnownPriorFails = omitted.some((o) => o.knownPriorFailure);
+
+  if (newFails.length === 0 && conflicts.length === 0 && !hasKnownPriorFails) {
+    // Nothing materially changed — collapse passing algorithms to a compact
+    // summary sentence (avoids repeating blocks that add no new information).
+    if (stablePasses.length > 0) {
+      const count = stablePasses.length;
+      const algoWord = count === 1 ? 'algorithm' : 'algorithms';
+      lines.push(`  ${count} ${algoWord} continued to pass — experiment stable.`);
+    }
+  } else {
+    // Something changed or dropped out — show individual entries so the
+    // full survivor picture is visible.
+
+    // Conflicts: full block (comparers disagreeing is always notable).
+    for (const c of conflicts) {
+      lines.push(`[${c.algoCategory}] ${c.algoName}`);
+      lines.push(`  Hydration: 🚨 CONFLICT — comparers disagree`);
+      if (c.hydrationLine !== null) lines.push(c.hydrationLine);
+      if (c.probeChangeLine !== null) lines.push(c.probeChangeLine);
+    }
+
+    // New failures: full block with change indicator.
+    for (const f of newFails) {
+      lines.push(`[${f.algoCategory}] ${f.algoName}`);
+      lines.push(`  Hydration changed: ✅ PASS → ❌ FAIL`);
+      if (f.hydrationLine !== null) lines.push(f.hydrationLine);
+      for (const dl of f.failureDetailLines) lines.push(dl);
+      if (f.probeChangeLine !== null) lines.push(f.probeChangeLine);
+    }
+
+    // Stable passes: compact entries with timing (scalability story).
+    for (const p of stablePasses) {
+      lines.push(`[${p.algoCategory}] ${p.algoName}`);
+      if (p.hydrationLine !== null) lines.push(p.hydrationLine);
+      if (p.probeChangeLine !== null) lines.push(p.probeChangeLine);
+    }
+  }
+
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // Fingerprint + idempotency helpers
 // ---------------------------------------------------------------------------
 
@@ -437,18 +618,14 @@ function runBenchmark() {
   };
 
   // ---------------------------------------------------------------------------
-  // Print one-time note about consumer probe output scope.
+  // Print one-time note about output scope.
   // ---------------------------------------------------------------------------
-  console.log(
-    `\nNote: Consumer probe details are printed in full for the first (baseline) dataset only.`,
-  );
-  console.log(`      Later datasets focus on hydration scalability — probe results are scale-invariant.\n`);
+  console.log(`\nNote: Full experiment detail is shown for the baseline (basic) dataset.`);
+  console.log(`      Later datasets report only hydration timing and meaningful outcome changes.\n`);
 
-  // Per-algorithm baseline fingerprints for hydration failures and consumer probes.
-  // Used to suppress repeated identical detail lines on subsequent datasets.
-  // Key: algorithmName, Value: fingerprint string.
+  // Per-algorithm baseline fingerprints for consumer probes.
+  // Used to detect probe-outcome changes on subsequent datasets.
   const probeBaseline = new Map<string, string>();
-  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> fingerprint
   const baselineHydration = new Map<string, BenchmarkReport['hydration']>(); // algorithmName -> full hydration result
   let baselineDataset: string | null = null;
 
@@ -457,6 +634,12 @@ function runBenchmark() {
   // cyclic dataset, larger datasets will also fail — re-executing adds no new information.
   // (Map Tracker passes at small scale and only fails at large scale, so it is NOT skipped.)
   const baselineFailedAlgorithms = new Set<string>();
+
+  // Tracks algorithms whose first failure has been fully printed.
+  // Maps algorithmName → failure fingerprint at time of first print.
+  // Later datasets suppress repeats of the same failure (knownPriorFailure).
+  // If the fingerprint differs, the new failure is treated as a fresh divergence.
+  const documentedFailures = new Map<string, string>();
 
   // Summary data collected for the final table.
   const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
@@ -496,6 +679,9 @@ function runBenchmark() {
     }
 
     const datasetResults: BenchmarkReport[] = [];
+    const isBaseline = baselineDataset === null;
+    // For later datasets: collect per-algo outcomes for deferred batch formatting.
+    const laterOutcomes: LaterAlgoOutcome[] = [];
 
     for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
       const algo = algorithms[algoIdx];
@@ -503,9 +689,7 @@ function runBenchmark() {
       // Skip algorithms that failed on the baseline dataset — they deterministically fail
       // at all scales, so re-executing on larger datasets adds no new information.
       // Map Tracker passes at small scale and only fails at large scale, so it continues running.
-      if (baselineDataset !== null && baselineFailedAlgorithms.has(algo.name)) {
-        console.log(`[${algo.category}] ${algo.name}`);
-        console.log(`  Hydration:     ❌ FAIL (baseline)`);
+      if (!isBaseline && baselineFailedAlgorithms.has(algo.name)) {
         summaryRows[algoIdx].results.set(dataset, false);
         // Re-use the exact hydration object from the baseline run.
         // metrics is null — no execution took place; skipped: true lets report
@@ -521,10 +705,24 @@ function runBenchmark() {
           hydration: baselineHydration.get(algo.name)!,
           consumerProbes: { ran: false, probes: [] },
         });
+        laterOutcomes.push({
+          algoName: algo.name,
+          algoCategory: algo.category,
+          baselineSkipped: true,
+          knownPriorFailure: false,
+          isNewFailure: false,
+          isConflict: false,
+          hydrationLine: null,
+          failureDetailLines: [],
+          probeChangeLine: null,
+        });
         continue;
       }
 
-      console.log(`[${algo.category}] ${algo.name}`);
+      // On the baseline dataset, print the algorithm header immediately.
+      if (isBaseline) {
+        console.log(`[${algo.category}] ${algo.name}`);
+      }
 
       let executionTimeMs = 0;
       let ramUsedMb = 0;
@@ -637,60 +835,33 @@ function runBenchmark() {
       datasetResults.push(report);
 
       // -----------------------------------------------------------------------
-      // Console output for this algorithm
+      // Build formatted output lines (used for both immediate and deferred print)
       // -----------------------------------------------------------------------
 
+      // Hydration result text — uses de-duplicating helper for failures.
       let resultLine: string;
       if (disagree) {
         resultLine = `🚨 CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
       } else if (bothPass) {
         resultLine = `✅ PASS (double-verified)`;
       } else {
-        const smartErr = smartResult.errorDetail !== null ? `smartCompare: ${smartResult.errorDetail.substring(0, 60)}` : '';
-        const flatErr = flatResult.errorDetail !== null ? `flatCompare: ${flatResult.errorDetail.substring(0, 60)}` : '';
-        resultLine = `❌ FAIL [${smartErr}] [${flatErr}]`;
+        const smartErr = !smartResult.pass ? smartResult.errorDetail : null;
+        const flatErr = !flatResult.pass ? flatResult.errorDetail : null;
+        resultLine = `❌ FAIL ${formatHydrationFailTag(smartErr, flatErr)}`;
       }
 
-      console.log(`  Hydration:     ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`);
+      const hydrationLine = `  Hydration:     ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
 
-      // Print error detail lines for failures.
-      // On the baseline dataset: always print.
-      // On subsequent datasets: only print when the failure is different from the baseline
-      //   (same failure as baseline → suppress to keep output clean).
-      if (!bothPass && !disagree) {
-        const failFingerprint =
-          `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
+      // De-duplicated failure detail lines.
+      const failureDetailLines =
+        !bothPass && !disagree
+          ? buildFailureDetailLines(
+              !smartResult.pass ? smartResult.errorDetail : null,
+              !flatResult.pass ? flatResult.errorDetail : null,
+            )
+          : [];
 
-        const baselineFail = hydrationFailBaseline.get(algo.name);
-        const isKnownFail = baselineDataset !== null && baselineFail === failFingerprint;
-
-        if (!isKnownFail) {
-          if (baselineDataset !== null && baselineFail !== undefined) {
-            // Different failure from baseline — flag it clearly.
-            console.log(`  ⚠️  Failure differs from baseline:`);
-          }
-          if (!smartResult.pass && smartResult.errorDetail !== null) {
-            const previewError = smartResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
-            console.log(`  smartCompare Error: ${previewError}...`);
-          }
-          if (!flatResult.pass && flatResult.errorDetail !== null) {
-            const previewError = flatResult.errorDetail.substring(0, 100).replace(/\n/g, ' ');
-            console.log(`  flatCompare Error: ${previewError}...`);
-          }
-        }
-
-        if (baselineDataset === null) {
-          hydrationFailBaseline.set(algo.name, failFingerprint);
-          // Cache the full hydration result so baseline-skip reports can reuse
-          // the exact smartCompare/flatCompare details without synthesis.
-          baselineHydration.set(algo.name, hydration);
-          // Mark this algorithm as a deterministic baseline failure so it will
-          // be skipped (not re-executed) on all subsequent, larger datasets.
-          baselineFailedAlgorithms.add(algo.name);
-        }
-      }
-
-      // Build a probe fingerprint for change-detection against the baseline.
+      // Build probe fingerprint for change-detection against baseline.
       // Use the literal 'SKIPPED' when hydration failed and probes did not run.
       const probeFingerprint: string = consumerProbeResult.ran
         ? consumerProbeResult.probes
@@ -702,10 +873,13 @@ function runBenchmark() {
             .join(',')
         : 'SKIPPED';
 
-      if (baselineDataset === null) {
-        // First (baseline) dataset — record probe baseline and print details in full.
-        probeBaseline.set(algo.name, probeFingerprint);
+      if (isBaseline) {
+        // ── Baseline dataset: print everything in full immediately ────────────
+        console.log(hydrationLine);
+        for (const line of failureDetailLines) console.log(line);
 
+        // Record probe baseline and print probe summary in full.
+        probeBaseline.set(algo.name, probeFingerprint);
         if (consumerProbeResult.ran) {
           const probeSummary = consumerProbeResult.probes
             .map((p) => {
@@ -723,37 +897,73 @@ function runBenchmark() {
         } else {
           console.log(`  Consumer probes: not run (hydration failed)`);
         }
-      } else {
-        // Subsequent dataset — probe outcomes are omitted when unchanged from baseline.
-        // When the result changed vs. baseline AND probes still ran (different outcome),
-        // print in full so the divergence is visible.
-        // When probes went from "ran" to "not run" due to hydration failure, that is
-        // already communicated by the hydration output line above — no probe line needed.
-        const baseline = probeBaseline.get(algo.name);
-        if (baseline === undefined || baseline !== probeFingerprint) {
-          if (consumerProbeResult.ran) {
-            const probeSummary = consumerProbeResult.probes
-              .map((p) => {
-                const probeIcon = p.pass ? '✅' : '❌';
-                const verifyIcon =
-                  p.outputVerification !== null
-                    ? p.outputVerification.pass
-                      ? ' (output ✅)'
-                      : ' (output ❌)'
-                    : '';
-                return `${probeIcon} ${p.name}${verifyIcon}`;
-              })
-              .join('  ');
-            console.log(`  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`);
-          }
-          // else: hydration failed — probes not run; already shown in the hydration line above.
+
+        // Track baseline failures for skipping on later datasets.
+        if (!bothPass && !disagree) {
+          baselineHydration.set(algo.name, hydration);
+          baselineFailedAlgorithms.add(algo.name);
+          const failFingerprint =
+            `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
+          documentedFailures.set(algo.name, failFingerprint);
         }
-        // Unchanged from baseline: intentionally no output line.
+      } else {
+        // ── Later dataset: collect outcome for deferred batch formatting ──────
+        const failFingerprint =
+          !bothPass && !disagree
+            ? `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`
+            : null;
+
+        // Determine whether this failure is already documented from a prior tier.
+        const knownPrior =
+          failFingerprint !== null && documentedFailures.get(algo.name) === failFingerprint;
+        const isNewFail = failFingerprint !== null && !knownPrior;
+
+        if (isNewFail) {
+          // First occurrence of this failure — document it so subsequent tiers suppress it.
+          documentedFailures.set(algo.name, failFingerprint!);
+        }
+
+        // Build probe-change line when the probe outcome differs from baseline.
+        let probeChangeLine: string | null = null;
+        const baselineProbe = probeBaseline.get(algo.name);
+        if (baselineProbe !== undefined && baselineProbe !== probeFingerprint && consumerProbeResult.ran) {
+          const probeSummary = consumerProbeResult.probes
+            .map((p) => {
+              const probeIcon = p.pass ? '✅' : '❌';
+              const verifyIcon =
+                p.outputVerification !== null
+                  ? p.outputVerification.pass
+                    ? ' (output ✅)'
+                    : ' (output ❌)'
+                  : '';
+              return `${probeIcon} ${p.name}${verifyIcon}`;
+            })
+            .join('  ');
+          probeChangeLine = `  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`;
+        }
+
+        laterOutcomes.push({
+          algoName: algo.name,
+          algoCategory: algo.category,
+          baselineSkipped: false,
+          knownPriorFailure: knownPrior,
+          isNewFailure: isNewFail,
+          isConflict: disagree,
+          hydrationLine,
+          failureDetailLines: isNewFail ? failureDetailLines : [],
+          probeChangeLine,
+        });
       }
     }
 
+    // Print the consolidated later-dataset output after all algorithms have run.
+    if (!isBaseline) {
+      const lines = buildLaterDatasetLines(laterOutcomes);
+      for (const line of lines) console.log(line);
+    }
+
     // After the first dataset's algorithms have been processed, lock in the baseline.
-    if (baselineDataset === null) {
+    if (isBaseline) {
       baselineDataset = dataset;
     }
 
