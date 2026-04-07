@@ -12,6 +12,7 @@ import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
 import { Manifest } from './types';
+import pkgJson from '../package.json';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
@@ -32,7 +33,7 @@ export interface RunMetadata {
   /**
    * Deterministic fingerprint used to decide whether the experiment needs to
    * re-run.  Computed from: manifest content hashes, selected dataset names,
-   * algorithm names, consumer probe names, and Node.js version.
+   * algorithm names, consumer probe names, Node.js version, and package version.
    * Platform / timing / memory are NOT part of the fingerprint.
    */
   fingerprint: string;
@@ -42,6 +43,13 @@ export interface RunMetadata {
   nodeVersion: string;
   /** OS platform (e.g. "linux", "win32").  User context only. */
   platform: string;
+  /**
+   * Package version from package.json (e.g. "1.0.0").  Part of the fingerprint —
+   * bumping the version in package.json invalidates any cached experiment results,
+   * which makes code changes (algorithm fixes, probe changes, compare logic) easy
+   * to signal without hashing source files directly.
+   */
+  packageVersion: string;
   /** Dataset tiers included in this run. */
   datasets: string[];
   /** Algorithm names included in this run. */
@@ -273,6 +281,8 @@ function formatRam(mb: number): string {
  *   - The `generatedAt` timestamp of the manifest (catches regenerations)
  *   - Selected dataset names, algorithm names, and probe names (sorted for stability)
  *   - Node.js version (stack-overflow thresholds are engine-specific)
+ *   - `package.json` version (bumping the version is the intended signal for code changes —
+ *     algorithm fixes, compare logic changes, probe changes — without hashing source files)
  *
  * Inputs that are volatile and intentionally excluded:
  *   - Wall-clock time, RAM measurements, OS platform, run timestamps
@@ -297,6 +307,7 @@ export function computeFingerprint(
     algorithms: [...algorithmNames].sort(),
     probes: [...probeNames].sort(),
     nodeVersion: process.version,
+    packageVersion: pkgJson.version,
   });
 
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
@@ -317,7 +328,10 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
     for (const dataset of datasets) {
       const reportRelPath = index.reports[dataset];
       if (typeof reportRelPath !== 'string') return false;
-      const absPath = path.join(reportsDir, reportRelPath);
+      // Guard against path traversal: the resolved path must stay within reportsDir.
+      const absPath = path.resolve(reportsDir, reportRelPath);
+      const rel = path.relative(reportsDir, absPath);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
       if (!fs.existsSync(absPath)) return false;
     }
 
@@ -395,6 +409,7 @@ function runBenchmark() {
     runAt,
     nodeVersion: process.version,
     platform: process.platform,
+    packageVersion: pkgJson.version,
     datasets,
     algorithms: algorithmNames,
     probes: probeNames,
