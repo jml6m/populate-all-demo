@@ -77,10 +77,17 @@ interface BenchmarkReport {
   timeComplexity: string;
   spaceComplexity: string;
   dataset: string;
+  /**
+   * Present and `true` when this algorithm was not executed for this dataset
+   * because it deterministically failed at the baseline tier.  `metrics` is
+   * `null` for skipped entries — no measurement was taken — so consumers must
+   * guard against this before including them in aggregations or plots.
+   */
+  skipped?: true;
   metrics: {
     timeMs: number;
     ramMb: number;
-  };
+  } | null;
   /**
    * Stage 1 — Hydration: did the algorithm produce a correct cyclic graph?
    * Verified by two independent comparers (smartCompare + flatCompare).
@@ -348,15 +355,13 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
 /**
  * Returns true when force mode is active.
  *
- * Force mode is detected from two sources (in priority order):
- *   1. The `POPULATE_ALL_FORCE` environment variable set to `"1"` — used by the
- *      `npm run experiment:force` script, because npm intercepts `--force` before
- *      the Node process can see it.
- *   2. The `--force` CLI argument — works when the script is invoked directly
- *      (e.g. `tsx src/runner.ts --force`) without going through npm.
+ * Force mode is detected via the `POPULATE_ALL_FORCE` environment variable set
+ * to `"1"`.  Use `npm run experiment:force` to activate it — this is more
+ * reliable than passing `--force` directly through npm, which intercepts that
+ * flag before the Node process can see it.
  */
 export function isForceMode(): boolean {
-  return process.env.POPULATE_ALL_FORCE === '1' || process.argv.includes('--force');
+  return process.env.POPULATE_ALL_FORCE === '1';
 }
 
 function runBenchmark() {
@@ -388,10 +393,8 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
-  // Parse --force CLI flag: bypass idempotency check and always run.
-  // Also supported via the POPULATE_ALL_FORCE=1 environment variable for
-  // npm-script invocations (npm intercepts --force before the Node process sees it).
-  // Use `npm run experiment:force` for reliable force mode through npm.
+  // Force mode: bypass the idempotency check and always run.
+  // Set POPULATE_ALL_FORCE=1 (via `npm run experiment:force`) to activate.
   const forceRun = isForceMode();
 
   // Parse trace-mode CLI flags:
@@ -446,7 +449,7 @@ function runBenchmark() {
   // Key: algorithmName, Value: fingerprint string.
   const probeBaseline = new Map<string, string>();
   const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> fingerprint
-  const hydrationErrorBaseline = new Map<string, string | null>(); // algorithmName -> error message (for reports)
+  const baselineHydration = new Map<string, BenchmarkReport['hydration']>(); // algorithmName -> full hydration result
   let baselineDataset: string | null = null;
 
   // Algorithms that failed at the baseline (first/smallest) dataset.
@@ -504,21 +507,18 @@ function runBenchmark() {
         console.log(`[${algo.category}] ${algo.name}`);
         console.log(`  Hydration:     ❌ FAIL (baseline)`);
         summaryRows[algoIdx].results.set(dataset, false);
-        // Record a minimal report using the cached baseline failure detail.
-        const failDetail = hydrationErrorBaseline.get(algo.name) ?? null;
+        // Re-use the exact hydration object from the baseline run.
+        // metrics is null — no execution took place; skipped: true lets report
+        // consumers distinguish these entries from genuine zero-time measurements.
         datasetResults.push({
           algorithmCategory: algo.category,
           algorithmName: algo.name,
           timeComplexity: algo.timeComplexity,
           spaceComplexity: algo.spaceComplexity,
           dataset: dataset,
-          metrics: { timeMs: 0, ramMb: 0 },
-          hydration: {
-            pass: false,
-            smartCompare: { pass: false, errorDetail: failDetail, nodesProcessed: 0, edgesTraversed: 0 },
-            flatCompare: { pass: false, errorDetail: failDetail },
-            doubleVerified: false,
-          },
+          skipped: true,
+          metrics: null,
+          hydration: baselineHydration.get(algo.name)!,
           consumerProbes: { ran: false, probes: [] },
         });
         continue;
@@ -681,13 +681,9 @@ function runBenchmark() {
 
         if (baselineDataset === null) {
           hydrationFailBaseline.set(algo.name, failFingerprint);
-          // Store both hydration error messages so baseline-skip reports can
-          // accurately re-use the original smartCompare and flatCompare details.
-          const baselineHydrationErrorDetail = JSON.stringify({
-            smartErrorDetail: smartResult.errorDetail,
-            flatErrorDetail: flatResult.errorDetail,
-          });
-          hydrationErrorBaseline.set(algo.name, baselineHydrationErrorDetail);
+          // Cache the full hydration result so baseline-skip reports can reuse
+          // the exact smartCompare/flatCompare details without synthesis.
+          baselineHydration.set(algo.name, hydration);
           // Mark this algorithm as a deterministic baseline failure so it will
           // be skipped (not re-executed) on all subsequent, larger datasets.
           baselineFailedAlgorithms.add(algo.name);

@@ -77,9 +77,8 @@ function run() {
   }
 
   // Force mode: bypass the idempotency guard and regenerate even when files are present.
-  // Supported via --force CLI flag OR the POPULATE_ALL_FORCE=1 environment variable.
-  // Use `npm run generate:force` when invoking through npm (npm intercepts --force directly).
-  const forceRegen = process.argv.includes('--force') || process.env.POPULATE_ALL_FORCE === '1';
+  // Set POPULATE_ALL_FORCE=1 (via `npm run generate:force`) to activate.
+  const forceRegen = process.env.POPULATE_ALL_FORCE === '1';
 
   const outputDir = path.join(__dirname, config.outputDir);
   const manifestPath = path.join(outputDir, 'manifest.json');
@@ -99,7 +98,7 @@ function run() {
   }
 
   // Idempotency guard: skip generation if every requested dataset's files are already present.
-  // Pass --force (or use `npm run generate:force`) to bypass this check and regenerate regardless.
+  // Use `npm run generate:force` to bypass this check and regenerate regardless.
   if (!forceRegen && fs.existsSync(manifestPath)) {
     const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
 

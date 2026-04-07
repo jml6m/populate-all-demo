@@ -323,17 +323,12 @@ describe('computeFingerprint — packageVersion sensitivity', () => {
 
 describe('isForceMode — environment variable detection', () => {
   let originalEnvValue: string | undefined;
-  let originalArgv: string[];
 
   beforeEach(() => {
     originalEnvValue = process.env.POPULATE_ALL_FORCE;
-    originalArgv = process.argv;
-    // Remove --force from argv so env-var tests are not affected by the test runner's flags.
-    process.argv = process.argv.filter((a) => a !== '--force');
   });
 
   afterEach(() => {
-    process.argv = originalArgv;
     if (originalEnvValue === undefined) {
       delete process.env.POPULATE_ALL_FORCE;
     } else {
@@ -364,11 +359,5 @@ describe('isForceMode — environment variable detection', () => {
   it('returns false when POPULATE_ALL_FORCE is empty string', () => {
     process.env.POPULATE_ALL_FORCE = '';
     assert.equal(isForceMode(), false);
-  });
-
-  it('returns true when --force is in process.argv', () => {
-    delete process.env.POPULATE_ALL_FORCE;
-    process.argv = [...process.argv, '--force'];
-    assert.equal(isForceMode(), true);
   });
 });
