@@ -410,7 +410,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
     if (stablePasses.length > 0) {
       const count = stablePasses.length;
       const algoWord = count === 1 ? 'algorithm' : 'algorithms';
-      lines.push(`  Remaining ${count} ${algoWord} continued to pass — experiment stable.`);
+      lines.push(`  ${count} ${algoWord} continued to pass — experiment stable.`);
     }
   } else {
     // Something changed or dropped out — show individual entries so the
