@@ -8,7 +8,7 @@ import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
 import { ConsumerResult, cycleFlatProbe, naiveJsonProbe } from './consumer';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
-const ANALYSIS_DIR = path.resolve(__dirname, '..', '..', 'analysis');
+const ANALYSIS_DIR = path.resolve(__dirname, '..', '..', 'logs');
 
 // ---------------------------------------------------------------------------
 // Helpers — build small, controlled cyclic / acyclic graphs by hand

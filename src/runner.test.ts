@@ -542,38 +542,50 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
 }
 
 describe('buildLaterDatasetLines — compact summary (no changes)', () => {
-  it('produces a compact summary sentence when all non-skipped algorithms pass', () => {
+  it('produces a compact summary sentence only when NO algorithms are omitted and all pass', () => {
     const outcomes: LaterAlgoOutcome[] = [
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makePassOutcome('Map Tracker', 'Reference Tracking'),
       makePassOutcome('Tarjan SCC Layering', 'Topological'),
       makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
     ];
     const lines = buildLaterDatasetLines(outcomes);
-    // Should have one omission note + one compact summary
-    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+    // All pass, nothing omitted → compact summary
     assert.ok(lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
-    // Should NOT have individual per-algorithm header lines
+    // No individual header lines in compact mode
     assert.ok(!lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
   });
 
-  it('uses singular "algorithm" when only one algorithm passes', () => {
-    const outcomes: LaterAlgoOutcome[] = [
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-      makePassOutcome('Map Tracker', 'Reference Tracking'),
-    ];
+  it('uses singular "algorithm" when only one algorithm passes and nothing is omitted', () => {
+    const outcomes: LaterAlgoOutcome[] = [makePassOutcome('Map Tracker', 'Reference Tracking')];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('1 algorithm continued to pass')));
   });
 
-  it('uses plural "algorithms" when multiple algorithms pass', () => {
+  it('uses plural "algorithms" when multiple algorithms pass and nothing is omitted', () => {
     const outcomes: LaterAlgoOutcome[] = [
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makePassOutcome('Tarjan SCC Layering', 'Topological'),
       makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
     ];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('2 algorithms continued to pass')));
+  });
+
+  it('shows individual entries (not compact summary) when a baseline-skipped algorithm is omitted', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    // Omission note present
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+    // Individual entries for passing algorithms
+    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
+    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
+    // No compact summary sentence
+    assert.ok(!lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
   });
 });
 
