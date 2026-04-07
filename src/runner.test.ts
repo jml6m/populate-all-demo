@@ -182,7 +182,7 @@ describe('isAlreadyUpToDate — fingerprint mismatch', () => {
     try {
       const index: ExperimentIndex = {
         metadata: makeMetadata({ fingerprint: 'old-fingerprint-abc' }),
-        reports: { basic: 'reports/basic/benchmark-1.json' },
+        reports: { basic: 'basic/benchmark-1.json' },
       };
       fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'new-fingerprint-xyz', ['basic']), false);
