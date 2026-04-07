@@ -826,7 +826,7 @@ function runBenchmark() {
       const cycleFlatResult = consumerProbeResult.ran
         ? consumerProbeResult.probes.find((p) => p.name === 'cycle-flat')
         : undefined;
-      const endToEndPass = bothPass && (cycleFlatResult !== undefined ? cycleFlatResult.pass : bothPass);
+      const endToEndPass = bothPass && (cycleFlatResult?.pass ?? false);
 
       // Record end-to-end result for the summary table.
       summaryRows[algoIdx].results.set(dataset, disagree ? null : endToEndPass);
