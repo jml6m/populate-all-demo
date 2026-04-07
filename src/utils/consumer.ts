@@ -22,13 +22,13 @@ export interface ConsumerResult {
 }
 
 /**
- * A ConsumerProbe describes one strategy for consuming (serializing or
- * traversing) a hydrated cyclic graph.  Probes must not mutate the input.
+ * A ConsumerProbe describes one strategy for serializing or consuming a hydrated
+ * cyclic graph.  Probes must not mutate the input.
  *
- * Named "probe" rather than "serializer" because not every strategy produces a
- * string: some traverse the graph, some export an alternative representation,
- * and some attempt a standard format (e.g. JSON).  The interface is intentionally
- * generic so that new strategies can be added without changing the runner.
+ * The current probes both test serialization strategies (naive `JSON.stringify`
+ * and an iterative index-based export), matching the taxonomy in
+ * analysis/ECOSYSTEM_RESEARCH.md §3.3.  The interface is intentionally generic
+ * so that new strategies can be added without changing the runner.
  *
  * See analysis/ECOSYSTEM_RESEARCH.md §3.3 for the taxonomy of serialization
  * strategies (Cycle Truncation, Back-Reference Pruning, ID Substitution, and

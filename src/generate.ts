@@ -76,6 +76,9 @@ function run() {
     tierFilter = tierName;
   }
 
+  // --force bypasses the idempotency guard and forces regeneration even when files are present.
+  const forceRegen = process.argv.includes('--force');
+
   const outputDir = path.join(__dirname, config.outputDir);
   const manifestPath = path.join(outputDir, 'manifest.json');
 
@@ -94,7 +97,8 @@ function run() {
   }
 
   // Idempotency guard: skip generation if every requested dataset's files are already present.
-  if (fs.existsSync(manifestPath)) {
+  // Pass --force to bypass this check and regenerate regardless.
+  if (!forceRegen && fs.existsSync(manifestPath)) {
     const existingManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest;
 
     const missingFiles = datasetsToProcess
@@ -107,9 +111,7 @@ function run() {
     if (missingFiles.length === 0) {
       const scope = tierFilter !== null ? `"${tierFilter}" dataset` : 'all datasets';
       console.log(`⚡ Data is already up-to-date (${scope}) — skipping generation.`);
-      if (tierFilter === null) {
-        console.log(`   (Delete data/manifest.json to force a full regeneration.)`);
-      }
+      console.log(`   (Pass --force to regenerate regardless.)`);
       return;
     }
 

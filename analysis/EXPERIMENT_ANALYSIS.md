@@ -35,12 +35,12 @@ where the challenge is well-documented and no general iterative solution is wide
 > EF Core) solve cyclic hydration via identity maps — architecturally the same principle as the
 > two-pass allocate-then-wire strategy tested here. However, their applications still crash when
 > the cyclic in-memory graph reaches a serializer (Jackson, `System.Text.Json`, native
-> `JSON.stringify`) that lacks its own cycle guard. Hydration correctness and consumer/serialization
+> `JSON.stringify`) that lacks its own cycle guard. Hydration correctness and serialization
 > viability are architecturally distinct concerns. This experiment measures both as separate stages:
 > **Stage 1 — Hydration** (does the algorithm produce a correct cyclic graph?) and **Stage 2 —
-> Serialization** (can a downstream consumer process that graph?). See §4 for the two-stage results
-> and [Ecosystem Research](./ECOSYSTEM_RESEARCH.md) §3 for extended analysis of the serialization
-> boundary.
+> Serialization** (can a downstream consumer serialize that graph?). See §4 for the two-stage
+> results and [Ecosystem Research](./ECOSYSTEM_RESEARCH.md) §3 for extended analysis of the
+> serialization boundary.
 
 ---
 
@@ -134,7 +134,7 @@ The experiment runner measures each algorithm across two distinct stages:
    `flatCompare` (index-based flat comparison against the raw answer file).  A result is
    *double-verified* only when both comparers agree.
 
-2. **Stage 2 — Serialization**: can a downstream consumer process the hydrated graph?  
+2. **Stage 2 — Serialization**: can a downstream consumer serialize the hydrated graph?  
    Runs only when hydration passes.  The experiment tests two consumer probes
    (see `src/utils/consumer.ts`):
    - **`naive-json`** — attempts `JSON.stringify` on the raw cyclic graph.  This probe will
@@ -166,16 +166,17 @@ Map Tracker is especially deceptive: it passes at small scale (10–5K nodes), g
 confidence, then crashes at production scale (50K+). The call stack depth, not the cycle guard,
 is the binding constraint.
 
-### Consumer Viability — Stage 2 (Serialization)
+### Serialization Viability — Stage 2
 
 Stage 2 runs only for tiers where hydration passed.  The key insight is that even a correctly
 hydrated cyclic graph crashes a naive consumer — the ORM did its job, but the response layer did
 not.
 
-Serialization probe behavior is **scale-invariant**: the outcome of `naive-json` and `cycle-flat`
+Serialization behavior is **scale-invariant**: the outcome of `naive-json` and `cycle-flat`
 depends on whether the graph contains cycles, not on how many nodes it has.  Both probes are
-evaluated in full on the basic (10-node) tier, where correctness is easiest to inspect; the same
-results are confirmed at every larger scale without reprinting.
+run in full on the basic (10-node) tier, where correctness is easiest to inspect; results are
+the same at every larger scale.  The experiment runner reflects this: serialization probe details
+are printed once for the baseline (basic) dataset and omitted for subsequent tiers.
 
 | Algorithm     | Tier where hydration ✅ | naive-json | cycle-flat |
 | ------------- | ----------------------- | ---------- | ---------- |
