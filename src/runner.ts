@@ -863,7 +863,9 @@ function runBenchmark() {
         resultLine = `❌ FAIL ${formatHydrationFailTag(smartErr, flatErr)}`;
       }
 
-      const hydrationLine = `  Hydration:     ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
+      // The pass/fail result is hydration-specific, but the timing/RAM metrics
+      // cover the full end-to-end experiment window, including consumer probes.
+      const hydrationLine = `  End-to-end:    ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
 
       // Build probe fingerprint for change-detection against baseline.
       // Use the literal 'SKIPPED' when hydration failed and probes did not run.
