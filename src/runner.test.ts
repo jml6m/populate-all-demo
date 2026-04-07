@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { computeFingerprint, isAlreadyUpToDate, ExperimentIndex, RunMetadata } from './runner';
+import { computeFingerprint, isAlreadyUpToDate, isForceMode, ExperimentIndex, RunMetadata } from './runner';
 import type { Manifest } from './types';
 
 // ---------------------------------------------------------------------------
@@ -314,5 +314,50 @@ describe('computeFingerprint — packageVersion sensitivity', () => {
     const fp1 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
     const fp2 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
     assert.equal(fp1, fp2, 'Fingerprint must be identical across calls with the same inputs');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isForceMode
+// ---------------------------------------------------------------------------
+
+describe('isForceMode — environment variable detection', () => {
+  let originalEnvValue: string | undefined;
+
+  beforeEach(() => {
+    originalEnvValue = process.env.POPULATE_ALL_FORCE;
+  });
+
+  afterEach(() => {
+    if (originalEnvValue === undefined) {
+      delete process.env.POPULATE_ALL_FORCE;
+    } else {
+      process.env.POPULATE_ALL_FORCE = originalEnvValue;
+    }
+  });
+
+  it('returns true when POPULATE_ALL_FORCE is "1"', () => {
+    process.env.POPULATE_ALL_FORCE = '1';
+    assert.equal(isForceMode(), true);
+  });
+
+  it('returns false when POPULATE_ALL_FORCE is unset', () => {
+    delete process.env.POPULATE_ALL_FORCE;
+    assert.equal(isForceMode(), false);
+  });
+
+  it('returns false when POPULATE_ALL_FORCE is "0"', () => {
+    process.env.POPULATE_ALL_FORCE = '0';
+    assert.equal(isForceMode(), false);
+  });
+
+  it('returns false when POPULATE_ALL_FORCE is "true" (only "1" is accepted)', () => {
+    process.env.POPULATE_ALL_FORCE = 'true';
+    assert.equal(isForceMode(), false);
+  });
+
+  it('returns false when POPULATE_ALL_FORCE is empty string', () => {
+    process.env.POPULATE_ALL_FORCE = '';
+    assert.equal(isForceMode(), false);
   });
 });

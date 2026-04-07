@@ -77,10 +77,17 @@ interface BenchmarkReport {
   timeComplexity: string;
   spaceComplexity: string;
   dataset: string;
+  /**
+   * Present and `true` when this algorithm was not executed for this dataset
+   * because it deterministically failed at the baseline tier.  `metrics` is
+   * `null` for skipped entries — no measurement was taken — so consumers must
+   * guard against this before including them in aggregations or plots.
+   */
+  skipped?: true;
   metrics: {
     timeMs: number;
     ramMb: number;
-  };
+  } | null;
   /**
    * Stage 1 — Hydration: did the algorithm produce a correct cyclic graph?
    * Verified by two independent comparers (smartCompare + flatCompare).
@@ -345,6 +352,18 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
 // Main benchmark runner
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns true when force mode is active.
+ *
+ * Force mode is detected via the `POPULATE_ALL_FORCE` environment variable set
+ * to `"1"`.  Use `npm run experiment:force` to activate it — this is more
+ * reliable than passing `--force` directly through npm, which intercepts that
+ * flag before the Node process can see it.
+ */
+export function isForceMode(): boolean {
+  return process.env.POPULATE_ALL_FORCE === '1';
+}
+
 function runBenchmark() {
   const manifest = loadManifest();
   const reportsDir = path.join(__dirname, '../reports');
@@ -374,8 +393,9 @@ function runBenchmark() {
     datasets = allDatasets;
   }
 
-  // Parse --force CLI flag: bypass idempotency check and always run.
-  const forceRun = process.argv.includes('--force');
+  // Force mode: bypass the idempotency check and always run.
+  // Set POPULATE_ALL_FORCE=1 (via `npm run experiment:force`) to activate.
+  const forceRun = isForceMode();
 
   // Parse trace-mode CLI flags:
   //   --trace-build    enables buildPopulatedFromAnswer verbose trace (expected-graph wiring)
@@ -396,7 +416,7 @@ function runBenchmark() {
 
   if (!forceRun && isAlreadyUpToDate(reportsDir, fingerprint, datasets)) {
     console.log(`⚡ Experiment results are already up-to-date — skipping run.`);
-    console.log(`   (Pass --force to re-run the experiment regardless.)`);
+    console.log(`   (Run \`npm run experiment:force\` to re-run the experiment regardless.)`);
     return;
   }
 
@@ -417,19 +437,26 @@ function runBenchmark() {
   };
 
   // ---------------------------------------------------------------------------
-  // Print one-time note about serialization probe output scope.
+  // Print one-time note about consumer probe output scope.
   // ---------------------------------------------------------------------------
   console.log(
     `\nNote: Consumer probe details are printed in full for the first (baseline) dataset only.`,
   );
-  console.log(`      Later datasets omit probe output — probe behavior is scale-invariant.\n`);
+  console.log(`      Later datasets focus on hydration scalability — probe results are scale-invariant.\n`);
 
   // Per-algorithm baseline fingerprints for hydration failures and consumer probes.
   // Used to suppress repeated identical detail lines on subsequent datasets.
   // Key: algorithmName, Value: fingerprint string.
   const probeBaseline = new Map<string, string>();
-  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> error summary
+  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> fingerprint
+  const baselineHydration = new Map<string, BenchmarkReport['hydration']>(); // algorithmName -> full hydration result
   let baselineDataset: string | null = null;
+
+  // Algorithms that failed at the baseline (first/smallest) dataset.
+  // These are skipped on subsequent datasets: if an algorithm fails on the smallest
+  // cyclic dataset, larger datasets will also fail — re-executing adds no new information.
+  // (Map Tracker passes at small scale and only fails at large scale, so it is NOT skipped.)
+  const baselineFailedAlgorithms = new Set<string>();
 
   // Summary data collected for the final table.
   const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
@@ -472,6 +499,31 @@ function runBenchmark() {
 
     for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
       const algo = algorithms[algoIdx];
+
+      // Skip algorithms that failed on the baseline dataset — they deterministically fail
+      // at all scales, so re-executing on larger datasets adds no new information.
+      // Map Tracker passes at small scale and only fails at large scale, so it continues running.
+      if (baselineDataset !== null && baselineFailedAlgorithms.has(algo.name)) {
+        console.log(`[${algo.category}] ${algo.name}`);
+        console.log(`  Hydration:     ❌ FAIL (baseline)`);
+        summaryRows[algoIdx].results.set(dataset, false);
+        // Re-use the exact hydration object from the baseline run.
+        // metrics is null — no execution took place; skipped: true lets report
+        // consumers distinguish these entries from genuine zero-time measurements.
+        datasetResults.push({
+          algorithmCategory: algo.category,
+          algorithmName: algo.name,
+          timeComplexity: algo.timeComplexity,
+          spaceComplexity: algo.spaceComplexity,
+          dataset: dataset,
+          skipped: true,
+          metrics: null,
+          hydration: baselineHydration.get(algo.name)!,
+          consumerProbes: { ran: false, probes: [] },
+        });
+        continue;
+      }
+
       console.log(`[${algo.category}] ${algo.name}`);
 
       let executionTimeMs = 0;
@@ -629,6 +681,12 @@ function runBenchmark() {
 
         if (baselineDataset === null) {
           hydrationFailBaseline.set(algo.name, failFingerprint);
+          // Cache the full hydration result so baseline-skip reports can reuse
+          // the exact smartCompare/flatCompare details without synthesis.
+          baselineHydration.set(algo.name, hydration);
+          // Mark this algorithm as a deterministic baseline failure so it will
+          // be skipped (not re-executed) on all subsequent, larger datasets.
+          baselineFailedAlgorithms.add(algo.name);
         }
       }
 
@@ -667,7 +725,10 @@ function runBenchmark() {
         }
       } else {
         // Subsequent dataset — probe outcomes are omitted when unchanged from baseline.
-        // When the result changed vs. baseline, print in full so the difference is visible.
+        // When the result changed vs. baseline AND probes still ran (different outcome),
+        // print in full so the divergence is visible.
+        // When probes went from "ran" to "not run" due to hydration failure, that is
+        // already communicated by the hydration output line above — no probe line needed.
         const baseline = probeBaseline.get(algo.name);
         if (baseline === undefined || baseline !== probeFingerprint) {
           if (consumerProbeResult.ran) {
@@ -684,9 +745,8 @@ function runBenchmark() {
               })
               .join('  ');
             console.log(`  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`);
-          } else {
-            console.log(`  Consumer probes: ⚠️  changed from baseline — not run (hydration failed)`);
           }
+          // else: hydration failed — probes not run; already shown in the hydration line above.
         }
         // Unchanged from baseline: intentionally no output line.
       }
