@@ -175,8 +175,8 @@ describe('smartCompare — matching graphs', () => {
     assert.equal(r.nodesProcessed, 2);
     assert.equal(r.edgesTraversed, 2);
 
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'smart-compare-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
     const header = [
       '=== smartCompare verbose trace — 2-node cycle back-edge ===',
       `nodesProcessed: ${r.nodesProcessed}`,
@@ -317,8 +317,8 @@ describe('smartCompare — mismatch detection', () => {
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
 
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'smart-compare-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
     const header = [
       '',
       '=== smartCompare verbose trace — wrong back-edge target mismatch (A→B→A vs A→B→B) ===',
@@ -366,8 +366,8 @@ describe('smartCompare — mismatch detection', () => {
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
 
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'smart-compare-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
     const header = [
       '',
       '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
@@ -621,8 +621,8 @@ describe('smartCompare — verbose basic-tier trace', () => {
     assert.ok(result.edgesTraversed > 0, 'edgesTraversed must be > 0');
 
     // Write trace to analysis directory
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'basic-tier-accuracy-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'basic-tier-accuracy-trace.log');
     const header = [
       '=== smartCompare verbose trace — basic tier ===',
       `nodesProcessed: ${result.nodesProcessed}`,
@@ -683,8 +683,8 @@ describe('buildPopulatedFromAnswer — verbose basic-tier trace', () => {
     }
 
     // Write trace to analysis directory
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'build-answer-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'build-answer-trace.log');
     fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
     console.log(`[test] buildPopulatedFromAnswer trace written to ${tracePath}`);
   });

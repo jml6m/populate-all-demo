@@ -10,6 +10,8 @@ import {
   formatHydrationFailTag,
   buildFailureDetailLines,
   buildLaterDatasetLines,
+  capErrorDetail,
+  MAX_ERROR_DETAIL_CHARS,
   ExperimentIndex,
   RunMetadata,
   LaterAlgoOutcome,
@@ -373,6 +375,38 @@ describe('isForceMode — environment variable detection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// capErrorDetail
+// ---------------------------------------------------------------------------
+
+describe('capErrorDetail — character limit enforcement', () => {
+  it('returns null when input is null', () => {
+    assert.equal(capErrorDetail(null), null);
+  });
+
+  it('returns the message unchanged when it is within the limit', () => {
+    const msg = 'Maximum call stack size exceeded';
+    assert.equal(capErrorDetail(msg), msg);
+  });
+
+  it('caps messages that exceed MAX_ERROR_DETAIL_CHARS', () => {
+    const longMsg = 'A'.repeat(MAX_ERROR_DETAIL_CHARS + 20);
+    const capped = capErrorDetail(longMsg);
+    assert.ok(capped !== null && capped.length === MAX_ERROR_DETAIL_CHARS);
+    assert.equal(capped, 'A'.repeat(MAX_ERROR_DETAIL_CHARS));
+  });
+
+  it('normalises embedded newlines to spaces', () => {
+    assert.equal(capErrorDetail('line1\nline2'), 'line1 line2');
+    assert.equal(capErrorDetail('line1\r\nline2'), 'line1 line2');
+  });
+
+  it('MAX_ERROR_DETAIL_CHARS is a positive integer', () => {
+    assert.equal(typeof MAX_ERROR_DETAIL_CHARS, 'number');
+    assert.ok(Number.isInteger(MAX_ERROR_DETAIL_CHARS));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // formatHydrationFailTag
 // ---------------------------------------------------------------------------
 
@@ -400,23 +434,6 @@ describe('formatHydrationFailTag — de-duplication', () => {
   it('returns an empty string when both errors are null', () => {
     const tag = formatHydrationFailTag(null, null);
     assert.equal(tag, '');
-  });
-
-  it('truncates long error strings to the default 60 characters', () => {
-    const longErr = 'A'.repeat(100);
-    const tag = formatHydrationFailTag(longErr, longErr);
-    assert.equal(tag, `[both comparers: ${'A'.repeat(60)}]`);
-  });
-
-  it('respects a custom truncateAt value', () => {
-    const tag = formatHydrationFailTag('Hello World', 'Hello World', 5);
-    assert.equal(tag, '[both comparers: Hello]');
-  });
-
-  it('consolidates errors that differ in full but match after truncation', () => {
-    // "AAAAX" and "AAAAY" both truncate to "AAAA" at truncateAt=4 — treated as same
-    const tag = formatHydrationFailTag('AAAAX', 'AAAAY', 4);
-    assert.equal(tag, '[both comparers: AAAA]');
   });
 });
 
@@ -452,19 +469,6 @@ describe('buildFailureDetailLines — de-duplication', () => {
     const lines = buildFailureDetailLines(null, null);
     assert.deepEqual(lines, []);
   });
-
-  it('truncates to the default 100 characters', () => {
-    const longErr = 'E'.repeat(200);
-    const lines = buildFailureDetailLines(longErr, longErr);
-    assert.equal(lines.length, 1);
-    assert.ok(lines[0].includes('E'.repeat(100) + '...'));
-  });
-
-  it('replaces newlines in the error message', () => {
-    const lines = buildFailureDetailLines('line1\nline2', 'line1\nline2');
-    assert.equal(lines.length, 1);
-    assert.ok(lines[0].includes('line1 line2'));
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -479,7 +483,7 @@ function makePassOutcome(name: string, category: string, time = '10ms', ram = '1
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: false,
-    hydrationLine: `  Hydration:     ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine: null,
   };
@@ -507,7 +511,7 @@ function makeKnownPriorOutcome(name: string, category: string): LaterAlgoOutcome
     knownPriorFailure: true,
     isNewFailure: false,
     isConflict: false,
-    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: stack overflow] | Time: < 0.1ms | RAM: < 0.1 MB`,
+    hydrationLine: `  Full Run:      ❌ FAIL [both comparers: stack overflow] | Time: < 0.1ms | RAM: < 0.1 MB`,
     failureDetailLines: [],
     probeChangeLine: null,
   };
@@ -521,7 +525,7 @@ function makeNewFailOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: true,
     isConflict: false,
-    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded] | Time: < 0.1ms | RAM: < 0.1 MB`,
+    hydrationLine: `  Full Run:      ❌ FAIL [both comparers: Maximum call stack size exceeded] | Time: < 0.1ms | RAM: < 0.1 MB`,
     failureDetailLines: ['  Both comparers: Maximum call stack size exceeded...'],
     probeChangeLine: null,
   };
@@ -535,7 +539,7 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: true,
-    hydrationLine: `  Hydration:     🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
+    hydrationLine: `  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
     failureDetailLines: [],
     probeChangeLine: null,
   };

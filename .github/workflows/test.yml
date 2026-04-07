@@ -26,6 +26,9 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      - name: Create logs directory
+        run: mkdir -p logs
+
       - name: Test
         run: npm run test
 

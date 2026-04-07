@@ -235,8 +235,8 @@ describe('consumer probe contrast — hydration success ≠ naive-json viability
     assert.ok(flatResult.serializedOutput !== null, 'cycleFlatProbe should produce serializedOutput');
 
     // Write trace log for auditing
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'consumer-probe-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'consumer-probe-trace.log');
     const logLines = [
       '=== Consumer probe contrast — 2-node cycle (a → b → a) ===',
       '',
@@ -335,8 +335,8 @@ describe('cycleFlatProbe — basic-tier integration', () => {
     }
 
     // Write trace log for auditing
-    fs.mkdirSync(ANALYSIS_DIR, { recursive: true });
-    const tracePath = path.join(ANALYSIS_DIR, 'cycle-flat-probe-trace.log');
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'cycle-flat-probe-trace.log');
     const header = [
       '=== cycleFlatProbe integration trace — basic-tier twoPassWire ===',
       `nodes: ${output.length}`,

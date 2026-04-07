@@ -286,33 +286,46 @@ function formatRam(mb: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Formats the error tag(s) for a hydration failure summary line.
+ * Maximum length for any single error detail string stored in experiment
+ * results or displayed in console output.  All error messages coming from
+ * comparers and caught exceptions are capped at this length before they are
+ * stored, so display helpers never need to truncate again.
+ */
+export const MAX_ERROR_DETAIL_CHARS = 80;
+
+/**
+ * Caps an error detail string at MAX_ERROR_DETAIL_CHARS and normalises
+ * embedded newlines to spaces.  Returns null when input is null.
+ */
+export function capErrorDetail(msg: string | null): string | null {
+  if (msg === null) return null;
+  return msg.replace(/\r?\n/g, ' ').substring(0, MAX_ERROR_DETAIL_CHARS);
+}
+
+/**
+ * Formats the error tag(s) for a full-run failure summary line.
  *
  * When both comparers fail with the same error text, consolidates to a single
  * `[both comparers: …]` tag so the same message is not repeated twice.
  * When they differ, returns individual tags for each comparer.
  *
+ * Expects error strings that have already been capped via capErrorDetail —
+ * no additional truncation is applied here.
+ *
  * @param smartErr - errorDetail from smartCompare (null if comparer passed or no detail)
  * @param flatErr  - errorDetail from flatCompare  (null if comparer passed or no detail)
- * @param truncateAt - max characters per error string before truncation (default 60)
  */
 export function formatHydrationFailTag(
   smartErr: string | null,
   flatErr: string | null,
-  truncateAt = 60,
 ): string {
-  const normalizeSummaryError = (errorDetail: string): string =>
-    errorDetail.replace(/\r?\n/g, ' ');
-
-  const s = smartErr !== null ? normalizeSummaryError(smartErr).substring(0, truncateAt) : null;
-  const f = flatErr !== null ? normalizeSummaryError(flatErr).substring(0, truncateAt) : null;
-  if (s !== null && f !== null && s === f) {
-    return `[both comparers: ${s}]`;
+  if (smartErr !== null && flatErr !== null && smartErr === flatErr) {
+    return `[both comparers: ${smartErr}]`;
   }
 
   const parts: string[] = [];
-  if (s !== null) parts.push(`[smartCompare: ${s}]`);
-  if (f !== null) parts.push(`[flatCompare: ${f}]`);
+  if (smartErr !== null) parts.push(`[smartCompare: ${smartErr}]`);
+  if (flatErr !== null) parts.push(`[flatCompare: ${flatErr}]`);
   return parts.join(' ');
 }
 
@@ -323,25 +336,23 @@ export function formatHydrationFailTag(
  * line instead of printing the same error twice.  When they differ, returns
  * individual lines for each failing comparer.
  *
+ * Expects error strings that have already been capped via capErrorDetail —
+ * no additional truncation is applied here.
+ *
  * @param smartErr   - errorDetail from smartCompare (null if passed or no detail)
  * @param flatErr    - errorDetail from flatCompare  (null if passed or no detail)
- * @param truncateAt - max characters to preview before "…" (default 100)
  */
 export function buildFailureDetailLines(
   smartErr: string | null,
   flatErr: string | null,
-  truncateAt = 100,
 ): string[] {
-  const s = smartErr !== null ? smartErr.substring(0, truncateAt).replace(/\n/g, ' ') : null;
-  const f = flatErr !== null ? flatErr.substring(0, truncateAt).replace(/\n/g, ' ') : null;
-
-  if (s !== null && f !== null && s === f) {
-    return [`  Both comparers: ${s}...`];
+  if (smartErr !== null && flatErr !== null && smartErr === flatErr) {
+    return [`  Both comparers: ${smartErr}...`];
   }
 
   const lines: string[] = [];
-  if (s !== null) lines.push(`  smartCompare Error: ${s}...`);
-  if (f !== null) lines.push(`  flatCompare Error: ${f}...`);
+  if (smartErr !== null) lines.push(`  smartCompare Error: ${smartErr}...`);
+  if (flatErr !== null) lines.push(`  flatCompare Error: ${flatErr}...`);
   return lines;
 }
 
@@ -744,19 +755,23 @@ function runBenchmark() {
         if (traceCompare) {
           console.log(`\n=== smartCompare verbose trace — ${dataset} / ${algo.name} ===`);
         }
-        smartResult = smartCompare(executionResult, answerData, traceCompare);
-        flatResult = flatCompare(executionResult, rawAnswerEntries);
+        const rawSmart = smartCompare(executionResult, answerData, traceCompare);
+        const rawFlat = flatCompare(executionResult, rawAnswerEntries);
+        // Cap error messages at MAX_ERROR_DETAIL_CHARS so display helpers never truncate.
+        smartResult = { ...rawSmart, errorDetail: capErrorDetail(rawSmart.errorDetail) };
+        flatResult = { ...rawFlat, errorDetail: capErrorDetail(rawFlat.errorDetail) };
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = capErrorDetail(error instanceof Error ? error.message : String(error));
+        const capped = errorMessage !== null && errorMessage !== '' ? errorMessage : 'Fatal Execution Error';
         smartResult = {
           pass: false,
-          errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
+          errorDetail: capped,
           nodesProcessed: 0,
           edgesTraversed: 0,
         };
         flatResult = {
           pass: false,
-          errorDetail: errorMessage !== '' ? errorMessage : 'Fatal Execution Error',
+          errorDetail: capped,
         };
       }
 
@@ -863,9 +878,9 @@ function runBenchmark() {
         resultLine = `❌ FAIL ${formatHydrationFailTag(smartErr, flatErr)}`;
       }
 
-      // The pass/fail result is hydration-specific, but the timing/RAM metrics
-      // cover the full end-to-end experiment window, including consumer probes.
-      const hydrationLine = `  End-to-end:    ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
+      // The pass/fail result reflects hydration, but the timing/RAM metrics
+      // cover the full experiment window including consumer probes.
+      const hydrationLine = `  Full Run:      ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
 
       // Build probe fingerprint for change-detection against baseline.
       // Use the literal 'SKIPPED' when hydration failed and probes did not run.
