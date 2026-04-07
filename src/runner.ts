@@ -296,9 +296,11 @@ export function formatHydrationFailTag(
   flatErr: string | null,
   truncateAt = 60,
 ): string {
-  const s = smartErr !== null ? smartErr.substring(0, truncateAt) : null;
-  const f = flatErr !== null ? flatErr.substring(0, truncateAt) : null;
+  const normalizeSummaryError = (errorDetail: string): string =>
+    errorDetail.replace(/\r?\n/g, ' ');
 
+  const s = smartErr !== null ? normalizeSummaryError(smartErr).substring(0, truncateAt) : null;
+  const f = flatErr !== null ? normalizeSummaryError(flatErr).substring(0, truncateAt) : null;
   if (s !== null && f !== null && s === f) {
     return `[both comparers: ${s}]`;
   }
