@@ -445,7 +445,8 @@ function runBenchmark() {
   // Used to suppress repeated identical detail lines on subsequent datasets.
   // Key: algorithmName, Value: fingerprint string.
   const probeBaseline = new Map<string, string>();
-  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> error summary
+  const hydrationFailBaseline = new Map<string, string>(); // algorithmName -> fingerprint
+  const hydrationErrorBaseline = new Map<string, string | null>(); // algorithmName -> error message (for reports)
   let baselineDataset: string | null = null;
 
   // Algorithms that failed at the baseline (first/smallest) dataset.
@@ -504,8 +505,7 @@ function runBenchmark() {
         console.log(`  Hydration:     ❌ FAIL (baseline)`);
         summaryRows[algoIdx].results.set(dataset, false);
         // Record a minimal report using the cached baseline failure detail.
-        const cachedFail = hydrationFailBaseline.get(algo.name);
-        const failDetail = cachedFail !== undefined ? cachedFail.split('|')[0].replace('smart:', '') : null;
+        const failDetail = hydrationErrorBaseline.get(algo.name) ?? null;
         datasetResults.push({
           algorithmCategory: algo.category,
           algorithmName: algo.name,
@@ -681,6 +681,8 @@ function runBenchmark() {
 
         if (baselineDataset === null) {
           hydrationFailBaseline.set(algo.name, failFingerprint);
+          // Store the error message separately for clean re-use in baseline-skip reports.
+          hydrationErrorBaseline.set(algo.name, smartResult.errorDetail);
           // Mark this algorithm as a deterministic baseline failure so it will
           // be skipped (not re-executed) on all subsequent, larger datasets.
           baselineFailedAlgorithms.add(algo.name);
