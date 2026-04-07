@@ -458,7 +458,7 @@ function runBenchmark() {
           if (serialization.ran) {
             console.log(`  Serialization: ✅ as established (${baselineDataset})`);
           } else {
-            console.log(`  Serialization: ⏭️  skipped (hydration failed — same as ${baselineDataset})`);
+            console.log(`  Serialization: ⏭️  skipped — as established (${baselineDataset})`);
           }
         } else {
           // Results changed vs baseline — print in full so the difference is visible.
