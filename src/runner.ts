@@ -59,7 +59,7 @@ export interface RunMetadata {
  */
 export interface ExperimentIndex {
   metadata: RunMetadata;
-  /** Per-dataset report paths, relative to the project root (e.g. "reports/basic/benchmark-1234.json"). */
+  /** Per-dataset report paths, relative to the reports directory (e.g. "basic/benchmark-1234.json"). */
   reports: Record<string, string>;
 }
 
@@ -317,7 +317,7 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
     for (const dataset of datasets) {
       const reportRelPath = index.reports[dataset];
       if (typeof reportRelPath !== 'string') return false;
-      const absPath = path.join(reportsDir, '..', reportRelPath);
+      const absPath = path.join(reportsDir, reportRelPath);
       if (!fs.existsSync(absPath)) return false;
     }
 
@@ -689,7 +689,7 @@ function runBenchmark() {
     const reportPath = path.join(datasetReportsDir, reportFilename);
     const datasetReportFile: DatasetReportFile = { metadata: runMetadata, results: datasetResults };
     fs.writeFileSync(reportPath, JSON.stringify(datasetReportFile, null, 2));
-    reportPaths[dataset] = `reports/${dataset}/${reportFilename}`;
+    reportPaths[dataset] = `${dataset}/${reportFilename}`;
     console.log(`\n✅ Report saved to ${reportPath}\n`);
   }
 
@@ -729,7 +729,7 @@ function runBenchmark() {
       const cols = processedDatasets.map((d) => {
         const result = row.results.get(d);
         if (result === undefined) return '  —  '.padStart(COL_WIDTH);
-        if (result === null) return '⚠️CONFLICT'.padStart(COL_WIDTH);
+        if (result === null) return '⚠️ CONFLICT'.padStart(COL_WIDTH);
         return (result ? '✅ PASS' : '❌ FAIL').padStart(COL_WIDTH);
       });
       console.log(row.algoName.padEnd(algoColWidth) + cols.join(''));

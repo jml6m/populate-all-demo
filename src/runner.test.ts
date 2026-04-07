@@ -223,12 +223,10 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
 
   it('returns true when fingerprint matches and all report files exist', () => {
     const tempDir = makeTempDir();
-    // tempDir is the reportsDir; the project root is one level up (tempDir/..)
-    // The report path is relative to the project root, e.g. "reports/basic/benchmark-1.json"
-    // isAlreadyUpToDate resolves: path.join(reportsDir, '..', reportRelPath)
-    // So the file must be at: path.join(tempDir, '..', 'reports/basic/benchmark-1.json')
-    const reportRelPath = `reports/basic/benchmark-1.json`;
-    const absReportPath = path.join(tempDir, '..', reportRelPath);
+    // tempDir is the reportsDir; the report path is relative to reportsDir.
+    // isAlreadyUpToDate resolves: path.join(reportsDir, reportRelPath)
+    const reportRelPath = `basic/benchmark-1.json`;
+    const absReportPath = path.join(tempDir, reportRelPath);
 
     try {
       fs.mkdirSync(path.dirname(absReportPath), { recursive: true });
@@ -243,19 +241,13 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-match-123', ['basic']), true);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
-      // Clean up the report file created outside tempDir
-      try {
-        fs.rmSync(absReportPath);
-      } catch {
-        // best-effort
-      }
     }
   });
 
   it('returns false when only some datasets have matching reports', () => {
     const tempDir = makeTempDir();
-    const basicPath = `reports/basic/benchmark-1.json`;
-    const absBasicPath = path.join(tempDir, '..', basicPath);
+    const basicRelPath = `basic/benchmark-1.json`;
+    const absBasicPath = path.join(tempDir, basicRelPath);
 
     try {
       fs.mkdirSync(path.dirname(absBasicPath), { recursive: true });
@@ -264,7 +256,7 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
       const index: ExperimentIndex = {
         metadata: makeMetadata({ fingerprint: 'fp-partial' }),
         reports: {
-          basic: basicPath,
+          basic: basicRelPath,
           // medium is not in the reports map
         },
       };
@@ -273,11 +265,6 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-partial', ['basic', 'medium']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
-      try {
-        fs.rmSync(absBasicPath);
-      } catch {
-        // best-effort
-      }
     }
   });
 });
