@@ -3,7 +3,17 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { computeFingerprint, isAlreadyUpToDate, isForceMode, ExperimentIndex, RunMetadata } from './runner';
+import {
+  computeFingerprint,
+  isAlreadyUpToDate,
+  isForceMode,
+  formatHydrationFailTag,
+  buildFailureDetailLines,
+  buildLaterDatasetLines,
+  ExperimentIndex,
+  RunMetadata,
+  LaterAlgoOutcome,
+} from './runner';
 import type { Manifest } from './types';
 
 // ---------------------------------------------------------------------------
@@ -359,5 +369,295 @@ describe('isForceMode — environment variable detection', () => {
   it('returns false when POPULATE_ALL_FORCE is empty string', () => {
     process.env.POPULATE_ALL_FORCE = '';
     assert.equal(isForceMode(), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatHydrationFailTag
+// ---------------------------------------------------------------------------
+
+describe('formatHydrationFailTag — de-duplication', () => {
+  it('consolidates identical errors to a single [both comparers: …] tag', () => {
+    const tag = formatHydrationFailTag('Maximum call stack size exceeded', 'Maximum call stack size exceeded');
+    assert.equal(tag, '[both comparers: Maximum call stack size exceeded]');
+  });
+
+  it('returns separate tags when errors differ', () => {
+    const tag = formatHydrationFailTag('Error A', 'Error B');
+    assert.equal(tag, '[smartCompare: Error A] [flatCompare: Error B]');
+  });
+
+  it('returns only the smartCompare tag when flatErr is null', () => {
+    const tag = formatHydrationFailTag('Some error', null);
+    assert.equal(tag, '[smartCompare: Some error]');
+  });
+
+  it('returns only the flatCompare tag when smartErr is null', () => {
+    const tag = formatHydrationFailTag(null, 'Some error');
+    assert.equal(tag, '[flatCompare: Some error]');
+  });
+
+  it('returns an empty string when both errors are null', () => {
+    const tag = formatHydrationFailTag(null, null);
+    assert.equal(tag, '');
+  });
+
+  it('truncates long error strings to the default 60 characters', () => {
+    const longErr = 'A'.repeat(100);
+    const tag = formatHydrationFailTag(longErr, longErr);
+    assert.equal(tag, `[both comparers: ${'A'.repeat(60)}]`);
+  });
+
+  it('respects a custom truncateAt value', () => {
+    const tag = formatHydrationFailTag('Hello World', 'Hello World', 5);
+    assert.equal(tag, '[both comparers: Hello]');
+  });
+
+  it('does NOT consolidate when errors are identical after truncation but differ in full', () => {
+    // "AAAA..." and "AAAAB..." both truncate to "AAAA" at truncateAt=4 — treated as same
+    const tag = formatHydrationFailTag('AAAAX', 'AAAAY', 4);
+    // Both truncate to "AAAA" — they ARE treated as the same
+    assert.equal(tag, '[both comparers: AAAA]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildFailureDetailLines
+// ---------------------------------------------------------------------------
+
+describe('buildFailureDetailLines — de-duplication', () => {
+  it('returns one combined line when both errors are identical', () => {
+    const lines = buildFailureDetailLines('Maximum call stack size exceeded', 'Maximum call stack size exceeded');
+    assert.deepEqual(lines, ['  Both comparers: Maximum call stack size exceeded...']);
+  });
+
+  it('returns two separate lines when errors differ', () => {
+    const lines = buildFailureDetailLines('Error from smart', 'Error from flat');
+    assert.deepEqual(lines, [
+      '  smartCompare Error: Error from smart...',
+      '  flatCompare Error: Error from flat...',
+    ]);
+  });
+
+  it('returns only the smartCompare line when flatErr is null', () => {
+    const lines = buildFailureDetailLines('Smart failed', null);
+    assert.deepEqual(lines, ['  smartCompare Error: Smart failed...']);
+  });
+
+  it('returns only the flatCompare line when smartErr is null', () => {
+    const lines = buildFailureDetailLines(null, 'Flat failed');
+    assert.deepEqual(lines, ['  flatCompare Error: Flat failed...']);
+  });
+
+  it('returns an empty array when both errors are null', () => {
+    const lines = buildFailureDetailLines(null, null);
+    assert.deepEqual(lines, []);
+  });
+
+  it('truncates to the default 100 characters', () => {
+    const longErr = 'E'.repeat(200);
+    const lines = buildFailureDetailLines(longErr, longErr);
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0].includes('E'.repeat(100) + '...'));
+  });
+
+  it('replaces newlines in the error message', () => {
+    const lines = buildFailureDetailLines('line1\nline2', 'line1\nline2');
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0].includes('line1 line2'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildLaterDatasetLines
+// ---------------------------------------------------------------------------
+
+function makePassOutcome(name: string, category: string, time = '10ms', ram = '1 MB'): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: false,
+    isNewFailure: false,
+    hydrationLine: `  Hydration:     ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    failureDetailLines: [],
+    probeChangeLine: null,
+  };
+}
+
+function makeSkippedOutcome(name: string, category: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: true,
+    knownPriorFailure: false,
+    isNewFailure: false,
+    hydrationLine: null,
+    failureDetailLines: [],
+    probeChangeLine: null,
+  };
+}
+
+function makeKnownPriorOutcome(name: string, category: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: true,
+    isNewFailure: false,
+    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: stack overflow] | Time: < 0.1ms | RAM: < 0.1 MB`,
+    failureDetailLines: [],
+    probeChangeLine: null,
+  };
+}
+
+function makeNewFailOutcome(name: string, category: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: false,
+    isNewFailure: true,
+    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded] | Time: < 0.1ms | RAM: < 0.1 MB`,
+    failureDetailLines: ['  Both comparers: Maximum call stack size exceeded...'],
+    probeChangeLine: null,
+  };
+}
+
+describe('buildLaterDatasetLines — compact summary (no changes)', () => {
+  it('produces a compact summary sentence when all non-skipped algorithms pass', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    // Should have one omission note + one compact summary
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+    assert.ok(lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
+    // Should NOT have individual per-algorithm header lines
+    assert.ok(!lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+  });
+
+  it('uses singular "algorithm" when only one algorithm passes', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('1 algorithm continued to pass')));
+  });
+
+  it('uses plural "algorithms" when multiple algorithms pass', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('2 algorithms continued to pass')));
+  });
+});
+
+describe('buildLaterDatasetLines — new failure expansion', () => {
+  it('prints a full block with change indicator when an algorithm newly fails', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Omission note for the baseline-skipped algorithm
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+
+    // Full block for the new failure
+    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(lines.some((l) => l.includes('Hydration changed: ✅ PASS → ❌ FAIL')));
+    assert.ok(lines.some((l) => l.includes('Both comparers: Maximum call stack size exceeded...')));
+
+    // Individual entries for stable passing algorithms (context for survivors)
+    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
+    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
+  });
+
+  it('includes failure detail lines for the new failure', () => {
+    const outcomes: LaterAlgoOutcome[] = [makeNewFailOutcome('Map Tracker', 'Reference Tracking')];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('Both comparers: Maximum call stack size exceeded...')));
+  });
+});
+
+describe('buildLaterDatasetLines — known-prior-failure expansion', () => {
+  it('shows individual entries for survivors when there are known-prior failures', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeKnownPriorOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological', '2.1s', '150 MB'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven', '338ms', '60 MB'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Both omitted algorithms in a single note
+    assert.ok(lines.some((l) => l.includes('Known failures omitted: Naive Recursion, Map Tracker')));
+
+    // Individual entries for survivors
+    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
+    assert.ok(lines.some((l) => l.includes('Time: 2.1s')));
+    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
+    assert.ok(lines.some((l) => l.includes('Time: 338ms')));
+
+    // No compact summary sentence (since there are omitted failures)
+    assert.ok(!lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
+  });
+
+  it('uses singular label for a single omitted algorithm', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+    assert.ok(!lines.some((l) => l.includes('Known failures omitted')));
+  });
+
+  it('uses plural label for multiple omitted algorithms', () => {
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeKnownPriorOutcome('Map Tracker', 'Reference Tracking'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('Known failures omitted: Naive Recursion, Map Tracker')));
+  });
+});
+
+describe('buildLaterDatasetLines — edge cases', () => {
+  it('returns an empty array when outcomes list is empty', () => {
+    assert.deepEqual(buildLaterDatasetLines([]), []);
+  });
+
+  it('includes probe change line when provided for a new failure', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+      probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
+    };
+    const lines = buildLaterDatasetLines([outcome]);
+    assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
+  });
+
+  it('includes probe change line when provided for a stable pass', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makePassOutcome('Map Tracker', 'Reference Tracking'),
+      probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ cycle-flat',
+    };
+    // Need a known-prior failure to trigger expansion mode
+    const outcomes: LaterAlgoOutcome[] = [
+      makeKnownPriorOutcome('Naive Recursion', 'Reference Tracking'),
+      outcome,
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
   });
 });
