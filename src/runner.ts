@@ -19,6 +19,16 @@ const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLa
 const INPUT_SUFFIX = '_input';
 const ANSWER_SUFFIX = '_answer';
 
+/**
+ * The first cyclic dataset tier, used as the baseline for cyclic skip/suppression logic.
+ *
+ * This is intentionally separate from the first *displayed* dataset (acyclic-control).
+ * Algorithms that fail at this tier are skipped on subsequent cyclic tiers (they
+ * deterministically fail at all cyclic scales, so re-running adds no information).
+ * Probe results from this tier form the reference baseline for later cyclic tiers.
+ */
+export const CYCLIC_BASELINE_TIER = 'basic';
+
 // ---------------------------------------------------------------------------
 // Metadata + report types
 // ---------------------------------------------------------------------------
@@ -651,17 +661,37 @@ function runBenchmark() {
   // ---------------------------------------------------------------------------
   // Print one-time note about output scope.
   // ---------------------------------------------------------------------------
-  console.log(`\nNote: Full experiment detail is shown for the baseline (basic) dataset.`);
-  console.log(`      Later datasets report only full experiment timing and meaningful outcome changes.\n`);
+  // Determine which datasets get full-detail display vs. compact later-dataset format.
+  // Full-detail: all datasets up to and including the cyclic baseline (e.g. acyclic-control + basic).
+  // Compact later-dataset: all datasets after the cyclic baseline (e.g. medium, stress, extreme).
+  //
+  // Note: per-dataset processing uses `cyclicBaselineEstablished` to make the same
+  // determination dynamically (see the `isFullDetailDataset` variable inside the loop).
+  // Both mechanisms anchor to CYCLIC_BASELINE_TIER and must stay consistent.
+  const cyclicBaselineIdx = datasets.indexOf(CYCLIC_BASELINE_TIER);
+  const fullDetailDatasets = cyclicBaselineIdx >= 0 ? datasets.slice(0, cyclicBaselineIdx + 1) : datasets;
+  const laterCyclicDatasets = cyclicBaselineIdx >= 0 ? datasets.slice(cyclicBaselineIdx + 1) : [];
+  if (fullDetailDatasets.length > 0) {
+    const names = fullDetailDatasets.join(' and ');
+    console.log(`\nNote: Full experiment detail is shown for the ${names} dataset${fullDetailDatasets.length > 1 ? 's' : ''}.`);
+    if (laterCyclicDatasets.length > 0) {
+      console.log(`      Later datasets report only full experiment timing and meaningful outcome changes.`);
+    }
+    console.log('');
+  }
 
   // Per-algorithm baseline fingerprints for consumer probes.
-  // Used to detect probe-outcome changes on subsequent datasets.
+  // Set from the cyclic baseline tier (basic) — used to detect probe-outcome changes
+  // on subsequent cyclic datasets.  NOT set from acyclic-control, because probe
+  // results differ fundamentally between acyclic and cyclic graphs (e.g. naive-json
+  // passes on acyclic graphs but is expected to fail on cyclic ones).
   const probeBaseline = new Map<string, string>();
   const baselineHydration = new Map<string, BenchmarkReport['hydration']>(); // algorithmName -> full hydration result
-  let baselineDataset: string | null = null;
+  // Whether the cyclic baseline (basic) has been fully processed.
+  let cyclicBaselineEstablished = false;
 
-  // Algorithms that failed at the baseline (first/smallest) dataset.
-  // These are skipped on subsequent datasets: if an algorithm fails on the smallest
+  // Algorithms that failed at the cyclic baseline (basic) dataset.
+  // These are skipped on subsequent cyclic datasets: if an algorithm fails on the smallest
   // cyclic dataset, larger datasets will also fail — re-executing adds no new information.
   // (Map Tracker passes at small scale and only fails at large scale, so it is NOT skipped.)
   const baselineFailedAlgorithms = new Set<string>();
@@ -710,17 +740,25 @@ function runBenchmark() {
     }
 
     const datasetResults: BenchmarkReport[] = [];
-    const isBaseline = baselineDataset === null;
+    // True for any dataset at or before the cyclic baseline (acyclic-control and basic).
+    // These receive the full-detail display format (all results printed immediately).
+    // Datasets after the cyclic baseline (medium, stress, extreme) receive the compact
+    // later-dataset format (deferred batch output, only meaningful changes reported).
+    const isFullDetailDataset = !cyclicBaselineEstablished;
+    // True only for the cyclic baseline tier (basic): anchors the skip/suppression logic.
+    const isCyclicBaseline = dataset === CYCLIC_BASELINE_TIER;
     // For later datasets: collect per-algo outcomes for deferred batch formatting.
     const laterOutcomes: LaterAlgoOutcome[] = [];
 
     for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
       const algo = algorithms[algoIdx];
 
-      // Skip algorithms that failed on the baseline dataset — they deterministically fail
-      // at all scales, so re-executing on larger datasets adds no new information.
+      // Skip algorithms that failed on the cyclic baseline (basic) dataset — they
+      // deterministically fail at all cyclic scales, so re-executing on larger datasets
+      // adds no new information.  This skip applies only after the cyclic baseline is
+      // established, so acyclic-control and basic always run every algorithm.
       // Map Tracker passes at small scale and only fails at large scale, so it continues running.
-      if (!isBaseline && baselineFailedAlgorithms.has(algo.name)) {
+      if (!isFullDetailDataset && baselineFailedAlgorithms.has(algo.name)) {
         summaryRows[algoIdx].results.set(dataset, false);
         // Re-use the exact hydration object from the baseline run.
         // metrics is null — no execution took place; skipped: true lets report
@@ -750,8 +788,8 @@ function runBenchmark() {
         continue;
       }
 
-      // On the baseline dataset, print the algorithm header immediately.
-      if (isBaseline) {
+      // On full-detail datasets (acyclic-control, basic), print the algorithm header immediately.
+      if (isFullDetailDataset) {
         console.log(`[${algo.category}] ${algo.name}`);
       }
 
@@ -911,14 +949,13 @@ function runBenchmark() {
             .join(',')
         : 'SKIPPED';
 
-      if (isBaseline) {
-        // ── Baseline dataset: print everything in full immediately ────────────
+      if (isFullDetailDataset) {
+        // ── Full-detail dataset (acyclic-control, basic): print everything immediately ──
         // The hydration line already contains the error detail inline via the
         // fail tag — no separate detail lines needed to avoid duplicate output.
         console.log(hydrationLine);
 
-        // Record probe baseline and print probe summary in full.
-        probeBaseline.set(algo.name, probeFingerprint);
+        // Print probe summary in full.
         if (consumerProbeResult.ran) {
           const probeSummary = consumerProbeResult.probes
             .map((p) => {
@@ -937,13 +974,18 @@ function runBenchmark() {
           console.log(`  Consumer probes: not run (hydration failed)`);
         }
 
-        // Track baseline failures for skipping on later datasets.
-        if (!bothPass && !disagree) {
-          baselineHydration.set(algo.name, hydration);
-          baselineFailedAlgorithms.add(algo.name);
-          const failFingerprint =
-            `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
-          documentedFailures.set(algo.name, failFingerprint);
+        // Cyclic-baseline specific tracking: only basic anchors skip/suppression/probe-baseline.
+        if (isCyclicBaseline) {
+          // Record probe results as the reference baseline for later cyclic datasets.
+          probeBaseline.set(algo.name, probeFingerprint);
+          // Track failures at the cyclic baseline for skipping on later cyclic datasets.
+          if (!bothPass && !disagree) {
+            baselineHydration.set(algo.name, hydration);
+            baselineFailedAlgorithms.add(algo.name);
+            const failFingerprint =
+              `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
+            documentedFailures.set(algo.name, failFingerprint);
+          }
         }
       } else {
         // ── Later dataset: collect outcome for deferred batch formatting ──────
@@ -1018,14 +1060,16 @@ function runBenchmark() {
     }
 
     // Print the consolidated later-dataset output after all algorithms have run.
-    if (!isBaseline) {
+    if (!isFullDetailDataset) {
       const lines = buildLaterDatasetLines(laterOutcomes);
       for (const line of lines) console.log(line);
     }
 
-    // After the first dataset's algorithms have been processed, lock in the baseline.
-    if (isBaseline) {
-      baselineDataset = dataset;
+    // After the cyclic baseline (basic) is fully processed, lock it in so that
+    // subsequent datasets switch to the compact later-dataset format and can use
+    // the skip/suppression/probe-baseline data established here.
+    if (isCyclicBaseline) {
+      cyclicBaselineEstablished = true;
     }
 
     // Write per-dataset report (wrapped with run metadata).
