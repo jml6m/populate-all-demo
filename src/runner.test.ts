@@ -717,12 +717,18 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
       outcome,
     ];
     const lines = buildLaterDatasetLines(outcomes);
-    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    const mapTrackerHeaderIndex = lines.findIndex((l) =>
+      l.startsWith('[Reference Tracking] Map Tracker'),
+    );
+    assert.ok(mapTrackerHeaderIndex >= 0);
     assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('✅ PASS')));
     assert.ok(lines.some((l) => l.includes('Consumer probes: ❌ FAIL')));
     assert.ok(lines.some((l) => l.includes('❌ naive-json')));
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('Hydration:'));
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('✅ PASS'));
+    assert.ok(lines[mapTrackerHeaderIndex + 2]?.includes('Consumer probes: ❌ FAIL'));
     // No Full Run line with metrics when probes failed
-    assert.ok(!lines.some((l) => l.includes('Full Run:') && l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(!lines.some((l) => l.includes('Full Run:')));
   });
 
   it('does not use two-line format when probesFailed is false', () => {
