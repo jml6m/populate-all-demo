@@ -26,6 +26,9 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      - name: Create logs directory
+        run: mkdir -p logs
+
       - name: Test
         run: npm run test
 
@@ -33,5 +36,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: accuracy-trace-logs
-          path: analysis/
+          path: logs/
           if-no-files-found: error
