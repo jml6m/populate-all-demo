@@ -383,8 +383,6 @@ export interface LaterAlgoOutcome {
    * suppressed or collapsed into the stable-pass summary.
    */
   isConflict: boolean;
-  /** True when hydration (both comparers) passed on this dataset. */
-  hydrationPassed: boolean;
   /**
    * True when hydration passed but at least one consumer probe failed.
    * Used to trigger the two-line fail format instead of the compact pass format.
@@ -400,9 +398,9 @@ export interface LaterAlgoOutcome {
   /** De-duplicated failure detail lines (non-empty only when isNewFailure is true). */
   failureDetailLines: string[];
   /**
-   * Probe result line, or null when probes are unchanged / not applicable.
-   * - Changed (all pass):  "  Consumer probes: ⚠️  changed from baseline — ✅ ..."
+   * Probe result/change line, or null when probes are unchanged / not applicable.
    * - Failed:              "  Consumer probes: ❌ FAIL — ❌ naive-json  ✅ cycle-flat"
+   * - Changed (all pass):  "  Consumer probes: ⚠️  changed from baseline — ✅ ..."
    */
   probeChangeLine: string | null;
 }
@@ -974,10 +972,15 @@ function runBenchmark() {
         const probesFailed =
           consumerProbeResult.ran && consumerProbeResult.probes.some((p) => !p.pass);
 
-        // Build probe-change line when the probe outcome differs from baseline.
+        // Build the probe result/change line.
+        //  - Always emit when probes failed (so the failure detail is never silently dropped,
+        //    even when the probe fingerprint matches baseline).
+        //  - Also emit when the probe fingerprint changed but all probes still passed.
         let probeChangeLine: string | null = null;
         const baselineProbe = probeBaseline.get(algo.name);
-        if (baselineProbe !== undefined && baselineProbe !== probeFingerprint && consumerProbeResult.ran) {
+        const probeFingerprightChanged =
+          baselineProbe !== undefined && baselineProbe !== probeFingerprint;
+        if (consumerProbeResult.ran && (probesFailed || probeFingerprightChanged)) {
           const probeSummary = consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
@@ -1003,7 +1006,6 @@ function runBenchmark() {
           knownPriorFailure: knownPrior,
           isNewFailure: isNewFail,
           isConflict: disagree,
-          hydrationPassed: bothPass,
           probesFailed,
           hydrationLine: laterHydrationLine,
           // Failure detail lines are omitted — the error is already inline in

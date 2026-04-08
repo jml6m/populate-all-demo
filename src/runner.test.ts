@@ -483,7 +483,6 @@ function makePassOutcome(name: string, category: string, time = '10ms', ram = '1
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: false,
-    hydrationPassed: true,
     probesFailed: false,
     hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
@@ -499,7 +498,6 @@ function makeSkippedOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: false,
-    hydrationPassed: false,
     probesFailed: false,
     hydrationLine: null,
     failureDetailLines: [],
@@ -515,7 +513,6 @@ function makeKnownPriorOutcome(name: string, category: string): LaterAlgoOutcome
     knownPriorFailure: true,
     isNewFailure: false,
     isConflict: false,
-    hydrationPassed: false,
     probesFailed: false,
     hydrationLine: `  Hydration:     ❌ FAIL [both comparers: stack overflow]`,
     failureDetailLines: [],
@@ -531,10 +528,9 @@ function makeNewFailOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: true,
     isConflict: false,
-    hydrationPassed: false,
     probesFailed: false,
     hydrationLine: `  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]`,
-    failureDetailLines: ['  Both comparers: Maximum call stack size exceeded...'],
+    failureDetailLines: [],
     probeChangeLine: null,
   };
 }
@@ -547,7 +543,6 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: true,
-    hydrationPassed: false,
     probesFailed: false,
     hydrationLine: `  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
     failureDetailLines: [],
@@ -616,20 +611,13 @@ describe('buildLaterDatasetLines — new failure expansion', () => {
     // Omission note for the baseline-skipped algorithm
     assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
 
-    // Full block for the new failure — hydration fail line, no "Hydration changed" indicator
+    // Full block for the new failure — hydration fail line, phase-oriented
     assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
     assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL')));
-    assert.ok(!lines.some((l) => l.includes('Hydration changed: ✅ PASS → ❌ FAIL')));
 
     // Individual entries for stable passing algorithms (context for survivors)
     assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
     assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
-  });
-
-  it('includes failure detail lines for the new failure', () => {
-    const outcomes: LaterAlgoOutcome[] = [makeNewFailOutcome('Map Tracker', 'Reference Tracking')];
-    const lines = buildLaterDatasetLines(outcomes);
-    assert.ok(lines.some((l) => l.includes('Both comparers: Maximum call stack size exceeded...')));
   });
 });
 
