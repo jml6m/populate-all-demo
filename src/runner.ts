@@ -384,14 +384,24 @@ export interface LaterAlgoOutcome {
    */
   isConflict: boolean;
   /**
-   * Full formatted hydration line ready for console output, e.g.
-   *   "  Hydration:     ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
+   * True when hydration passed but at least one consumer probe failed.
+   * Used to trigger the two-line fail format instead of the compact pass format.
+   */
+  probesFailed: boolean;
+  /**
+   * Full formatted hydration line ready for console output.
+   * - Pass:    "  Full Run:      ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
+   * - Fail:    "  Hydration:     ❌ FAIL [both comparers: ...]"  (no metrics)
    * null only when baselineSkipped is true.
    */
   hydrationLine: string | null;
   /** De-duplicated failure detail lines (non-empty only when isNewFailure is true). */
   failureDetailLines: string[];
-  /** Probe-change note line, or null when probes are unchanged / not applicable. */
+  /**
+   * Probe result/change line, or null when probes are unchanged / not applicable.
+   * - Failed:              "  Consumer probes: ❌ FAIL — ❌ naive-json  ✅ cycle-flat"
+   * - Changed (all pass):  "  Consumer probes: ⚠️  changed from baseline — ✅ ..."
+   */
   probeChangeLine: string | null;
 }
 
@@ -402,8 +412,10 @@ export interface LaterAlgoOutcome {
  * Formatting rules:
  *  - Baseline-skipped and known-prior-failure algorithms are noted compactly as
  *    a single "Known failure(s) omitted: …" line.
- *  - New failures (first divergence on this tier) are printed as full blocks
- *    with a "Hydration changed: ✅ PASS → ❌ FAIL" change indicator.
+ *  - New failures (hydration newly fails) are printed as a single
+ *    "Hydration: ❌ FAIL [...]" line — no "changed" indicator, no metrics.
+ *  - Hydration-pass / probe-fail algorithms are printed as two lines:
+ *    "Hydration: ✅ PASS" followed by the consumer probes fail line.
  *  - Conflicts (comparers disagree) are always printed as full blocks — they are
  *    never suppressed, as disagreement between comparers is always notable.
  *  - Stable passing algorithms are:
@@ -451,10 +463,9 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
       if (c.probeChangeLine !== null) lines.push(c.probeChangeLine);
     }
 
-    // New failures: full block with change indicator.
+    // New failures: single hydration-fail line (no "changed" indicator, no metrics).
     for (const f of newFails) {
       lines.push(`[${f.algoCategory}] ${f.algoName}`);
-      lines.push(`  Hydration changed: ✅ PASS → ❌ FAIL`);
       if (f.hydrationLine !== null) lines.push(f.hydrationLine);
       for (const dl of f.failureDetailLines) lines.push(dl);
       if (f.probeChangeLine !== null) lines.push(f.probeChangeLine);
@@ -463,8 +474,14 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
     // Stable passes: compact entries with timing (scalability story).
     for (const p of stablePasses) {
       lines.push(`[${p.algoCategory}] ${p.algoName}`);
-      if (p.hydrationLine !== null) lines.push(p.hydrationLine);
-      if (p.probeChangeLine !== null) lines.push(p.probeChangeLine);
+      if (p.probesFailed) {
+        // Hydration passed but probes failed — two-line phase-oriented output.
+        lines.push(`  Hydration:     ✅ PASS`);
+        if (p.probeChangeLine !== null) lines.push(p.probeChangeLine);
+      } else {
+        if (p.hydrationLine !== null) lines.push(p.hydrationLine);
+        if (p.probeChangeLine !== null) lines.push(p.probeChangeLine);
+      }
     }
   }
 
@@ -945,10 +962,25 @@ function runBenchmark() {
           documentedFailures.set(algo.name, failFingerprint!);
         }
 
-        // Build probe-change line when the probe outcome differs from baseline.
+        // For later-fail cases store a phase-oriented line without metrics so the
+        // output clearly names what failed rather than using the vague "Full Run:" label.
+        const laterHydrationLine = bothPass
+          ? hydrationLine
+          : `  Hydration:     ${resultLine}`;
+
+        // Determine whether any probe failed on this dataset.
+        const probesFailed =
+          consumerProbeResult.ran && consumerProbeResult.probes.some((p) => !p.pass);
+
+        // Build the probe result/change line.
+        //  - Always emit when probes failed (so the failure detail is never silently dropped,
+        //    even when the probe fingerprint matches baseline).
+        //  - Also emit when the probe fingerprint changed but all probes still passed.
         let probeChangeLine: string | null = null;
         const baselineProbe = probeBaseline.get(algo.name);
-        if (baselineProbe !== undefined && baselineProbe !== probeFingerprint && consumerProbeResult.ran) {
+        const probeFingerprightChanged =
+          baselineProbe !== undefined && baselineProbe !== probeFingerprint;
+        if (consumerProbeResult.ran && (probesFailed || probeFingerprightChanged)) {
           const probeSummary = consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
@@ -961,7 +993,10 @@ function runBenchmark() {
               return `${probeIcon} ${p.name}${verifyIcon}`;
             })
             .join('  ');
-          probeChangeLine = `  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`;
+          // Use a fail label when probes actually failed; a change label otherwise.
+          probeChangeLine = probesFailed
+            ? `  Consumer probes: ❌ FAIL — ${probeSummary}`
+            : `  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`;
         }
 
         laterOutcomes.push({
@@ -971,7 +1006,8 @@ function runBenchmark() {
           knownPriorFailure: knownPrior,
           isNewFailure: isNewFail,
           isConflict: disagree,
-          hydrationLine,
+          probesFailed,
+          hydrationLine: laterHydrationLine,
           // Failure detail lines are omitted — the error is already inline in
           // hydrationLine via the fail tag, so printing them separately would
           // duplicate the same message.

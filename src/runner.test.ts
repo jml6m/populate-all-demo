@@ -483,6 +483,7 @@ function makePassOutcome(name: string, category: string, time = '10ms', ram = '1
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: false,
+    probesFailed: false,
     hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -497,6 +498,7 @@ function makeSkippedOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: false,
+    probesFailed: false,
     hydrationLine: null,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -511,7 +513,8 @@ function makeKnownPriorOutcome(name: string, category: string): LaterAlgoOutcome
     knownPriorFailure: true,
     isNewFailure: false,
     isConflict: false,
-    hydrationLine: `  Full Run:      ❌ FAIL [both comparers: stack overflow] | Time: < 0.1ms | RAM: < 0.1 MB`,
+    probesFailed: false,
+    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: stack overflow]`,
     failureDetailLines: [],
     probeChangeLine: null,
   };
@@ -525,8 +528,9 @@ function makeNewFailOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: true,
     isConflict: false,
-    hydrationLine: `  Full Run:      ❌ FAIL [both comparers: Maximum call stack size exceeded] | Time: < 0.1ms | RAM: < 0.1 MB`,
-    failureDetailLines: ['  Both comparers: Maximum call stack size exceeded...'],
+    probesFailed: false,
+    hydrationLine: `  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]`,
+    failureDetailLines: [],
     probeChangeLine: null,
   };
 }
@@ -539,6 +543,7 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
     knownPriorFailure: false,
     isNewFailure: false,
     isConflict: true,
+    probesFailed: false,
     hydrationLine: `  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
     failureDetailLines: [],
     probeChangeLine: null,
@@ -594,7 +599,7 @@ describe('buildLaterDatasetLines — compact summary (no changes)', () => {
 });
 
 describe('buildLaterDatasetLines — new failure expansion', () => {
-  it('prints a full block with change indicator when an algorithm newly fails', () => {
+  it('prints a single hydration-fail line (no change indicator) when an algorithm newly fails', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
@@ -606,20 +611,13 @@ describe('buildLaterDatasetLines — new failure expansion', () => {
     // Omission note for the baseline-skipped algorithm
     assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
 
-    // Full block for the new failure
+    // Full block for the new failure — hydration fail line, phase-oriented
     assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
-    assert.ok(lines.some((l) => l.includes('Hydration changed: ✅ PASS → ❌ FAIL')));
-    assert.ok(lines.some((l) => l.includes('Both comparers: Maximum call stack size exceeded...')));
+    assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL')));
 
     // Individual entries for stable passing algorithms (context for survivors)
     assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
     assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
-  });
-
-  it('includes failure detail lines for the new failure', () => {
-    const outcomes: LaterAlgoOutcome[] = [makeNewFailOutcome('Map Tracker', 'Reference Tracking')];
-    const lines = buildLaterDatasetLines(outcomes);
-    assert.ok(lines.some((l) => l.includes('Both comparers: Maximum call stack size exceeded...')));
   });
 });
 
@@ -692,6 +690,49 @@ describe('buildLaterDatasetLines — edge cases', () => {
     ];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
+  });
+});
+
+describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output', () => {
+  it('prints Hydration: ✅ PASS and Consumer probes: ❌ FAIL lines when probes fail', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makePassOutcome('Map Tracker', 'Reference Tracking'),
+      probesFailed: true,
+      probeChangeLine: '  Consumer probes: ❌ FAIL — ❌ naive-json  ✅ cycle-flat',
+    };
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      outcome,
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    const mapTrackerHeaderIndex = lines.findIndex((l) =>
+      l.startsWith('[Reference Tracking] Map Tracker'),
+    );
+    assert.ok(mapTrackerHeaderIndex >= 0);
+    assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('✅ PASS')));
+    assert.ok(lines.some((l) => l.includes('Consumer probes: ❌ FAIL')));
+    assert.ok(lines.some((l) => l.includes('❌ naive-json')));
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('Hydration:'));
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('✅ PASS'));
+    assert.ok(lines[mapTrackerHeaderIndex + 2]?.includes('Consumer probes: ❌ FAIL'));
+    // No Full Run line with metrics when probes failed
+    assert.ok(!lines.some((l) => l.includes('Full Run:')));
+  });
+
+  it('does not use two-line format when probesFailed is false', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makePassOutcome('Map Tracker', 'Reference Tracking'),
+      probesFailed: false,
+      probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ cycle-flat',
+    };
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      outcome,
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+    // Should still show Full Run line with metrics, not the Hydration: ✅ PASS shortform
+    assert.ok(lines.some((l) => l.includes('Full Run:') && l.includes('✅ PASS')));
+    assert.ok(lines.some((l) => l.includes('⚠️  changed from baseline')));
   });
 });
 
