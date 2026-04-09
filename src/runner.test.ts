@@ -697,7 +697,7 @@ describe('buildLaterDatasetLines — edge cases', () => {
 });
 
 describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output', () => {
-  it('prints Hydration: ✅ PASS and Consumer probes: ❌ FAIL lines when authoritative probe (cycle-flat) fails', () => {
+  it('prints two-line format when cycle-flat (authoritative probe) fails', () => {
     // probesFailed = true only when cycle-flat (authoritative probe) fails.
     // In this scenario naive-json passes but cycle-flat fails — the experiment is not a Full Run pass.
     const outcome: LaterAlgoOutcome = {
