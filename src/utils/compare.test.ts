@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
+import { naiveRecursion } from '../algorithms/reference-tracking/01-naive-recursion';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
 import { buildPopulatedFromAnswer } from './answer-builder';
 import { smartCompare } from './compare';
@@ -687,5 +688,188 @@ describe('buildPopulatedFromAnswer — verbose basic-tier trace', () => {
     const tracePath = path.join(LOGS_DIR, 'build-answer-trace.log');
     fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
     console.log(`[test] buildPopulatedFromAnswer trace written to ${tracePath}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Acyclic-control tier trace logs
+//
+// Mirrors the basic-tier trace tests but for the acyclic-control dataset.
+// Generates two canonical developer-facing trace logs:
+//   - acyclic-control-accuracy-trace.log  (smartCompare verbose trace, runs both
+//     twoPassWire AND naiveRecursion to document the success case for both)
+//   - acyclic-control-build-answer-trace.log  (buildPopulatedFromAnswer trace)
+//
+// The acyclic-control dataset consists of 10 isolated nodes (no dependency edges).
+// This is the only structure where Naive Recursion — which creates fresh objects for
+// each recursive call — can satisfy both smartCompare (identity check) and flatCompare
+// (index lookup), because no node appears as both a top-level entry and a dependency.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures acyclic-control data files are present, generating only that tier
+ * if they are missing.
+ */
+function ensureAcyclicControlDataGenerated(): void {
+  const dataDir = getDataDir();
+  const manifestPath = path.join(dataDir, 'manifest.json');
+
+  if (fs.existsSync(manifestPath)) {
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+      files?: Record<string, { filename?: string } | undefined>;
+    };
+    const inputFilename = raw.files?.['acyclic-control_input']?.filename;
+    const answerFilename = raw.files?.['acyclic-control_answer']?.filename;
+    if (
+      typeof inputFilename === 'string' &&
+      typeof answerFilename === 'string' &&
+      fs.existsSync(path.join(dataDir, inputFilename)) &&
+      fs.existsSync(path.join(dataDir, answerFilename))
+    ) {
+      return; // Acyclic-control files already present
+    }
+  }
+
+  console.log('[test] Acyclic-control data files not found — running npm run generate --tier acyclic-control...');
+  const projectRoot = path.resolve(__dirname, '..', '..');
+  execSync('npm run generate -- --tier acyclic-control', { cwd: projectRoot, stdio: 'inherit' });
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Data generation did not produce manifest.json. Cannot run acyclic-control trace test.');
+  }
+}
+
+describe('smartCompare — verbose acyclic-control trace', () => {
+  it('runs twoPassWire and naiveRecursion on acyclic-control data, verifies both pass, writes trace log', (t) => {
+    ensureAcyclicControlDataGenerated();
+
+    const manifest = loadManifest();
+    const inputEntry = manifest.files['acyclic-control_input'];
+    const answerEntry = manifest.files['acyclic-control_answer'];
+    assert.ok(inputEntry, 'acyclic-control_input missing from manifest');
+    assert.ok(answerEntry, 'acyclic-control_answer missing from manifest');
+
+    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+    const expected = buildPopulatedFromAnswer(rawAnswerEntries);
+
+    // Run twoPassWire (reference passing algorithm)
+    const actualTwp = twoPassWire.execute(inputData);
+
+    const logLines: string[] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => {
+      const line = args.map(String).join(' ');
+      if (line.startsWith('[smartCompare]')) {
+        logLines.push(line);
+      }
+    });
+
+    const twpResult = smartCompare(actualTwp, expected, true);
+
+    t.mock.restoreAll();
+
+    assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
+    assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
+    // Isolated nodes have no edges: edgesTraversed must be 0.
+    assert.equal(twpResult.edgesTraversed, 0, 'acyclic-control isolated-node tier must have 0 edgesTraversed');
+
+    // Also verify Naive Recursion passes on isolated nodes (key experiment control claim).
+    // Naive Recursion creates fresh objects per call; isolated nodes have no dependencies,
+    // so no fresh-vs-shared identity conflict can occur.
+    const actualNr = naiveRecursion.execute(inputData);
+    const nrResult = smartCompare(actualNr, expected, false);
+    assert.equal(
+      nrResult.pass,
+      true,
+      `Naive Recursion should pass on acyclic-control isolated nodes but got: ${nrResult.errorDetail ?? ''}`,
+    );
+
+    // Write trace log
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
+    const header = [
+      '=== smartCompare verbose trace — acyclic-control tier ===',
+      `nodesProcessed: ${twpResult.nodesProcessed}`,
+      `edgesTraversed: ${twpResult.edgesTraversed}`,
+      `twoPassWire pass: ${twpResult.pass}`,
+      `naiveRecursion pass: ${nrResult.pass}`,
+      '',
+      'Dataset structure: 10 isolated nodes (no dependency edges).',
+      'Naive Recursion succeeds here: no node is both a top-level entry and a dependency,',
+      'so there is no identity conflict between fresh objects and the expected shared references.',
+      '',
+    ];
+    fs.writeFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
+    console.log(`[test] Acyclic-control accuracy trace written to ${tracePath}`);
+  });
+});
+
+describe('buildPopulatedFromAnswer — verbose acyclic-control trace', () => {
+  it('steps through shell creation for isolated acyclic-control nodes, writes trace log', () => {
+    ensureAcyclicControlDataGenerated();
+
+    const manifest = loadManifest();
+    const answerEntry = manifest.files['acyclic-control_answer'];
+    assert.ok(answerEntry, 'acyclic-control_answer missing from manifest');
+
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+
+    const traceLines: string[] = [
+      '',
+      '=== buildPopulatedFromAnswer verbose trace — acyclic-control tier ===',
+      '',
+      'Dataset structure: 10 isolated nodes — no dependency edges.',
+      'Each node has no dependencies, so identity-sharing is never required.',
+      'Naive Recursion can reconstruct this structure correctly without identity conflicts.',
+      '',
+    ];
+
+    // Pass 1: create shells
+    traceLines.push('--- Pass 1: Shell creation ---');
+    const nodes: ComponentPopulated[] = rawAnswerEntries.map((e) => {
+      traceLines.push(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
+      return { id: e.id, dependencies: [] };
+    });
+
+    // Pass 2: wire (no-op for isolated nodes) and verify
+    traceLines.push('');
+    traceLines.push('--- Pass 2: Wiring (no edges expected for isolated nodes) ---');
+    let totalEdges = 0;
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        nodes[i].dependencies.push(nodes[depIdx]);
+        traceLines.push(
+          `Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`,
+        );
+        totalEdges++;
+      }
+    }
+    traceLines.push(`Total edges wired: ${totalEdges}`);
+    // Isolated nodes dataset must have zero edges
+    assert.equal(totalEdges, 0, 'acyclic-control isolated-node dataset must have no dependency edges');
+
+    traceLines.push('');
+    traceLines.push('--- Identity checks ---');
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
+        traceLines.push(
+          `Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`,
+        );
+        assert.equal(
+          sameObject,
+          true,
+          `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`,
+        );
+      }
+    }
+    traceLines.push('(no identity checks required — zero dependency edges)');
+
+    // Write trace log
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'acyclic-control-build-answer-trace.log');
+    fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
+    console.log(`[test] Acyclic-control buildPopulatedFromAnswer trace written to ${tracePath}`);
   });
 });

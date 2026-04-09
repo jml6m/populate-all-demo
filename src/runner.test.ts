@@ -18,6 +18,10 @@ import {
   RunMetadata,
   LaterAlgoOutcome,
   CYCLIC_BASELINE_TIER,
+  classifyHydrationFailTag,
+  buildDetailHydrationLine,
+  buildDetailConsumerProbesLine,
+  buildDetailFullRunLine,
 } from './runner';
 import type { Manifest } from './types';
 
@@ -602,7 +606,7 @@ describe('buildLaterDatasetLines — compact summary (no changes)', () => {
 });
 
 describe('buildLaterDatasetLines — new failure expansion', () => {
-  it('prints a single hydration-fail line (no change indicator) when an algorithm newly fails', () => {
+  it('prints hydration-fail line AND consumer probes "not run" line when an algorithm newly fails', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
@@ -614,9 +618,11 @@ describe('buildLaterDatasetLines — new failure expansion', () => {
     // Omission note for the baseline-skipped algorithm
     assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
 
-    // Full block for the new failure — hydration fail line, phase-oriented
+    // Full block for the new failure — hydration fail line + consumer probes line
     assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
     assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL')));
+    // Consumer probes status must appear for new failures (phase-explicit)
+    assert.ok(lines.some((l) => l.includes('Consumer probes: not run (hydration failed)')));
 
     // Individual entries for stable passing algorithms (context for survivors)
     assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
@@ -1178,5 +1184,319 @@ describe('buildLaterDatasetLines — cyclic skip semantics are unaffected by acy
 
     // Omission note for the baseline-skipped algorithm.
     assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyHydrationFailTag — error classification
+// ---------------------------------------------------------------------------
+
+describe('classifyHydrationFailTag — stack overflow', () => {
+  it('returns bracket-tag format for stack overflow errors', () => {
+    const result = classifyHydrationFailTag(
+      'Maximum call stack size exceeded',
+      'Maximum call stack size exceeded',
+    );
+    assert.equal(result, '[both comparers: Maximum call stack size exceeded]');
+  });
+
+  it('returns bracket-tag format when only one comparer has stack overflow', () => {
+    const result = classifyHydrationFailTag('Maximum call stack size exceeded', null);
+    assert.ok(result.includes('[smartCompare: Maximum call stack size exceeded]'));
+  });
+
+  it('is case-insensitive for stack overflow detection', () => {
+    const result = classifyHydrationFailTag(
+      'maximum call stack size exceeded',
+      'maximum call stack size exceeded',
+    );
+    assert.ok(result.includes('call stack'));
+  });
+});
+
+describe('classifyHydrationFailTag — identity/reference mismatch', () => {
+  it('returns clean phrase for "Cycle structure mismatch" errors', () => {
+    const result = classifyHydrationFailTag(
+      'Cycle structure mismatch: expected node "comp_0" is paired with more than one actual',
+      'Dependency of node "comp_1" at index 1 is not present in the top-level actual array',
+    );
+    assert.equal(result, '— shared references were duplicated');
+  });
+
+  it('returns clean phrase when smartErr contains "is paired with more than one"', () => {
+    const result = classifyHydrationFailTag(
+      'is paired with more than one actual node',
+      null,
+    );
+    assert.equal(result, '— shared references were duplicated');
+  });
+
+  it('returns clean phrase when flatErr mentions "not present in the top-level"', () => {
+    const result = classifyHydrationFailTag(
+      null,
+      'not present in the top-level actual array',
+    );
+    assert.equal(result, '— shared references were duplicated');
+  });
+});
+
+describe('classifyHydrationFailTag — other / fallback', () => {
+  it('falls back to bracket-tag for unrecognised error types', () => {
+    const result = classifyHydrationFailTag('id mismatch at index 3', 'id mismatch at index 3');
+    assert.equal(result, '[both comparers: id mismatch at index 3]');
+  });
+
+  it('returns bracket-tag with both comparer details when errors differ', () => {
+    const result = classifyHydrationFailTag('dependencies length mismatch', 'wrong dep target');
+    assert.ok(result.includes('[smartCompare: dependencies length mismatch]'));
+    assert.ok(result.includes('[flatCompare: wrong dep target]'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDetailHydrationLine — full-detail Hydration: line
+// ---------------------------------------------------------------------------
+
+describe('buildDetailHydrationLine — pass', () => {
+  it('returns the "✅ PASS (double-verified)" hydration line', () => {
+    const line = buildDetailHydrationLine(true, false, '✅ PASS (double-verified)');
+    assert.equal(line, '  Hydration:     ✅ PASS (double-verified)');
+  });
+});
+
+describe('buildDetailHydrationLine — fail', () => {
+  it('returns hydration fail line with stack overflow tag', () => {
+    const line = buildDetailHydrationLine(
+      false,
+      false,
+      '❌ FAIL [both comparers: Maximum call stack size exceeded]',
+    );
+    assert.equal(
+      line,
+      '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]',
+    );
+  });
+
+  it('returns hydration fail line with clean identity mismatch phrase', () => {
+    const line = buildDetailHydrationLine(
+      false,
+      false,
+      '❌ FAIL — shared references were duplicated',
+    );
+    assert.equal(line, '  Hydration:     ❌ FAIL — shared references were duplicated');
+  });
+});
+
+describe('buildDetailHydrationLine — conflict', () => {
+  it('always shows the conflict label regardless of resultLine', () => {
+    const line = buildDetailHydrationLine(false, true, '🚨 CONFLICT — smartCompare=FAIL, flatCompare=PASS');
+    assert.equal(line, '  Hydration:     🚨 CONFLICT — comparers disagree');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDetailConsumerProbesLine — full-detail Consumer probes: line
+// ---------------------------------------------------------------------------
+
+describe('buildDetailConsumerProbesLine — probes ran', () => {
+  it('returns probe summary string when probes ran (both pass)', () => {
+    const line = buildDetailConsumerProbesLine(true, '✅ naive-json  ✅ cycle-flat (output ✅)');
+    assert.equal(line, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
+  });
+
+  it('returns probe summary string when probes ran (naive fails, cycle passes)', () => {
+    const line = buildDetailConsumerProbesLine(true, '❌ naive-json  ✅ cycle-flat (output ✅)');
+    assert.equal(line, '  Consumer probes: ❌ naive-json  ✅ cycle-flat (output ✅)');
+  });
+});
+
+describe('buildDetailConsumerProbesLine — not run (hydration failed)', () => {
+  it('returns "not run (hydration failed)" when probes did not run', () => {
+    const line = buildDetailConsumerProbesLine(false, '');
+    assert.equal(line, '  Consumer probes: not run (hydration failed)');
+  });
+
+  it('returns "not run (hydration failed)" when disagree=false and no probes', () => {
+    const line = buildDetailConsumerProbesLine(false, '', false);
+    assert.equal(line, '  Consumer probes: not run (hydration failed)');
+  });
+});
+
+describe('buildDetailConsumerProbesLine — not run (conflict)', () => {
+  it('returns "not run (comparers conflicted)" when disagree=true', () => {
+    const line = buildDetailConsumerProbesLine(false, '', true);
+    assert.equal(line, '  Consumer probes: not run (comparers conflicted)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDetailFullRunLine — full-detail Full Run: line
+// ---------------------------------------------------------------------------
+
+describe('buildDetailFullRunLine — full pass', () => {
+  it('returns PASS line with Time and RAM when endToEndPass=true', () => {
+    const line = buildDetailFullRunLine(true, true, false, 1.8, 0.05);
+    assert.ok(line.startsWith('  Full Run:      ✅ PASS'));
+    assert.ok(line.includes('Time:'));
+    assert.ok(line.includes('RAM:'));
+  });
+
+  it('does not include "(double-verified)" on the Full Run line (only on Hydration line)', () => {
+    const line = buildDetailFullRunLine(true, true, false, 1.8, 0.05);
+    assert.ok(!line.includes('double-verified'));
+  });
+});
+
+describe('buildDetailFullRunLine — hydration failed', () => {
+  it('returns "not run (hydration failed)" when bothPass=false and no conflict', () => {
+    const line = buildDetailFullRunLine(false, false, false, 0, 0);
+    assert.equal(line, '  Full Run:      not run (hydration failed)');
+  });
+});
+
+describe('buildDetailFullRunLine — conflict', () => {
+  it('returns "🚨 CONFLICT" when disagree=true', () => {
+    const line = buildDetailFullRunLine(false, false, true, 0, 0);
+    assert.equal(line, '  Full Run:      🚨 CONFLICT');
+  });
+});
+
+describe('buildDetailFullRunLine — hydration pass, probe fail', () => {
+  it('returns "❌ FAIL" when hydration passed but endToEndPass=false', () => {
+    const line = buildDetailFullRunLine(false, true, false, 0, 0);
+    assert.equal(line, '  Full Run:      ❌ FAIL');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Full output-format contract matrix (three-line phase contract)
+// ---------------------------------------------------------------------------
+
+describe('full-detail three-line phase contract — hydration fail scenario', () => {
+  it('produces Hydration FAIL → Consumer probes not run → Full Run not run', () => {
+    const resultLine = '❌ FAIL [both comparers: Maximum call stack size exceeded]';
+    const hydrationLine = buildDetailHydrationLine(false, false, resultLine);
+    const probesLine = buildDetailConsumerProbesLine(false, '');
+    const fullRunLine = buildDetailFullRunLine(false, false, false, 0, 0);
+
+    assert.equal(hydrationLine, `  Hydration:     ${resultLine}`);
+    assert.equal(probesLine, '  Consumer probes: not run (hydration failed)');
+    assert.equal(fullRunLine, '  Full Run:      not run (hydration failed)');
+  });
+
+  it('line order matches: Hydration → Consumer probes → Full Run', () => {
+    const lines = [
+      buildDetailHydrationLine(false, false, '❌ FAIL [both comparers: stack]'),
+      buildDetailConsumerProbesLine(false, ''),
+      buildDetailFullRunLine(false, false, false, 0, 0),
+    ];
+    assert.ok(lines[0].startsWith('  Hydration:'));
+    assert.ok(lines[1].startsWith('  Consumer probes:'));
+    assert.ok(lines[2].startsWith('  Full Run:'));
+  });
+});
+
+describe('full-detail three-line phase contract — full pass scenario', () => {
+  it('produces Hydration PASS → Consumer probes → Full Run PASS with metrics', () => {
+    const resultLine = '✅ PASS (double-verified)';
+    const probeSummary = '✅ naive-json  ✅ cycle-flat (output ✅)';
+    const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
+    const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
+    const fullRunLine = buildDetailFullRunLine(true, true, false, 2.5, 0.1);
+
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(probesLine, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
+    assert.ok(fullRunLine.startsWith('  Full Run:      ✅ PASS'));
+    assert.ok(fullRunLine.includes('Time:'));
+    assert.ok(fullRunLine.includes('RAM:'));
+  });
+});
+
+describe('full-detail three-line phase contract — hydration pass, probe fail scenario', () => {
+  it('produces Hydration PASS → Consumer probes FAIL → Full Run FAIL', () => {
+    const resultLine = '✅ PASS (double-verified)';
+    const probeSummary = '❌ naive-json  ❌ cycle-flat';
+    const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
+    const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
+    const fullRunLine = buildDetailFullRunLine(false, true, false, 0, 0);
+
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.ok(probesLine.includes('❌ naive-json'));
+    assert.equal(fullRunLine, '  Full Run:      ❌ FAIL');
+  });
+});
+
+describe('full-detail three-line phase contract — conflict scenario', () => {
+  it('produces Hydration CONFLICT → Consumer probes conflicted → Full Run CONFLICT', () => {
+    const hydrationLine = buildDetailHydrationLine(false, true, '🚨 any');
+    const probesLine = buildDetailConsumerProbesLine(false, '', true);
+    const fullRunLine = buildDetailFullRunLine(false, false, true, 0, 0);
+
+    assert.equal(hydrationLine, '  Hydration:     🚨 CONFLICT — comparers disagree');
+    assert.equal(probesLine, '  Consumer probes: not run (comparers conflicted)');
+    assert.equal(fullRunLine, '  Full Run:      🚨 CONFLICT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Later-tier new failure — consumer probes line now required
+// ---------------------------------------------------------------------------
+
+describe('buildLaterDatasetLines — new failure always includes consumer probes line', () => {
+  it('adds "not run (hydration failed)" when probeChangeLine is null for a new failure', () => {
+    const outcome: LaterAlgoOutcome = makeNewFailOutcome('Map Tracker', 'Reference Tracking');
+    // Confirm probeChangeLine is null in the default helper
+    assert.equal(outcome.probeChangeLine, null);
+
+    const lines = buildLaterDatasetLines([outcome]);
+    assert.ok(lines.some((l) => l.includes('Consumer probes: not run (hydration failed)')));
+  });
+
+  it('uses probeChangeLine when it is non-null (overrides the default "not run" line)', () => {
+    const outcome: LaterAlgoOutcome = {
+      ...makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+      probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
+    };
+    const lines = buildLaterDatasetLines([outcome]);
+    // The explicit probeChangeLine takes precedence
+    assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
+    // The default "not run" line should NOT appear since probeChangeLine was provided
+    assert.ok(!lines.some((l) => l.includes('not run (hydration failed)')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acyclic-control — format contract: Naive Recursion passes
+// ---------------------------------------------------------------------------
+
+describe('buildDetailHydrationLine — acyclic-control Naive Recursion pass', () => {
+  it('renders the pass line correctly for Naive Recursion on the isolated-node acyclic-control dataset', () => {
+    // Naive Recursion succeeds on the isolated-node acyclic-control dataset
+    // because no node is both a top-level entry and a dependency of another node.
+    const line = buildDetailHydrationLine(true, false, '✅ PASS (double-verified)');
+    assert.equal(line, '  Hydration:     ✅ PASS (double-verified)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildLaterDatasetLines — later-tier hydration-fail shows consumer probes line
+// ---------------------------------------------------------------------------
+
+describe('buildLaterDatasetLines — new failure consumer probes explicitness', () => {
+  it('stress-tier Map Tracker failure shows both Hydration and Consumer probes lines', () => {
+    // Simulates: Map Tracker passed at basic but newly fails at stress.
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Both phase lines must appear for the new failure
+    const hasHydrationFail = lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL'));
+    const hasProbesNotRun = lines.some((l) => l.includes('Consumer probes: not run (hydration failed)'));
+    assert.ok(hasHydrationFail, 'Should have Hydration: ❌ FAIL line');
+    assert.ok(hasProbesNotRun, 'Should have Consumer probes: not run line');
   });
 });

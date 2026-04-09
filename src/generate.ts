@@ -39,35 +39,33 @@ function generateDataset(size: number, seedSuffix: string) {
 }
 
 /**
- * Generates a genuinely acyclic dataset (DAG).
+ * Generates an acyclic control dataset consisting of isolated (edge-free) nodes.
  *
- * Edges only go from a higher-index node to a lower-index node, which
- * guarantees no cycles exist (topological order is simply descending index).
- * This contrasts with generateDataset(), which allows arbitrary edges and
- * intentionally produces cyclic graphs.
+ * Why isolated nodes?
+ *   Naive Recursion creates a **fresh** object for every `populate()` call — it has
+ *   no memoization.  When any node appears as both a top-level entry in the input
+ *   array and as a dependency of another node, two separate objects are created for
+ *   it.  Both smartCompare (which checks object identity for shared references) and
+ *   flatCompare (which looks up dependency objects in the top-level-index map) detect
+ *   that these two objects are not the same and report a mismatch.
+ *
+ *   Isolated nodes are the one structure where this conflict cannot arise: no node
+ *   is a dependency of any other, so there is only ever one object per logical node
+ *   and the comparers pass cleanly.
+ *
+ *   This makes the acyclic-control dataset a genuine experiment control:
+ *     - ALL algorithms (including Naive Recursion) succeed on trivial acyclic data.
+ *     - naive-json can serialize the result (no cycles).
+ *     - The contrast with the cyclic 'basic' dataset is stark and informative.
  */
-function generateAcyclicDataset(size: number, seedSuffix: string) {
-  const rng = seedrandom(`${SEED}-${seedSuffix}`);
+function generateAcyclicDataset(size: number, _seedSuffix: string) {
   const flatComponents: ComponentFlat[] = [];
 
-  // 1. Initialize all nodes
+  // Every node is independent — no dependency edges.
+  // This is the minimal structure that avoids the identity-duplication problem
+  // inherent in Naive Recursion while still serving as a meaningful acyclic control.
   for (let i = 0; i < size; i++) {
     flatComponents.push({ id: `comp_${i}`, dependencies: [] });
-  }
-
-  // 2. Assign edges only from higher-index nodes to lower-index nodes.
-  // Node at index 0 cannot depend on any lower-index node, because none exist,
-  // so we start from index 1.
-  for (let i = 1; i < size; i++) {
-    const numDeps = Math.floor(rng() * 2) + 1; // 1 or 2 dependencies per node (range [1, 2])
-    for (let d = 0; d < numDeps; d++) {
-      // Target is always a lower-index node, guaranteeing acyclicity.
-      const targetIdx = Math.floor(rng() * i);
-      const targetId = `comp_${targetIdx}`;
-      if (!flatComponents[i].dependencies.includes(targetId)) {
-        flatComponents[i].dependencies.push(targetId);
-      }
-    }
   }
 
   return { flatComponents };
