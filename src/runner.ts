@@ -911,7 +911,8 @@ function runBenchmark() {
   );
 
   // Consumer probe summary: compact per-algorithm per-dataset probe results.
-  // Values: icons like "✅/✅" or "❌/✅", or "—" (not run / skipped).
+  // Values: probe outcome icons like "✅/✅" or "❌/✅", "—" (not run),
+  // "(skip)" (skipped after failing the cyclic baseline), or "⚠️" (conflict).
   const probeSummaryRows: { algoName: string; results: Map<string, string> }[] = algorithms.map(
     (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
   );
