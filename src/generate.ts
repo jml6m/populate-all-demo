@@ -56,7 +56,7 @@ function generateAcyclicDataset(size: number, seedSuffix: string) {
   }
 
   // 2. Assign edges only from higher-index nodes to lower-index nodes.
-  // Nodes at index 0 have no predecessors and no deps can be added below them,
+  // Node at index 0 cannot depend on any lower-index node, because none exist,
   // so we start from index 1.
   for (let i = 1; i < size; i++) {
     const numDeps = Math.floor(rng() * 2) + 1; // 1 or 2 dependencies per node (range [1, 2])
