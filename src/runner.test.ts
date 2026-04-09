@@ -950,6 +950,33 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
       fs.rmSync(tmpDir, { recursive: true });
     }
   });
+
+  it('preserves the keepFilename file and deletes all other benchmark files', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-2000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-3000.json'), '{}'); // the "new" file to keep
+
+      const deleted = cleanDatasetReports(tmpDir, 'benchmark-3000.json');
+      assert.equal(deleted, 2);
+      const remaining = fs.readdirSync(tmpDir);
+      assert.deepEqual(remaining, ['benchmark-3000.json']);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns 0 when only the keepFilename file exists', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-5000.json'), '{}');
+      assert.equal(cleanDatasetReports(tmpDir, 'benchmark-5000.json'), 0);
+      assert.deepEqual(fs.readdirSync(tmpDir), ['benchmark-5000.json']);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
 });
 
 

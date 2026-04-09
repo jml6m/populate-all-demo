@@ -533,7 +533,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
  * Rules:
  *  - Hydration FAIL  → "  Hydration:     ❌ FAIL [...]"     (no metrics — nothing passed)
  *  - Full-run PASS   → "  Full Run:      ✅ PASS (...) | Time: X | RAM: Y"
- *                       Time is hydration + fastest authoritative passing probe.
+ *                       Time is hydration + fastest passing probe.
  *  - Hydration PASS,
  *    but authoritative probe failed
  *                    → "  Hydration:     ✅ PASS"            (probes failed; no headline metric)
@@ -569,18 +569,21 @@ export function buildFullRunLine(
 // ---------------------------------------------------------------------------
 
 /**
- * Deletes all `benchmark-*.json` files in a per-dataset report directory.
- * Called before writing a new report file so only the latest artifact per
- * dataset is retained, keeping the reports/ tree clean across repeated runs.
+ * Deletes stale `benchmark-*.json` files in a per-dataset report directory,
+ * optionally keeping one specified file (the newly-written report).
+ *
+ * Call this AFTER writing the new report so the latest artifact is always on disk
+ * before any cleanup occurs.  Pass `keepFilename` to preserve the just-written file.
  *
  * @param datasetReportsDir - Absolute path to the per-dataset reports directory.
+ * @param keepFilename      - Optional filename (not full path) to exclude from deletion.
  * @returns The number of files deleted.
  */
-export function cleanDatasetReports(datasetReportsDir: string): number {
+export function cleanDatasetReports(datasetReportsDir: string, keepFilename?: string): number {
   if (!fs.existsSync(datasetReportsDir)) return 0;
   let deleted = 0;
   for (const file of fs.readdirSync(datasetReportsDir)) {
-    if (/^benchmark-\d+\.json$/.test(file)) {
+    if (/^benchmark-\d+\.json$/.test(file) && file !== keepFilename) {
       fs.unlinkSync(path.join(datasetReportsDir, file));
       deleted++;
     }
@@ -1189,14 +1192,15 @@ function runBenchmark() {
     }
 
     // Write per-dataset report (wrapped with run metadata).
-    // Clean up stale benchmark files first so only the latest is retained.
+    // Write first, then clean up stale benchmark files so the new report is always
+    // on disk before any older files are removed (avoids an empty directory on write failure).
     const datasetReportsDir = path.join(reportsDir, dataset);
     fs.mkdirSync(datasetReportsDir, { recursive: true });
-    cleanDatasetReports(datasetReportsDir);
     const reportFilename = `benchmark-${Date.now()}.json`;
     const reportPath = path.join(datasetReportsDir, reportFilename);
     const datasetReportFile: DatasetReportFile = { metadata: runMetadata, results: datasetResults };
     fs.writeFileSync(reportPath, JSON.stringify(datasetReportFile, null, 2));
+    cleanDatasetReports(datasetReportsDir, reportFilename);
     reportPaths[dataset] = `${dataset}/${reportFilename}`;
     console.log(`\n✅ Report saved to ${reportPath}\n`);
   }
