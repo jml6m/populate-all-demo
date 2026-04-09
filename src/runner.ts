@@ -103,9 +103,9 @@ interface BenchmarkReport {
    */
   metrics: {
     /**
-     * Headline display time: hydration + fastest authoritative passing probe (ms).
-     * null when hydration failed or when the authoritative probe (cycle-flat) did
-     * not pass, because there is no full-run pass to represent.
+     * Headline display time: hydration + fastest passing probe (ms).
+     * null when hydration failed or when no probe passed, because there is no
+     * successful full-run pass to represent.
      */
     headlineTimeMs: number | null;
     /**
