@@ -10,6 +10,8 @@ import {
   formatHydrationFailTag,
   buildFailureDetailLines,
   buildLaterDatasetLines,
+  buildFullRunLine,
+  cleanDatasetReports,
   capErrorDetail,
   MAX_ERROR_DETAIL_CHARS,
   ExperimentIndex,
@@ -695,11 +697,13 @@ describe('buildLaterDatasetLines — edge cases', () => {
 });
 
 describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output', () => {
-  it('prints Hydration: ✅ PASS and Consumer probes: ❌ FAIL lines when probes fail', () => {
+  it('prints two-line format when cycle-flat (authoritative probe) fails', () => {
+    // probesFailed = true only when cycle-flat (authoritative probe) fails.
+    // In this scenario naive-json passes but cycle-flat fails — the experiment is not a Full Run pass.
     const outcome: LaterAlgoOutcome = {
       ...makePassOutcome('Map Tracker', 'Reference Tracking'),
       probesFailed: true,
-      probeChangeLine: '  Consumer probes: ❌ FAIL — ❌ naive-json  ✅ cycle-flat',
+      probeChangeLine: '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat',
     };
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
@@ -712,11 +716,11 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
     assert.ok(mapTrackerHeaderIndex >= 0);
     assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('✅ PASS')));
     assert.ok(lines.some((l) => l.includes('Consumer probes: ❌ FAIL')));
-    assert.ok(lines.some((l) => l.includes('❌ naive-json')));
+    assert.ok(lines.some((l) => l.includes('❌ cycle-flat')));
     assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('Hydration:'));
     assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('✅ PASS'));
     assert.ok(lines[mapTrackerHeaderIndex + 2]?.includes('Consumer probes: ❌ FAIL'));
-    // No Full Run line with metrics when probes failed
+    // No Full Run line with metrics when the authoritative probe failed
     assert.ok(!lines.some((l) => l.includes('Full Run:')));
   });
 
@@ -734,6 +738,33 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
     // Should still show Full Run line with metrics, not the Hydration: ✅ PASS shortform
     assert.ok(lines.some((l) => l.includes('Full Run:') && l.includes('✅ PASS')));
     assert.ok(lines.some((l) => l.includes('⚠️  changed from baseline')));
+  });
+
+  it('shows Full Run: ✅ PASS even when naive-json fails, as long as cycle-flat passes (probesFailed is false)', () => {
+    // This is the key semantic: naive-json failure on cyclic graphs is expected and informational.
+    // cycle-flat passing means the experiment is a Full Run pass — no two-line format.
+    const outcome: LaterAlgoOutcome = {
+      ...makePassOutcome('Map Tracker', 'Reference Tracking'),
+      probesFailed: false, // cycle-flat passed; naive-json failure is not authoritative
+      probeChangeLine: null, // probe fingerprint unchanged from baseline; no change line
+    };
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      outcome,
+    ];
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Must show Full Run PASS with metrics (not the two-line phase format)
+    const mapTrackerHeaderIdx = lines.findIndex((l) => l.startsWith('[Reference Tracking] Map Tracker'));
+    assert.ok(mapTrackerHeaderIdx >= 0);
+    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('Full Run:'));
+    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('✅ PASS'));
+
+    // Must NOT show the "Hydration: ✅ PASS" two-line phase indicator
+    assert.ok(!lines.some((l) => l === '  Hydration:     ✅ PASS'));
+
+    // Must NOT show a "Consumer probes: ❌ FAIL" label (naive-json failure is not a headline failure)
+    assert.ok(!lines.some((l) => l.includes('Consumer probes: ❌ FAIL')));
   });
 });
 
@@ -794,8 +825,160 @@ describe('CYCLIC_BASELINE_TIER — constant value', () => {
 });
 
 // ---------------------------------------------------------------------------
-// acyclic-control tier — computeFingerprint with new dataset
+// buildFullRunLine — hydration display line label semantics
 // ---------------------------------------------------------------------------
+
+describe('buildFullRunLine — hydration failure uses Hydration: label (not Full Run:)', () => {
+  it('returns "Hydration: ❌ FAIL" when hydration failed (bothPass=false)', () => {
+    const line = buildFullRunLine(
+      false, // bothPass
+      false, // endToEndPass
+      '❌ FAIL [both comparers: Maximum call stack size exceeded]',
+      4.1,
+      1.4,
+    );
+    assert.ok(line.startsWith('  Hydration:'), `Expected "Hydration:" prefix, got: ${line}`);
+    assert.ok(line.includes('❌ FAIL'));
+    assert.ok(!line.includes('Full Run:'));
+    assert.ok(!line.includes('Time:'), 'Hydration failure must not include timing metrics');
+    assert.ok(!line.includes('RAM:'), 'Hydration failure must not include RAM metrics');
+  });
+
+  it('returns "Hydration: ❌ FAIL" without metrics even though timing args are provided', () => {
+    const line = buildFullRunLine(false, false, '❌ FAIL [both comparers: stack overflow]', 10, 2);
+    assert.ok(!line.includes('10'));
+    assert.ok(!line.includes('2 MB'));
+  });
+});
+
+describe('buildFullRunLine — full-run pass uses Full Run: label with headline metrics', () => {
+  it('returns "Full Run: ✅ PASS" with Time and RAM when endToEndPass=true', () => {
+    const line = buildFullRunLine(
+      true,  // bothPass
+      true,  // endToEndPass
+      '✅ PASS (double-verified)',
+      1.8,
+      0.05,
+    );
+    assert.ok(line.startsWith('  Full Run:'), `Expected "Full Run:" prefix, got: ${line}`);
+    assert.ok(line.includes('✅ PASS (double-verified)'));
+    assert.ok(line.includes('Time:'));
+    assert.ok(line.includes('RAM:'));
+    assert.ok(!line.includes('Hydration:'));
+  });
+
+  it('includes formatted headline time in the Full Run line', () => {
+    const line = buildFullRunLine(true, true, '✅ PASS (double-verified)', 22.5, 9.1);
+    assert.ok(line.includes('23ms'), `Expected "23ms" (rounded), got: ${line}`);
+  });
+});
+
+describe('buildFullRunLine — hydration pass + authoritative probe fail uses Hydration: ✅ PASS', () => {
+  it('returns "Hydration: ✅ PASS" (no metrics) when hydration passed but endToEndPass=false', () => {
+    // This happens when hydration passes but cycle-flat (authoritative probe) failed.
+    const line = buildFullRunLine(
+      true,  // bothPass — hydration passed
+      false, // endToEndPass — cycle-flat failed
+      '✅ PASS (double-verified)',
+      5.0,
+      2.0,
+    );
+    assert.equal(line, '  Hydration:     ✅ PASS');
+    assert.ok(!line.includes('Full Run:'));
+    assert.ok(!line.includes('Time:'));
+    assert.ok(!line.includes('RAM:'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanDatasetReports — stale benchmark file cleanup
+// ---------------------------------------------------------------------------
+
+describe('cleanDatasetReports — deletes stale benchmark files', () => {
+  it('returns 0 when the directory does not exist', () => {
+    const nonExistent = path.join(os.tmpdir(), 'non-existent-dir-' + Date.now());
+    assert.equal(cleanDatasetReports(nonExistent), 0);
+  });
+
+  it('deletes all benchmark-<timestamp>.json files and returns count', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-2000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-3000.json'), '{}');
+
+      const deleted = cleanDatasetReports(tmpDir);
+      assert.equal(deleted, 3);
+      assert.deepEqual(fs.readdirSync(tmpDir), []);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('does not delete non-benchmark files', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'other-file.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'experiment-run.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-abc.json'), '{}'); // non-numeric timestamp
+
+      const deleted = cleanDatasetReports(tmpDir);
+      assert.equal(deleted, 1); // only benchmark-1000.json matched
+      const remaining = fs.readdirSync(tmpDir).sort();
+      assert.deepEqual(remaining, ['benchmark-abc.json', 'experiment-run.json', 'other-file.json']);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns 0 when directory is empty', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      assert.equal(cleanDatasetReports(tmpDir), 0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns 0 when no benchmark files exist (only other files)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'experiment-run.json'), '{}');
+      assert.equal(cleanDatasetReports(tmpDir), 0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('preserves the keepFilename file and deletes all other benchmark files', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-2000.json'), '{}');
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-3000.json'), '{}'); // the "new" file to keep
+
+      const deleted = cleanDatasetReports(tmpDir, 'benchmark-3000.json');
+      assert.equal(deleted, 2);
+      const remaining = fs.readdirSync(tmpDir);
+      assert.deepEqual(remaining, ['benchmark-3000.json']);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns 0 when only the keepFilename file exists', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'benchmark-5000.json'), '{}');
+      assert.equal(cleanDatasetReports(tmpDir, 'benchmark-5000.json'), 0);
+      assert.deepEqual(fs.readdirSync(tmpDir), ['benchmark-5000.json']);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+});
+
 
 describe('computeFingerprint — acyclic-control dataset support', () => {
   function makeFullManifest(): Manifest {

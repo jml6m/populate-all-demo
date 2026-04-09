@@ -95,13 +95,31 @@ interface BenchmarkReport {
    */
   skipped?: true;
   /**
-   * End-to-end experiment cost: covers algorithm execution, both hydration
-   * comparers, and all consumer probes (when hydration passes).
-   * null only for baseline-skipped entries.
+   * Experiment metrics.  null only for baseline-skipped entries.
+   *
+   * For hydration failures, `headlineTimeMs` and `headlineRamMb` are null (no
+   * meaningful pass to report).  `hydrationTimeMs` is always recorded so the
+   * cost of the failed attempt is available for analysis.
    */
   metrics: {
-    timeMs: number;
-    ramMb: number;
+    /**
+     * Headline display time: hydration + fastest passing probe (ms).
+     * null when hydration failed or when no probe passed, because there is no
+     * successful full-run pass to represent.
+     */
+    headlineTimeMs: number | null;
+    /**
+     * Headline display RAM: peak heap delta over the full experiment window (MB).
+     * null under the same conditions as headlineTimeMs.
+     */
+    headlineRamMb: number | null;
+    /** Hydration-only time: algorithm execution + both comparers (ms). */
+    hydrationTimeMs: number;
+    /**
+     * Per-probe timing in milliseconds.  Keys are probe names.
+     * Empty object when probes did not run (hydration failed).
+     */
+    probeTimingsMs: Record<string, number>;
   } | null;
   /**
    * Stage 1 — Hydration: did the algorithm produce a correct cyclic graph?
@@ -394,14 +412,19 @@ export interface LaterAlgoOutcome {
    */
   isConflict: boolean;
   /**
-   * True when hydration passed but at least one consumer probe failed.
-   * Used to trigger the two-line fail format instead of the compact pass format.
+   * True when hydration passed but the authoritative consumer probe (cycle-flat)
+   * failed or was not run.  Used to trigger the phase-oriented two-line format
+   * ("Hydration: ✅ PASS" + probe fail detail) instead of the compact
+   * "Full Run: ✅ PASS" format with headline metrics.
+   * naive-json failures alone do not set this flag — they are expected on cyclic
+   * graphs and are not authoritative for the experiment outcome.
    */
   probesFailed: boolean;
   /**
    * Full formatted hydration line ready for console output.
-   * - Pass:    "  Full Run:      ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
-   * - Fail:    "  Hydration:     ❌ FAIL [both comparers: ...]"  (no metrics)
+   * - Pass (endToEndPass):  "  Full Run:      ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
+   *                         (Time is hydration + fastest authoritative passing probe.)
+   * - Fail:                 "  Hydration:     ❌ FAIL [both comparers: ...]"  (no metrics)
    * null only when baselineSkipped is true.
    */
   hydrationLine: string | null;
@@ -424,8 +447,10 @@ export interface LaterAlgoOutcome {
  *    a single "Known failure(s) omitted: …" line.
  *  - New failures (hydration newly fails) are printed as a single
  *    "Hydration: ❌ FAIL [...]" line — no "changed" indicator, no metrics.
- *  - Hydration-pass / probe-fail algorithms are printed as two lines:
+ *  - Hydration-pass / authoritative-probe-fail algorithms are printed as two lines:
  *    "Hydration: ✅ PASS" followed by the consumer probes fail line.
+ *    naive-json failures alone do NOT trigger this format — they are expected
+ *    on cyclic graphs and are informational rather than pass/fail-defining.
  *  - Conflicts (comparers disagree) are always printed as full blocks — they are
  *    never suppressed, as disagreement between comparers is always notable.
  *  - Stable passing algorithms are:
@@ -496,6 +521,74 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
   }
 
   return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Hydration display line helper (exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the formatted console line for a hydration / full-run result.
+ *
+ * Rules:
+ *  - Hydration FAIL  → "  Hydration:     ❌ FAIL [...]"     (no metrics — nothing passed)
+ *  - Full-run PASS   → "  Full Run:      ✅ PASS (...) | Time: X | RAM: Y"
+ *                       Time is hydration + fastest passing probe.
+ *  - Hydration PASS,
+ *    but authoritative probe failed
+ *                    → "  Hydration:     ✅ PASS"            (probes failed; no headline metric)
+ *
+ * @param bothPass       - Whether both hydration comparers passed.
+ * @param endToEndPass   - Whether hydration AND the authoritative probe (cycle-flat) passed.
+ * @param resultLine     - Pre-formatted result text (e.g. "✅ PASS (double-verified)" or "❌ FAIL [...]").
+ * @param headlineTimeMs - Headline timing in ms (hydration + fastest passing probe).
+ * @param headlineRamMb  - Peak heap delta over the full experiment window (MB).
+ */
+export function buildFullRunLine(
+  bothPass: boolean,
+  endToEndPass: boolean,
+  resultLine: string,
+  headlineTimeMs: number,
+  headlineRamMb: number,
+): string {
+  if (!bothPass) {
+    // Hydration failed — always use "Hydration:" label, never show metrics.
+    return `  Hydration:     ${resultLine}`;
+  }
+  if (endToEndPass) {
+    // Full experiment passed (hydration + authoritative probe) — show headline metrics.
+    return `  Full Run:      ${resultLine} | Time: ${formatTime(headlineTimeMs)} | RAM: ${formatRam(headlineRamMb)}`;
+  }
+  // Hydration passed but the authoritative probe (cycle-flat) failed — show hydration
+  // pass state without a "Full Run:" headline; probe detail appears on the next line.
+  return `  Hydration:     ✅ PASS`;
+}
+
+// ---------------------------------------------------------------------------
+// Reports cleanup helper (exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deletes stale `benchmark-*.json` files in a per-dataset report directory,
+ * optionally keeping one specified file (the newly-written report).
+ *
+ * Call this AFTER writing the new report so the latest artifact is always on disk
+ * before any cleanup occurs.  Pass `keepFilename` to preserve the just-written file.
+ *
+ * @param datasetReportsDir - Absolute path to the per-dataset reports directory.
+ * @param keepFilename      - Optional filename (not full path) to exclude from deletion.
+ * @returns The number of files deleted.
+ */
+export function cleanDatasetReports(datasetReportsDir: string, keepFilename?: string): number {
+  if (!fs.existsSync(datasetReportsDir)) return 0;
+  let deleted = 0;
+  for (const file of fs.readdirSync(datasetReportsDir)) {
+    if (/^benchmark-\d+\.json$/.test(file) && file !== keepFilename) {
+      fs.unlinkSync(path.join(datasetReportsDir, file));
+      deleted++;
+    }
+  }
+  return deleted;
 }
 
 // ---------------------------------------------------------------------------
@@ -781,6 +874,7 @@ function runBenchmark() {
           knownPriorFailure: false,
           isNewFailure: false,
           isConflict: false,
+          probesFailed: false,
           hydrationLine: null,
           failureDetailLines: [],
           probeChangeLine: null,
@@ -793,14 +887,11 @@ function runBenchmark() {
         console.log(`[${algo.category}] ${algo.name}`);
       }
 
-      let executionTimeMs = 0;
-      let ramUsedMb = 0;
       let smartResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
       let flatResult = { pass: false, errorDetail: null as string | null };
       let executionResult: ComponentPopulated[] | null = null;
 
-      // Start timing before algorithm execution — end time is captured after
-      // consumer probes so metrics reflect the full end-to-end experiment cost.
+      // Start timing before algorithm execution.
       const startMem = process.memoryUsage().heapUsed;
       const startTime = performance.now();
 
@@ -830,6 +921,10 @@ function runBenchmark() {
         };
       }
 
+      // Capture hydration-only time immediately after comparers complete.
+      const hydrationEndTime = performance.now();
+      const hydrationTimeMs = hydrationEndTime - startTime;
+
       const bothPass = smartResult.pass && flatResult.pass;
       const disagree = smartResult.pass !== flatResult.pass;
 
@@ -843,10 +938,13 @@ function runBenchmark() {
       // Stage 2 — Consumer probes: run only when hydration passed.
       // Reuses the execution result from Stage 1 — no second algorithm run.
       // Probes are defined in src/utils/consumer.ts.
+      // Per-probe timing is captured so the headline can use hydration + fastest passing probe.
+      const probeTimingsMs: Record<string, number> = {};
       let consumerProbeResult: BenchmarkReport['consumerProbes'];
       if (bothPass && executionResult !== null) {
         const captured = executionResult;
         const probeResults = consumerProbes.map((probe) => {
+          const probeStart = performance.now();
           try {
             const r = probe.consume(captured);
 
@@ -863,6 +961,7 @@ function runBenchmark() {
             const overallError =
               r.errorDetail ?? (outputVerification !== null && !outputVerification.pass ? outputVerification.errorDetail : null);
 
+            probeTimingsMs[probe.name] = Number((performance.now() - probeStart).toFixed(3));
             return {
               name: probe.name,
               pass: overallPass,
@@ -870,6 +969,7 @@ function runBenchmark() {
               outputVerification,
             };
           } catch (error: unknown) {
+            probeTimingsMs[probe.name] = Number((performance.now() - probeStart).toFixed(3));
             const errorMessage = error instanceof Error ? error.message : String(error);
             return {
               name: probe.name,
@@ -884,11 +984,9 @@ function runBenchmark() {
         consumerProbeResult = { ran: false, probes: [] };
       }
 
-      // End timing after consumer probes — metrics cover the full experiment path.
-      const endTime = performance.now();
+      // Capture total RAM after all probes — used as the headline RAM for passes.
       const endMem = process.memoryUsage().heapUsed;
-      executionTimeMs = endTime - startTime;
-      ramUsedMb = Math.max(0, (endMem - startMem) / 1024 / 1024);
+      const headlineRamMb = Math.max(0, (endMem - startMem) / 1024 / 1024);
 
       // End-to-end pass: hydration must succeed AND the cycle-aware consumer
       // (cycle-flat) must pass.  naive-json failure is expected for cyclic graphs
@@ -897,6 +995,19 @@ function runBenchmark() {
         ? consumerProbeResult.probes.find((p) => p.name === 'cycle-flat')
         : undefined;
       const endToEndPass = bothPass && (cycleFlatResult?.pass ?? false);
+
+      // Headline time: hydration + fastest authoritative passing probe.
+      // Only meaningful when the full experiment passed (endToEndPass).
+      const passingProbeTimingsMs: number[] = [];
+      if (consumerProbeResult.ran) {
+        for (const probe of consumerProbeResult.probes) {
+          if (probe.pass) {
+            passingProbeTimingsMs.push(probeTimingsMs[probe.name] ?? 0);
+          }
+        }
+      }
+      const fastestProbeMs = passingProbeTimingsMs.length > 0 ? Math.min(...passingProbeTimingsMs) : 0;
+      const headlineTimeMs = hydrationTimeMs + fastestProbeMs;
 
       // Record end-to-end result for the summary table.
       summaryRows[algoIdx].results.set(dataset, disagree ? null : endToEndPass);
@@ -908,8 +1019,10 @@ function runBenchmark() {
         spaceComplexity: algo.spaceComplexity,
         dataset: dataset,
         metrics: {
-          timeMs: Number(executionTimeMs.toFixed(3)),
-          ramMb: Number(ramUsedMb.toFixed(3)),
+          headlineTimeMs: endToEndPass ? Number(headlineTimeMs.toFixed(3)) : null,
+          headlineRamMb: endToEndPass ? Number(headlineRamMb.toFixed(3)) : null,
+          hydrationTimeMs: Number(hydrationTimeMs.toFixed(3)),
+          probeTimingsMs,
         },
         hydration,
         consumerProbes: consumerProbeResult,
@@ -933,9 +1046,12 @@ function runBenchmark() {
         resultLine = `❌ FAIL ${formatHydrationFailTag(smartErr, flatErr)}`;
       }
 
-      // The pass/fail result reflects hydration, but the timing/RAM metrics
-      // cover the full experiment window including consumer probes.
-      const hydrationLine = `  Full Run:      ${resultLine} | Time: ${formatTime(report.metrics.timeMs)} | RAM: ${formatRam(report.metrics.ramMb)}`;
+      // Build the display line using the semantics-aware helper:
+      //  - Hydration FAIL  → "Hydration: ❌ FAIL [...]"   (no metrics)
+      //  - Full-run PASS   → "Full Run:  ✅ PASS | Time: {headline} | RAM: {ram}"
+      //  - Hydration PASS + authoritative probe failed
+      //                    → "Hydration: ✅ PASS"          (probe detail follows)
+      const hydrationLine = buildFullRunLine(bothPass, endToEndPass, resultLine, headlineTimeMs, headlineRamMb);
 
       // Build probe fingerprint for change-detection against baseline.
       // Use the literal 'SKIPPED' when hydration failed and probes did not run.
@@ -951,8 +1067,8 @@ function runBenchmark() {
 
       if (isFullDetailDataset) {
         // ── Full-detail dataset (acyclic-control, basic): print everything immediately ──
-        // The hydration line already contains the error detail inline via the
-        // fail tag — no separate detail lines needed to avoid duplicate output.
+        // hydrationLine uses "Full Run:" for passes or "Hydration:" for failures — no
+        // additional label logic needed here.
         console.log(hydrationLine);
 
         // Print probe summary in full.
@@ -1004,15 +1120,18 @@ function runBenchmark() {
           documentedFailures.set(algo.name, failFingerprint!);
         }
 
-        // For later-fail cases store a phase-oriented line without metrics so the
-        // output clearly names what failed rather than using the vague "Full Run:" label.
-        const laterHydrationLine = bothPass
-          ? hydrationLine
-          : `  Hydration:     ${resultLine}`;
+        // hydrationLine already encodes the correct label:
+        //  - pass (endToEndPass):  "  Full Run:      ✅ PASS | Time: ... | RAM: ..."
+        //  - hydration pass only:  "  Hydration:     ✅ PASS"  (authoritative probe failed)
+        //  - fail:                 "  Hydration:     ❌ FAIL [...]"
+        // For the later-tier outcome we use hydrationLine directly; it is only displayed
+        // by buildLaterDatasetLines when probesFailed is false.
+        const laterHydrationLine = hydrationLine;
 
-        // Determine whether any probe failed on this dataset.
-        const probesFailed =
-          consumerProbeResult.ran && consumerProbeResult.probes.some((p) => !p.pass);
+        // probesFailed reflects the authoritative consumer (cycle-flat) — not naive-json.
+        // naive-json failures are expected on cyclic graphs and are informational only;
+        // they must not force the "Hydration: ✅ PASS" two-line format for later tiers.
+        const probesFailed = consumerProbeResult.ran && !(cycleFlatResult?.pass ?? false);
 
         // Build the probe result/change line.
         //  - Always emit when probes failed (so the failure detail is never silently dropped,
@@ -1073,12 +1192,15 @@ function runBenchmark() {
     }
 
     // Write per-dataset report (wrapped with run metadata).
+    // Write first, then clean up stale benchmark files so the new report is always
+    // on disk before any older files are removed (avoids an empty directory on write failure).
     const datasetReportsDir = path.join(reportsDir, dataset);
     fs.mkdirSync(datasetReportsDir, { recursive: true });
     const reportFilename = `benchmark-${Date.now()}.json`;
     const reportPath = path.join(datasetReportsDir, reportFilename);
     const datasetReportFile: DatasetReportFile = { metadata: runMetadata, results: datasetResults };
     fs.writeFileSync(reportPath, JSON.stringify(datasetReportFile, null, 2));
+    cleanDatasetReports(datasetReportsDir, reportFilename);
     reportPaths[dataset] = `${dataset}/${reportFilename}`;
     console.log(`\n✅ Report saved to ${reportPath}\n`);
   }
