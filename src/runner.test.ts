@@ -15,6 +15,7 @@ import {
   ExperimentIndex,
   RunMetadata,
   LaterAlgoOutcome,
+  CYCLIC_BASELINE_TIER,
 } from './runner';
 import type { Manifest } from './types';
 
@@ -775,5 +776,224 @@ describe('buildLaterDatasetLines — conflict handling', () => {
     };
     const lines = buildLaterDatasetLines([outcome]);
     assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CYCLIC_BASELINE_TIER constant
+// ---------------------------------------------------------------------------
+
+describe('CYCLIC_BASELINE_TIER — constant value', () => {
+  it('is the string "basic"', () => {
+    assert.equal(CYCLIC_BASELINE_TIER, 'basic');
+  });
+
+  it('is a string', () => {
+    assert.equal(typeof CYCLIC_BASELINE_TIER, 'string');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acyclic-control tier — computeFingerprint with new dataset
+// ---------------------------------------------------------------------------
+
+describe('computeFingerprint — acyclic-control dataset support', () => {
+  function makeFullManifest(): Manifest {
+    return {
+      generatedAt: '2025-01-01T00:00:00.000Z',
+      files: {
+        'acyclic-control_input': {
+          filename: 'acyclic-control/acyclic-control_input.aabb1122.yaml',
+          contentHash: 'aabb1122',
+        },
+        'acyclic-control_answer': {
+          filename: 'acyclic-control/acyclic-control_answer.ccdd3344.yaml',
+          contentHash: 'ccdd3344',
+        },
+        basic_input: { filename: 'basic/basic_input.abc12345.yaml', contentHash: 'abc12345' },
+        basic_answer: { filename: 'basic/basic_answer.def67890.yaml', contentHash: 'def67890' },
+        medium_input: { filename: 'medium/medium_input.aabbccdd.yaml', contentHash: 'aabbccdd' },
+        medium_answer: { filename: 'medium/medium_answer.11223344.yaml', contentHash: '11223344' },
+      },
+    };
+  }
+
+  it('includes acyclic-control file hashes when acyclic-control is in the selected datasets', () => {
+    const manifest = makeFullManifest();
+    const fp1 = computeFingerprint(manifest, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']);
+    const fp2 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
+    // Running with acyclic-control included must produce a different fingerprint
+    assert.notEqual(fp1, fp2, 'Adding acyclic-control to the dataset list must change the fingerprint');
+  });
+
+  it('excludes acyclic-control file hashes when it is not in the selected datasets', () => {
+    const manifest = makeFullManifest();
+    // Mutate the acyclic-control hash — should not affect the fingerprint when not selected.
+    const manifestAlt: Manifest = {
+      ...manifest,
+      files: {
+        ...manifest.files,
+        'acyclic-control_input': {
+          filename: 'acyclic-control/acyclic-control_input.different.yaml',
+          contentHash: 'different',
+        },
+      },
+    };
+    assert.equal(
+      computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']),
+      computeFingerprint(manifestAlt, ['basic'], ['Algo A'], ['probe-x']),
+      'Changing acyclic-control hash should not affect fingerprint when only basic is selected',
+    );
+  });
+
+  it('changes when acyclic-control file hash changes and acyclic-control is selected', () => {
+    const manifest = makeFullManifest();
+    const manifestAlt: Manifest = {
+      ...manifest,
+      files: {
+        ...manifest.files,
+        'acyclic-control_input': {
+          filename: 'acyclic-control/acyclic-control_input.different.yaml',
+          contentHash: 'different',
+        },
+      },
+    };
+    assert.notEqual(
+      computeFingerprint(manifest, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']),
+      computeFingerprint(manifestAlt, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acyclic-control tier — isAlreadyUpToDate with multi-dataset runs
+// ---------------------------------------------------------------------------
+
+describe('isAlreadyUpToDate — acyclic-control included in dataset list', () => {
+  it('returns true when all datasets (including acyclic-control) have matching reports', () => {
+    const tempDir = makeTempDir();
+    const acyclicRelPath = 'acyclic-control/benchmark-1.json';
+    const basicRelPath = 'basic/benchmark-1.json';
+
+    try {
+      fs.mkdirSync(path.join(tempDir, 'acyclic-control'), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, acyclicRelPath), '{}');
+      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
+
+      const index: ExperimentIndex = {
+        metadata: makeMetadata({
+          fingerprint: 'fp-acyclic-multi',
+          datasets: ['acyclic-control', 'basic'],
+        }),
+        reports: {
+          'acyclic-control': acyclicRelPath,
+          basic: basicRelPath,
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+
+      assert.equal(
+        isAlreadyUpToDate(tempDir, 'fp-acyclic-multi', ['acyclic-control', 'basic']),
+        true,
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+
+  it('returns false when the acyclic-control report is missing', () => {
+    const tempDir = makeTempDir();
+    const basicRelPath = 'basic/benchmark-1.json';
+
+    try {
+      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
+      // acyclic-control dir/file NOT created
+
+      const index: ExperimentIndex = {
+        metadata: makeMetadata({
+          fingerprint: 'fp-missing-acyclic',
+          datasets: ['acyclic-control', 'basic'],
+        }),
+        reports: {
+          'acyclic-control': 'acyclic-control/benchmark-missing.json',
+          basic: basicRelPath,
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+
+      assert.equal(
+        isAlreadyUpToDate(tempDir, 'fp-missing-acyclic', ['acyclic-control', 'basic']),
+        false,
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acyclic-control tier — cyclic skip/suppression still anchored to basic
+// ---------------------------------------------------------------------------
+
+describe('buildLaterDatasetLines — cyclic skip semantics are unaffected by acyclic-control', () => {
+  it('baseline-skipped algorithms from basic are still suppressed on medium/stress/extreme', () => {
+    // Simulate what happens on medium/stress/extreme when Naive Recursion failed at basic.
+    // acyclic-control running first should NOT change this behavior.
+    const outcomes: LaterAlgoOutcome[] = [
+      // Naive Recursion: failed at basic (cyclic baseline), so it is baseline-skipped here.
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      // Remaining algorithms pass.
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // Naive Recursion must appear in the omission note, not as a failure block.
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
+    assert.ok(!lines.some((l) => l.startsWith('[Reference Tracking] Naive Recursion')));
+
+    // Survivors are shown individually (expansion mode because there is an omission).
+    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
+    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
+  });
+
+  it('all-pass later dataset produces the compact summary sentence (no omissions, no failures)', () => {
+    // When acyclic-control runs first but basic is the cyclic baseline, and no algorithm
+    // failed at basic, the later dataset should still produce the compact stable summary.
+    const outcomes: LaterAlgoOutcome[] = [
+      makePassOutcome('Naive Recursion', 'Reference Tracking'),
+      makePassOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+
+    const lines = buildLaterDatasetLines(outcomes);
+    assert.ok(lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
+    assert.ok(!lines.some((l) => l.includes('Known failure')));
+  });
+
+  it('new failure on a later cyclic dataset is still surfaced as isNewFailure', () => {
+    // Map Tracker newly fails on stress — this must be shown even though
+    // acyclic-control ran first (acyclic-control has no bearing on cyclic suppression).
+    const outcomes: LaterAlgoOutcome[] = [
+      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+      makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+      makePassOutcome('Tarjan SCC Layering', 'Topological'),
+      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
+    ];
+
+    const lines = buildLaterDatasetLines(outcomes);
+
+    // New failure must appear as a full block.
+    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
+    assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL')));
+
+    // Omission note for the baseline-skipped algorithm.
+    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
   });
 });

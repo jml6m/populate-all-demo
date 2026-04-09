@@ -1,9 +1,10 @@
 {
   "datasets": [
-    { "name": "basic", "size": 10, "seedSuffix": "basic", "enabled": true },
-    { "name": "medium", "size": 5000, "seedSuffix": "medium", "enabled": true },
-    { "name": "stress", "size": 50000, "seedSuffix": "stress", "enabled": true },
-    { "name": "extreme", "size": 250000, "seedSuffix": "extreme", "enabled": true }
+    { "name": "acyclic-control", "size": 10, "seedSuffix": "acyclic-control", "enabled": true, "acyclic": true },
+    { "name": "basic", "size": 10, "seedSuffix": "basic", "enabled": true, "acyclic": false },
+    { "name": "medium", "size": 5000, "seedSuffix": "medium", "enabled": true, "acyclic": false },
+    { "name": "stress", "size": 50000, "seedSuffix": "stress", "enabled": true, "acyclic": false },
+    { "name": "extreme", "size": 250000, "seedSuffix": "extreme", "enabled": true, "acyclic": false }
   ],
   "outputDir": "../data"
 }

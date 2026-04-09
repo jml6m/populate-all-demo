@@ -38,6 +38,41 @@ function generateDataset(size: number, seedSuffix: string) {
   return { flatComponents };
 }
 
+/**
+ * Generates a genuinely acyclic dataset (DAG).
+ *
+ * Edges only go from a higher-index node to a lower-index node, which
+ * guarantees no cycles exist (topological order is simply descending index).
+ * This contrasts with generateDataset(), which allows arbitrary edges and
+ * intentionally produces cyclic graphs.
+ */
+function generateAcyclicDataset(size: number, seedSuffix: string) {
+  const rng = seedrandom(`${SEED}-${seedSuffix}`);
+  const flatComponents: ComponentFlat[] = [];
+
+  // 1. Initialize all nodes
+  for (let i = 0; i < size; i++) {
+    flatComponents.push({ id: `comp_${i}`, dependencies: [] });
+  }
+
+  // 2. Assign edges only from higher-index nodes to lower-index nodes.
+  // Node at index 0 cannot depend on any lower-index node, because none exist,
+  // so we start from index 1.
+  for (let i = 1; i < size; i++) {
+    const numDeps = Math.floor(rng() * 2) + 1; // 1 or 2 dependencies per node (range [1, 2])
+    for (let d = 0; d < numDeps; d++) {
+      // Target is always a lower-index node, guaranteeing acyclicity.
+      const targetIdx = Math.floor(rng() * i);
+      const targetId = `comp_${targetIdx}`;
+      if (!flatComponents[i].dependencies.includes(targetId)) {
+        flatComponents[i].dependencies.push(targetId);
+      }
+    }
+  }
+
+  return { flatComponents };
+}
+
 // Converts the flat input into an answer: same nodes, but dependency foreign-key strings
 // replaced by array indices. This avoids the deep YAML nesting that cyclic object
 // serialization (aliasDuplicateObjects) would produce for large graphs.
@@ -137,7 +172,9 @@ function run() {
 
   for (const dataset of datasetsToProcess) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
-    const { flatComponents } = generateDataset(dataset.size, dataset.seedSuffix);
+    const { flatComponents } = dataset.acyclic
+      ? generateAcyclicDataset(dataset.size, dataset.seedSuffix)
+      : generateDataset(dataset.size, dataset.seedSuffix);
 
     // Create per-dataset subdirectory.
     const datasetDir = path.join(outputDir, dataset.name);
