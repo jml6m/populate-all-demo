@@ -45,6 +45,18 @@ function generateDataset(size: number, seedSuffix: string) {
  * guarantees no cycles exist (topological order is simply descending index).
  * This contrasts with generateDataset(), which allows arbitrary edges and
  * intentionally produces cyclic graphs.
+ *
+ * On this dataset:
+ *   - Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC) pass
+ *     cleanly: the same object is returned for each node regardless of how many
+ *     times it is referenced as a dependency.
+ *   - Naive Recursion fails: it creates a fresh object for every populate() call,
+ *     so a node that appears as a dependency of multiple parents is represented by
+ *     multiple distinct objects.  The comparers detect this identity mismatch.
+ *
+ * This makes acyclic-control a precise control: it isolates the shared-reference
+ * requirement from the cycle-detection requirement.  An algorithm failing here
+ * lacks memoization, not cycle-handling.
  */
 function generateAcyclicDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);

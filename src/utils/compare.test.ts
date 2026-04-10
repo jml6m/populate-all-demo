@@ -689,3 +689,174 @@ describe('buildPopulatedFromAnswer — verbose basic-tier trace', () => {
     console.log(`[test] buildPopulatedFromAnswer trace written to ${tracePath}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Acyclic-control tier trace logs
+//
+// Mirrors the basic-tier trace tests but for the acyclic-control dataset.
+// Generates two canonical developer-facing trace logs:
+//   - acyclic-control-accuracy-trace.log  (smartCompare verbose trace for twoPassWire)
+//   - acyclic-control-build-answer-trace.log  (buildPopulatedFromAnswer trace)
+//
+// The acyclic-control dataset is a genuine DAG: edges go from higher-index nodes to
+// lower-index nodes only, guaranteeing no cycles.  Algorithms with memoization (Map
+// Tracker, Two-Pass Wire, Tarjan SCC) pass cleanly.  Naive Recursion fails because it
+// creates a fresh object per populate() call — the same shared-reference mismatch as on
+// the cyclic 'basic' dataset, proving the limitation is about memoization, not cycles.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures acyclic-control data files are present, generating only that tier
+ * if they are missing.
+ */
+function ensureAcyclicControlDataGenerated(): void {
+  const dataDir = getDataDir();
+  const manifestPath = path.join(dataDir, 'manifest.json');
+
+  if (fs.existsSync(manifestPath)) {
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+      files?: Record<string, { filename?: string } | undefined>;
+    };
+    const inputFilename = raw.files?.['acyclic-control_input']?.filename;
+    const answerFilename = raw.files?.['acyclic-control_answer']?.filename;
+    if (
+      typeof inputFilename === 'string' &&
+      typeof answerFilename === 'string' &&
+      fs.existsSync(path.join(dataDir, inputFilename)) &&
+      fs.existsSync(path.join(dataDir, answerFilename))
+    ) {
+      return; // Acyclic-control files already present
+    }
+  }
+
+  console.log('[test] Acyclic-control data files not found — running npm run generate --tier acyclic-control...');
+  const projectRoot = path.resolve(__dirname, '..', '..');
+  execSync('npm run generate -- --tier acyclic-control', { cwd: projectRoot, stdio: 'inherit' });
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Data generation did not produce manifest.json. Cannot run acyclic-control trace test.');
+  }
+}
+
+describe('smartCompare — verbose acyclic-control trace', () => {
+  it('runs twoPassWire on acyclic-control data, verifies it passes, writes trace log', (t) => {
+    ensureAcyclicControlDataGenerated();
+
+    const manifest = loadManifest();
+    const inputEntry = manifest.files['acyclic-control_input'];
+    const answerEntry = manifest.files['acyclic-control_answer'];
+    assert.ok(inputEntry, 'acyclic-control_input missing from manifest');
+    assert.ok(answerEntry, 'acyclic-control_answer missing from manifest');
+
+    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+    const expected = buildPopulatedFromAnswer(rawAnswerEntries);
+
+    // Run twoPassWire (reference passing algorithm)
+    const actualTwp = twoPassWire.execute(inputData);
+
+    const logLines: string[] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => {
+      const line = args.map(String).join(' ');
+      if (line.startsWith('[smartCompare]')) {
+        logLines.push(line);
+      }
+    });
+
+    const twpResult = smartCompare(actualTwp, expected, true);
+
+    t.mock.restoreAll();
+
+    assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
+    assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
+
+    // Write trace log
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
+    const header = [
+      '=== smartCompare verbose trace — acyclic-control tier ===',
+      `nodesProcessed: ${twpResult.nodesProcessed}`,
+      `edgesTraversed: ${twpResult.edgesTraversed}`,
+      `twoPassWire pass: ${twpResult.pass}`,
+      '',
+      'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
+      'No cycles exist.  Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC)',
+      'pass cleanly.  Naive Recursion fails: it creates a fresh object per populate() call,',
+      'producing a shared-reference mismatch even without cycles.',
+      '',
+    ];
+    fs.writeFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
+    console.log(`[test] Acyclic-control accuracy trace written to ${tracePath}`);
+  });
+});
+
+describe('buildPopulatedFromAnswer — verbose acyclic-control trace', () => {
+  it('steps through shell creation for acyclic-control nodes, writes trace log', () => {
+    ensureAcyclicControlDataGenerated();
+
+    const manifest = loadManifest();
+    const answerEntry = manifest.files['acyclic-control_answer'];
+    assert.ok(answerEntry, 'acyclic-control_answer missing from manifest');
+
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+
+    const traceLines: string[] = [
+      '',
+      '=== buildPopulatedFromAnswer verbose trace — acyclic-control tier ===',
+      '',
+      'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
+      'No cycles exist.  Dependency edges are present; identity-sharing is required for',
+      'any node that appears as a dependency of multiple parents.',
+      'Algorithms with memoization reconstruct this correctly; Naive Recursion does not.',
+      '',
+    ];
+
+    // Pass 1: create shells
+    traceLines.push('--- Pass 1: Shell creation ---');
+    const nodes: ComponentPopulated[] = rawAnswerEntries.map((e) => {
+      traceLines.push(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
+      return { id: e.id, dependencies: [] };
+    });
+
+    // Pass 2: wire dependencies and verify
+    traceLines.push('');
+    traceLines.push('--- Pass 2: Wiring ---');
+    let totalEdges = 0;
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        nodes[i].dependencies.push(nodes[depIdx]);
+        traceLines.push(
+          `Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`,
+        );
+        totalEdges++;
+      }
+    }
+    traceLines.push(`Total edges wired: ${totalEdges}`);
+
+    traceLines.push('');
+    traceLines.push('--- Identity checks ---');
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
+        traceLines.push(
+          `Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`,
+        );
+        assert.equal(
+          sameObject,
+          true,
+          `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`,
+        );
+      }
+    }
+    if (totalEdges === 0) {
+      traceLines.push('(no identity checks required — zero dependency edges)');
+    }
+
+    // Write trace log
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const tracePath = path.join(LOGS_DIR, 'acyclic-control-build-answer-trace.log');
+    fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
+    console.log(`[test] Acyclic-control buildPopulatedFromAnswer trace written to ${tracePath}`);
+  });
+});

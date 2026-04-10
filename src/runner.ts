@@ -384,6 +384,108 @@ export function buildFailureDetailLines(
   return lines;
 }
 
+/**
+ * Returns a clean display tag for a hydration failure.
+ *
+ * Stack-overflow errors (the common case) keep the existing bracket-tag format
+ * because "Maximum call stack size exceeded" is already informative.
+ *
+ * Non-stack-overflow errors — such as identity/reference-sharing mismatches
+ * detected by smartCompare — replace the raw comparer output with a concise,
+ * developer-meaningful phrase rather than dumping clipped low-level detail.
+ *
+ * Raw error details are always preserved in the per-dataset report JSON.
+ */
+export function classifyHydrationFailTag(smartErr: string | null, flatErr: string | null): string {
+  const combined = `${smartErr ?? ''} ${flatErr ?? ''}`.toLowerCase();
+
+  // Stack overflow: keep the bracket-tag format (already concise and actionable).
+  if (combined.includes('maximum call stack') || combined.includes('call stack size')) {
+    return formatHydrationFailTag(smartErr, flatErr);
+  }
+
+  // Identity / reference-sharing mismatch: clean developer-meaningful phrase.
+  if (
+    combined.includes('cycle structure mismatch') ||
+    combined.includes('is paired with more than one') ||
+    combined.includes('not present in the top-level')
+  ) {
+    return '— shared references were duplicated';
+  }
+
+  // Other errors: fall back to the bracket-tag format.
+  return formatHydrationFailTag(smartErr, flatErr);
+}
+
+// ---------------------------------------------------------------------------
+// Full-detail dataset three-line phase contract helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the `Hydration:` line for a full-detail dataset.
+ *
+ * Always uses the `Hydration:` prefix regardless of outcome (the Full Run line
+ * carries pass/metrics when the experiment succeeds).
+ *
+ * @param bothPass    - Whether both hydration comparers passed.
+ * @param disagree    - Whether the two comparers disagree (one pass, one fail).
+ * @param resultLine  - Pre-formatted result text (e.g. "✅ PASS (double-verified)" or "❌ FAIL [...]").
+ */
+export function buildDetailHydrationLine(
+  bothPass: boolean,
+  disagree: boolean,
+  resultLine: string,
+): string {
+  if (disagree) return `  Hydration:     🚨 CONFLICT — comparers disagree`;
+  void bothPass; // resultLine already encodes the pass/fail state
+  return `  Hydration:     ${resultLine}`;
+}
+
+/**
+ * Builds the `Consumer probes:` line for a full-detail dataset.
+ *
+ * @param probesRan    - Whether consumer probes actually ran (requires hydration pass).
+ * @param probeSummary - Space-joined probe result string when probes ran (ignored otherwise).
+ * @param disagree     - Whether this is a conflict (affects the "not run" reason phrase).
+ */
+export function buildDetailConsumerProbesLine(
+  probesRan: boolean,
+  probeSummary: string,
+  disagree: boolean = false,
+): string {
+  if (!probesRan) {
+    return disagree
+      ? `  Consumer probes: not run (comparers conflicted)`
+      : `  Consumer probes: not run (hydration failed)`;
+  }
+  return `  Consumer probes: ${probeSummary}`;
+}
+
+/**
+ * Builds the `Full Run:` line for a full-detail dataset.
+ *
+ * @param endToEndPass   - Whether hydration AND the authoritative probe (cycle-flat) passed.
+ * @param bothPass       - Whether both hydration comparers passed.
+ * @param disagree       - Whether the comparers conflicted (overrides other outcomes).
+ * @param headlineTimeMs - Headline timing (hydration + fastest passing probe) in ms.
+ * @param headlineRamMb  - Peak heap delta over the full experiment window (MB).
+ */
+export function buildDetailFullRunLine(
+  endToEndPass: boolean,
+  bothPass: boolean,
+  disagree: boolean,
+  headlineTimeMs: number,
+  headlineRamMb: number,
+): string {
+  if (disagree) return `  Full Run:      🚨 CONFLICT`;
+  if (!bothPass) return `  Full Run:      not run (hydration failed)`;
+  if (endToEndPass) {
+    return `  Full Run:      ✅ PASS | Time: ${formatTime(headlineTimeMs)} | RAM: ${formatRam(headlineRamMb)}`;
+  }
+  // Hydration passed but cycle-flat (authoritative probe) failed.
+  return `  Full Run:      ❌ FAIL`;
+}
+
 // ---------------------------------------------------------------------------
 // Later-dataset output helpers (exported for unit testing)
 // ---------------------------------------------------------------------------
@@ -498,12 +600,19 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
       if (c.probeChangeLine !== null) lines.push(c.probeChangeLine);
     }
 
-    // New failures: single hydration-fail line (no "changed" indicator, no metrics).
+    // New failures: hydration-fail line + explicit consumer probes status.
     for (const f of newFails) {
       lines.push(`[${f.algoCategory}] ${f.algoName}`);
       if (f.hydrationLine !== null) lines.push(f.hydrationLine);
       for (const dl of f.failureDetailLines) lines.push(dl);
-      if (f.probeChangeLine !== null) lines.push(f.probeChangeLine);
+      // Always show consumer probes status for new failures.
+      // In practice probeChangeLine is null here (probes cannot run when hydration fails),
+      // so the "not run" fallback is the normal path.
+      if (f.probeChangeLine !== null) {
+        lines.push(f.probeChangeLine);
+      } else {
+        lines.push(`  Consumer probes: not run (hydration failed)`);
+      }
     }
 
     // Stable passes: compact entries with timing (scalability story).
@@ -770,6 +879,7 @@ function runBenchmark() {
     if (laterCyclicDatasets.length > 0) {
       console.log(`      Later datasets report only full experiment timing and meaningful outcome changes.`);
     }
+    console.log(`      "(double-verified)" means both smartCompare and flatCompare passed.`);
     console.log('');
   }
 
@@ -797,6 +907,13 @@ function runBenchmark() {
 
   // Summary data collected for the final table.
   const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
+    (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
+  );
+
+  // Consumer probe summary: compact per-algorithm per-dataset probe results.
+  // Values: probe outcome icons like "✅/✅" or "❌/✅", "—" (not run),
+  // "(skip)" (skipped after failing the cyclic baseline), or "⚠️" (conflict).
+  const probeSummaryRows: { algoName: string; results: Map<string, string> }[] = algorithms.map(
     (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
   );
 
@@ -853,6 +970,7 @@ function runBenchmark() {
       // Map Tracker passes at small scale and only fails at large scale, so it continues running.
       if (!isFullDetailDataset && baselineFailedAlgorithms.has(algo.name)) {
         summaryRows[algoIdx].results.set(dataset, false);
+        probeSummaryRows[algoIdx].results.set(dataset, '(skip)');
         // Re-use the exact hydration object from the baseline run.
         // metrics is null — no execution took place; skipped: true lets report
         // consumers distinguish these entries from genuine zero-time measurements.
@@ -1012,6 +1130,14 @@ function runBenchmark() {
       // Record end-to-end result for the summary table.
       summaryRows[algoIdx].results.set(dataset, disagree ? null : endToEndPass);
 
+      // Record consumer probe result for the probe summary table.
+      if (!consumerProbeResult.ran) {
+        probeSummaryRows[algoIdx].results.set(dataset, disagree ? '⚠️' : '—');
+      } else {
+        const iconStr = consumerProbeResult.probes.map((p) => (p.pass ? '✅' : '❌')).join('/');
+        probeSummaryRows[algoIdx].results.set(dataset, iconStr);
+      }
+
       const report: BenchmarkReport = {
         algorithmCategory: algo.category,
         algorithmName: algo.name,
@@ -1034,23 +1160,22 @@ function runBenchmark() {
       // Build formatted output lines (used for both immediate and deferred print)
       // -----------------------------------------------------------------------
 
-      // Hydration result text — uses de-duplicating helper for failures.
+      // Hydration result text — uses de-duplicating / classifying helper for failures.
+      // classifyHydrationFailTag replaces raw comparer messages with clean developer-
+      // friendly phrases for non-stack-overflow errors (e.g. identity mismatches).
       let resultLine: string;
+      const smartErr = !smartResult.pass ? smartResult.errorDetail : null;
+      const flatErr = !flatResult.pass ? flatResult.errorDetail : null;
       if (disagree) {
         resultLine = `🚨 CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
       } else if (bothPass) {
         resultLine = `✅ PASS (double-verified)`;
       } else {
-        const smartErr = !smartResult.pass ? smartResult.errorDetail : null;
-        const flatErr = !flatResult.pass ? flatResult.errorDetail : null;
-        resultLine = `❌ FAIL ${formatHydrationFailTag(smartErr, flatErr)}`;
+        resultLine = `❌ FAIL ${classifyHydrationFailTag(smartErr, flatErr)}`;
       }
 
-      // Build the display line using the semantics-aware helper:
-      //  - Hydration FAIL  → "Hydration: ❌ FAIL [...]"   (no metrics)
-      //  - Full-run PASS   → "Full Run:  ✅ PASS | Time: {headline} | RAM: {ram}"
-      //  - Hydration PASS + authoritative probe failed
-      //                    → "Hydration: ✅ PASS"          (probe detail follows)
+      // Build the compact hydration/run line used for later-dataset (compact) format.
+      // The full-detail format uses the three-line contract below instead.
       const hydrationLine = buildFullRunLine(bothPass, endToEndPass, resultLine, headlineTimeMs, headlineRamMb);
 
       // Build probe fingerprint for change-detection against baseline.
@@ -1065,15 +1190,9 @@ function runBenchmark() {
             .join(',')
         : 'SKIPPED';
 
-      if (isFullDetailDataset) {
-        // ── Full-detail dataset (acyclic-control, basic): print everything immediately ──
-        // hydrationLine uses "Full Run:" for passes or "Hydration:" for failures — no
-        // additional label logic needed here.
-        console.log(hydrationLine);
-
-        // Print probe summary in full.
-        if (consumerProbeResult.ran) {
-          const probeSummary = consumerProbeResult.probes
+      // Build the probe summary string for both full-detail and consumer probe summary table.
+      const probeSummaryStr = consumerProbeResult.ran
+        ? consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
               const verifyIcon =
@@ -1084,11 +1203,17 @@ function runBenchmark() {
                   : '';
               return `${probeIcon} ${p.name}${verifyIcon}`;
             })
-            .join('  ');
-          console.log(`  Consumer probes: ${probeSummary}`);
-        } else {
-          console.log(`  Consumer probes: not run (hydration failed)`);
-        }
+            .join('  ')
+        : '';
+
+      if (isFullDetailDataset) {
+        // ── Full-detail datasets (acyclic-control, basic): three-line phase contract ──
+        // Line 1: Hydration result
+        console.log(buildDetailHydrationLine(bothPass, disagree, resultLine));
+        // Line 2: Consumer probes result
+        console.log(buildDetailConsumerProbesLine(consumerProbeResult.ran, probeSummaryStr, disagree));
+        // Line 3: Full Run result (with metrics on pass, or not-run / FAIL phrase)
+        console.log(buildDetailFullRunLine(endToEndPass, bothPass, disagree, headlineTimeMs, headlineRamMb));
 
         // Cyclic-baseline specific tracking: only basic anchors skip/suppression/probe-baseline.
         if (isCyclicBaseline) {
@@ -1225,7 +1350,12 @@ function runBenchmark() {
   );
 
   if (processedDatasets.length > 0) {
-    const COL_WIDTH = 10;
+    // ── Column widths — computed once, shared by both summary tables ─────────
+    // COL_WIDTH: the wider of the minimum display width (10, needed for
+    // "⚠️ CONFLICT") and the longest dataset name plus padding.  Applying the
+    // same value to both the Run Summary and Consumer Probe Summary tables
+    // keeps them aligned even with long names like "acyclic-control".
+    const COL_WIDTH = Math.max(10, ...processedDatasets.map((d) => d.length + 2));
     const algoColWidth = Math.max(...summaryRows.map((r) => r.algoName.length)) + 2;
 
     const header =
@@ -1243,6 +1373,30 @@ function runBenchmark() {
         if (result === undefined) return '  —  '.padStart(COL_WIDTH);
         if (result === null) return '⚠️ CONFLICT'.padStart(COL_WIDTH);
         return (result ? '✅ PASS' : '❌ FAIL').padStart(COL_WIDTH);
+      });
+      console.log(row.algoName.padEnd(algoColWidth) + cols.join(''));
+    }
+
+    // ── Consumer Probe Summary ──────────────────────────────────────────────
+    // A quick-view of probe results per algorithm per dataset.
+    // Probe columns use icon strings like "✅/✅" (naive-json/cycle-flat) or "—" (not run).
+    // "(skip)" means the algorithm was suppressed at this tier (failed at the cyclic baseline).
+    // "⚠️" means the comparers conflicted and probes were not run.
+    // Uses the same COL_WIDTH as the Run Summary so the two tables stay aligned.
+    const probeHeader =
+      `Algorithm`.padEnd(algoColWidth) +
+      processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
+    const probeDivider = '─'.repeat(algoColWidth + COL_WIDTH * processedDatasets.length);
+
+    console.log('');
+    console.log(`=== Consumer Probe Summary (columns: naive-json / cycle-flat) ===`);
+    console.log(probeHeader);
+    console.log(probeDivider);
+
+    for (const row of probeSummaryRows) {
+      const cols = processedDatasets.map((d) => {
+        const val = row.results.get(d) ?? '—';
+        return val.padStart(COL_WIDTH);
       });
       console.log(row.algoName.padEnd(algoColWidth) + cols.join(''));
     }
