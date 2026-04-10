@@ -1350,7 +1350,12 @@ function runBenchmark() {
   );
 
   if (processedDatasets.length > 0) {
-    const COL_WIDTH = 10;
+    // ── Column widths — computed once, shared by both summary tables ─────────
+    // COL_WIDTH: the wider of the minimum display width (10, needed for
+    // "⚠️ CONFLICT") and the longest dataset name plus padding.  Applying the
+    // same value to both the Run Summary and Consumer Probe Summary tables
+    // keeps them aligned even with long names like "acyclic-control".
+    const COL_WIDTH = Math.max(10, ...processedDatasets.map((d) => d.length + 2));
     const algoColWidth = Math.max(...summaryRows.map((r) => r.algoName.length)) + 2;
 
     const header =
@@ -1376,11 +1381,12 @@ function runBenchmark() {
     // A quick-view of probe results per algorithm per dataset.
     // Probe columns use icon strings like "✅/✅" (naive-json/cycle-flat) or "—" (not run).
     // "(skip)" means the algorithm was suppressed at this tier (failed at the cyclic baseline).
-    const probeColWidth = 7; // fits "✅/✅" and "(skip)" with padding
+    // "⚠️" means the comparers conflicted and probes were not run.
+    // Uses the same COL_WIDTH as the Run Summary so the two tables stay aligned.
     const probeHeader =
       `Algorithm`.padEnd(algoColWidth) +
-      processedDatasets.map((d) => d.padStart(probeColWidth + 3)).join('');
-    const probeDivider = '─'.repeat(algoColWidth + (probeColWidth + 3) * processedDatasets.length);
+      processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
+    const probeDivider = '─'.repeat(algoColWidth + COL_WIDTH * processedDatasets.length);
 
     console.log('');
     console.log(`=== Consumer Probe Summary (columns: naive-json / cycle-flat) ===`);
@@ -1390,7 +1396,7 @@ function runBenchmark() {
     for (const row of probeSummaryRows) {
       const cols = processedDatasets.map((d) => {
         const val = row.results.get(d) ?? '—';
-        return val.padStart(probeColWidth + 3);
+        return val.padStart(COL_WIDTH);
       });
       console.log(row.algoName.padEnd(algoColWidth) + cols.join(''));
     }
