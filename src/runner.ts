@@ -418,7 +418,133 @@ export function classifyHydrationFailTag(smartErr: string | null, flatErr: strin
 }
 
 // ---------------------------------------------------------------------------
+// Full-detail phase state — normalization (raw flags → named state object)
+//
+// Separates the two responsibilities that were previously interleaved at the
+// call site:
+//   - Normalization: inspect raw result flags, produce a FullDetailPhaseState.
+//   - Rendering:     accept a FullDetailPhaseState, produce display strings.
+//
+// The three buildDetail* helpers below are the render layer.
+// The normalizeFullDetailPhaseState function is the normalization layer.
+// renderFullDetailLines is the convenience wrapper that combines them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalized representation of a single full-detail dataset algorithm run,
+ * ready for rendering via the three-line phase contract helpers.
+ *
+ * This type captures **what happened** (semantic outcome) rather than **how to
+ * display it** (strings).  Keeping it separate from the render helpers means
+ * tests can verify the normalized state independently of formatting details,
+ * and the render helpers can be called with a clean, unambiguous contract.
+ */
+export interface FullDetailPhaseState {
+  /**
+   * The two hydration comparers disagree (one passes, one fails).
+   * When true, all other outcome fields are overridden — the conflict is
+   * always the top-level display for every line of the three-line contract.
+   */
+  comparersConflict: boolean;
+  /**
+   * Both hydration comparers passed.
+   * Prerequisite for consumer probes to run.
+   * When false (and no conflict), the Hydration line shows ❌ FAIL.
+   */
+  hydrationPassed: boolean;
+  /**
+   * Consumer probes actually ran.
+   * True only when hydrationPassed is true; false otherwise (probes cannot
+   * run when hydration failed or the comparers conflicted).
+   */
+  probesRan: boolean;
+  /**
+   * End-to-end experiment passed: hydration AND the authoritative consumer
+   * probe (cycle-flat) both passed.
+   *
+   * This is the definitive pass/fail for the Full Run line:
+   *   - true  → Full Run: ✅ PASS with headline metrics
+   *   - false → Full Run: ❌ FAIL  (when hydration passed, cycle-flat failed)
+   *   - false → Full Run: not run  (when hydration itself failed)
+   *
+   * naive-json failure alone does NOT affect this flag — only cycle-flat is
+   * authoritative for the end-to-end experiment outcome.
+   */
+  endToEndPass: boolean;
+  /**
+   * Pre-classified hydration result text produced by the normalization step.
+   * Examples: "✅ PASS (double-verified)" or "❌ FAIL [both comparers: …]".
+   * Ignored when comparersConflict is true (the conflict label overrides it).
+   */
+  hydrationResultText: string;
+  /**
+   * Space-joined probe summary string.
+   * Example: "✅ naive-json  ✅ cycle-flat (output ✅)"
+   * Only displayed when probesRan is true.
+   */
+  probeSummaryText: string;
+  /** Headline timing in ms (hydration + fastest passing probe). Used on Full Run ✅ PASS only. */
+  headlineTimeMs: number;
+  /** Peak heap delta in MB. Used on Full Run ✅ PASS only. */
+  headlineRamMb: number;
+}
+
+/**
+ * Constructs a {@link FullDetailPhaseState} from the raw result flags of a
+ * single algorithm run on a full-detail dataset.
+ *
+ * This is the **normalization step**: it accepts raw booleans and pre-formatted
+ * strings, and returns a typed state object that the render helpers can consume
+ * without interpreting any further flag combinations.
+ *
+ * @param hydrationPassed     - Both hydration comparers passed.
+ * @param comparersConflict   - The two comparers disagreed (one pass, one fail).
+ * @param endToEndPass        - Hydration AND cycle-flat (authoritative probe) passed.
+ * @param probesRan           - Consumer probes ran (requires hydrationPassed).
+ * @param hydrationResultText - Pre-classified hydration result text.
+ * @param probeSummaryText    - Space-joined probe summary string.
+ * @param headlineTimeMs      - Headline timing in ms.
+ * @param headlineRamMb       - Peak heap delta in MB.
+ */
+export function normalizeFullDetailPhaseState(
+  hydrationPassed: boolean,
+  comparersConflict: boolean,
+  endToEndPass: boolean,
+  probesRan: boolean,
+  hydrationResultText: string,
+  probeSummaryText: string,
+  headlineTimeMs: number,
+  headlineRamMb: number,
+): FullDetailPhaseState {
+  // Clamp to enforce structural invariants that the render helpers rely on:
+  //   - A conflict means neither comparer accepted the output, so hydration cannot
+  //     be considered passing, probes cannot have run, and there is no end-to-end pass.
+  //   - Probes require hydration to pass; end-to-end pass requires probes to have run.
+  // These invariants always hold in the runner, but clamping here makes the function
+  // a true normalization step — it produces a self-consistent state from any input.
+  const effectiveHydrationPassed = comparersConflict ? false : hydrationPassed;
+  const effectiveProbesRan = effectiveHydrationPassed ? probesRan : false;
+  const effectiveEndToEndPass = effectiveProbesRan ? endToEndPass : false;
+
+  return {
+    comparersConflict,
+    hydrationPassed: effectiveHydrationPassed,
+    probesRan: effectiveProbesRan,
+    endToEndPass: effectiveEndToEndPass,
+    hydrationResultText,
+    probeSummaryText,
+    headlineTimeMs,
+    headlineRamMb,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Full-detail dataset three-line phase contract helpers (exported for testing)
+//
+// These are the **render layer**: each function accepts the subset of
+// FullDetailPhaseState it needs and returns exactly one display string.
+// Call renderFullDetailLines to produce all three lines from a state object
+// without having to pass individual flags to each helper separately.
 // ---------------------------------------------------------------------------
 
 /**
@@ -451,7 +577,7 @@ export function buildDetailHydrationLine(
 export function buildDetailConsumerProbesLine(
   probesRan: boolean,
   probeSummary: string,
-  disagree: boolean = false,
+  disagree = false,
 ): string {
   if (!probesRan) {
     return disagree
@@ -482,11 +608,40 @@ export function buildDetailFullRunLine(
   if (endToEndPass) {
     return `  Full Run:      ✅ PASS | Time: ${formatTime(headlineTimeMs)} | RAM: ${formatRam(headlineRamMb)}`;
   }
-  // Hydration passed but cycle-flat (authoritative probe) failed.
+  // Hydration passed but the authoritative consumer probe (cycle-flat) failed.
+  // cycle-flat is the only probe that is authoritative for the end-to-end result;
+  // naive-json failure alone never reaches this branch.
   return `  Full Run:      ❌ FAIL`;
 }
 
-// ---------------------------------------------------------------------------
+/**
+ * Renders all three lines of the full-detail three-line phase contract from a
+ * {@link FullDetailPhaseState}.
+ *
+ * Returns `[hydrationLine, probesLine, fullRunLine]` — always exactly three
+ * strings, matching the canonical display order:
+ *   Hydration → Consumer probes → Full Run
+ *
+ * Use this in production code instead of calling `buildDetailHydrationLine`,
+ * `buildDetailConsumerProbesLine`, and `buildDetailFullRunLine` separately.
+ * It ensures all three lines are produced from the same state object and
+ * cannot silently diverge (e.g. one line seeing a different `bothPass` value
+ * than another).
+ */
+export function renderFullDetailLines(state: FullDetailPhaseState): [string, string, string] {
+  return [
+    buildDetailHydrationLine(state.hydrationPassed, state.comparersConflict, state.hydrationResultText),
+    buildDetailConsumerProbesLine(state.probesRan, state.probeSummaryText, state.comparersConflict),
+    buildDetailFullRunLine(
+      state.endToEndPass,
+      state.hydrationPassed,
+      state.comparersConflict,
+      state.headlineTimeMs,
+      state.headlineRamMb,
+    ),
+  ];
+}
+
 // Later-dataset output helpers (exported for unit testing)
 // ---------------------------------------------------------------------------
 
@@ -1208,12 +1363,15 @@ function runBenchmark() {
 
       if (isFullDetailDataset) {
         // ── Full-detail datasets (acyclic-control, basic): three-line phase contract ──
-        // Line 1: Hydration result
-        console.log(buildDetailHydrationLine(bothPass, disagree, resultLine));
-        // Line 2: Consumer probes result
-        console.log(buildDetailConsumerProbesLine(consumerProbeResult.ran, probeSummaryStr, disagree));
-        // Line 3: Full Run result (with metrics on pass, or not-run / FAIL phrase)
-        console.log(buildDetailFullRunLine(endToEndPass, bothPass, disagree, headlineTimeMs, headlineRamMb));
+        // Normalize the raw run result into a typed state, then render all three lines.
+        const phaseState = normalizeFullDetailPhaseState(
+          bothPass, disagree, endToEndPass, consumerProbeResult.ran,
+          resultLine, probeSummaryStr, headlineTimeMs, headlineRamMb,
+        );
+        const [phaseHydrationLine, phaseProbesLine, phaseFullRunLine] = renderFullDetailLines(phaseState);
+        console.log(phaseHydrationLine);
+        console.log(phaseProbesLine);
+        console.log(phaseFullRunLine);
 
         // Cyclic-baseline specific tracking: only basic anchors skip/suppression/probe-baseline.
         if (isCyclicBaseline) {
