@@ -489,7 +489,8 @@ describe('smartCompare — O(V+E) complexity proof', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Data-generation helpers — used only by trace tests that need real dataset files.
+// Data-generation helpers for basic and acyclic-control tiers —
+// used only by trace tests that need real dataset files.
 // ---------------------------------------------------------------------------
 
 /**

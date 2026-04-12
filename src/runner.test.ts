@@ -602,6 +602,38 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
   };
 }
 
+/** Hydration passes but the authoritative probe (cycle-flat) fails. */
+function makeProbesFailedOutcome(name: string, category: string, time = '10ms', ram = '1 MB', probeChangeLine: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: false,
+    isNewFailure: false,
+    isConflict: false,
+    probesFailed: true,
+    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    failureDetailLines: [],
+    probeChangeLine,
+  };
+}
+
+/** Hydration and probes pass, but probe fingerprint changed from baseline. */
+function makeProbesChangedOutcome(name: string, category: string, time = '10ms', ram = '1 MB', probeChangeLine: string): LaterAlgoOutcome {
+  return {
+    algoName: name,
+    algoCategory: category,
+    baselineSkipped: false,
+    knownPriorFailure: false,
+    isNewFailure: false,
+    isConflict: false,
+    probesFailed: false,
+    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    failureDetailLines: [],
+    probeChangeLine,
+  };
+}
+
 describe('buildLaterDatasetLines — compact summary (no changes)', () => {
   it('produces a compact summary sentence only when NO algorithms are omitted and all pass', () => {
     const outcomes: LaterAlgoOutcome[] = [
@@ -1906,7 +1938,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     {
       const outcomes: LaterAlgoOutcome[] = [
         makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-        { ...makePassOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB'), probesFailed: true, probeChangeLine: '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat' },
+        makeProbesFailedOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB', '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat'),
         makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
         makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
@@ -1919,7 +1951,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     {
       const outcomes: LaterAlgoOutcome[] = [
         makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-        { ...makePassOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB'), probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ naive-json  ✅ cycle-flat (output ✅)' },
+        makeProbesChangedOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB', '  Consumer probes: ⚠️  changed from baseline — ✅ naive-json  ✅ cycle-flat (output ✅)'),
         makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
         makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
