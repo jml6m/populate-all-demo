@@ -33,9 +33,7 @@ export function buildPopulatedFromAnswer(entries: AnswerEntry[], verbose = false
     }
     for (const depIdx of entries[i].depIndices) {
       if (!Number.isInteger(depIdx) || depIdx < 0 || depIdx >= nodes.length) {
-        throw new Error(
-          `Invalid dependency index ${depIdx} for entry at index ${i} (id: "${entries[i].id}"): must be an integer in [0, ${nodes.length - 1}]`
-        );
+        throw new Error(`Invalid dependency index ${depIdx} for entry at index ${i} (id: "${entries[i].id}"): must be an integer in [0, ${nodes.length - 1}]`);
       }
       nodes[i].dependencies.push(nodes[depIdx]);
       if (verbose) {

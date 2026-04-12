@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
+import { describe, it } from 'node:test';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
+import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
 import { ConsumerResult, cycleFlatProbe, naiveJsonProbe } from './consumer';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
@@ -92,10 +92,8 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
     assert.ok(r.errorDetail !== null);
     // The standard error message from V8 JSON.stringify on circular structures
     assert.ok(
-      r.errorDetail.toLowerCase().includes('circular') ||
-        r.errorDetail.toLowerCase().includes('cyclic') ||
-        r.errorDetail.toLowerCase().includes('json'),
-      `Expected circular/cyclic/json error, got: ${r.errorDetail}`,
+      r.errorDetail.toLowerCase().includes('circular') || r.errorDetail.toLowerCase().includes('cyclic') || r.errorDetail.toLowerCase().includes('json'),
+      `Expected circular/cyclic/json error, got: ${r.errorDetail}`
     );
   });
 
@@ -105,10 +103,8 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
     assert.ok(r.errorDetail !== null);
     // Platform-owned error: JSON.stringify on a circular structure always produces this kind of error
     assert.ok(
-      r.errorDetail.toLowerCase().includes('circular') ||
-        r.errorDetail.toLowerCase().includes('cyclic') ||
-        r.errorDetail.toLowerCase().includes('json'),
-      `Expected circular/cyclic/json error, got: ${r.errorDetail}`,
+      r.errorDetail.toLowerCase().includes('circular') || r.errorDetail.toLowerCase().includes('cyclic') || r.errorDetail.toLowerCase().includes('json'),
+      `Expected circular/cyclic/json error, got: ${r.errorDetail}`
     );
   });
 
@@ -213,8 +209,10 @@ describe('cycleFlatProbe — orphaned dependency detection', () => {
     const r = cycleFlatProbe.consume([a]); // orphan is missing from array
     assert.equal(r.pass, false);
     // App-owned error: matches the exact format from consumer.ts
-    assert.ok(r.errorDetail !== null && r.errorDetail.includes('not present in the top-level graph array'),
-      `Expected "not present in the top-level graph array" error, got: ${r.errorDetail}`);
+    assert.ok(
+      r.errorDetail !== null && r.errorDetail.includes('not present in the top-level graph array'),
+      `Expected "not present in the top-level graph array" error, got: ${r.errorDetail}`
+    );
     assert.equal(r.serializedOutput, null);
   });
 });
@@ -335,11 +333,7 @@ describe('cycleFlatProbe — basic-tier integration', () => {
     assert.equal(output.length, rawAnswerEntries.length, 'Output entry count should match answer entry count');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
       assert.equal(output[i].id, rawAnswerEntries[i].id, `Entry[${i}] id mismatch`);
-      assert.deepEqual(
-        output[i].depIndices,
-        rawAnswerEntries[i].depIndices,
-        `Entry[${i}] ("${output[i].id}") depIndices mismatch`,
-      );
+      assert.deepEqual(output[i].depIndices, rawAnswerEntries[i].depIndices, `Entry[${i}] ("${output[i].id}") depIndices mismatch`);
     }
 
     // Write trace log for auditing
@@ -353,9 +347,7 @@ describe('cycleFlatProbe — basic-tier integration', () => {
       '',
       'Sample output (first 5 entries):',
     ];
-    const sample = output.slice(0, 5).map(
-      (e) => `  { id: "${e.id}", depIndices: [${e.depIndices.join(', ')}] }`,
-    );
+    const sample = output.slice(0, 5).map((e) => `  { id: "${e.id}", depIndices: [${e.depIndices.join(', ')}] }`);
     fs.writeFileSync(tracePath, [...header, ...sample].join('\n') + '\n', 'utf8');
   });
 });

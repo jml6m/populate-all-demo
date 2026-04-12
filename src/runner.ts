@@ -1,18 +1,18 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
+import pkgJson from '../package.json';
 import { naiveRecursion } from './algorithms/reference-tracking/01-naive-recursion';
+import { mapTracker } from './algorithms/reference-tracking/02-map-tracker';
 import { twoPassWire } from './algorithms/schema-driven/01-two-pass-wire';
 import { tarjanSccLayering } from './algorithms/topological/01-tarjan-scc-layering';
 import { AnswerEntry, ComponentFlat, ComponentPopulated, PopulateAlgorithm } from './algorithms/types';
+import { Manifest } from './types';
 import { buildPopulatedFromAnswer } from './utils/answer-builder';
 import { smartCompare } from './utils/compare';
 import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
-import { Manifest } from './types';
-import pkgJson from '../package.json';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
@@ -255,10 +255,7 @@ function parseAnswerData(raw: unknown, filename: string): AnswerEntry[] {
  * Stage 2 serialization: verifying that the output the probe produced is not just
  * structurally valid but also topologically correct.
  */
-function compareAnswerEntries(
-  generated: AnswerEntry[],
-  expected: AnswerEntry[],
-): { pass: boolean; errorDetail: string | null } {
+function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[]): { pass: boolean; errorDetail: string | null } {
   if (generated.length !== expected.length) {
     return {
       pass: false,
@@ -343,10 +340,7 @@ export function capErrorDetail(msg: string | null): string | null {
  * @param smartErr - errorDetail from smartCompare (null if comparer passed or no detail)
  * @param flatErr  - errorDetail from flatCompare  (null if comparer passed or no detail)
  */
-export function formatHydrationFailTag(
-  smartErr: string | null,
-  flatErr: string | null,
-): string {
+export function formatHydrationFailTag(smartErr: string | null, flatErr: string | null): string {
   if (smartErr !== null && flatErr !== null && smartErr === flatErr) {
     return `[both comparers: ${smartErr}]`;
   }
@@ -370,10 +364,7 @@ export function formatHydrationFailTag(
  * @param smartErr   - errorDetail from smartCompare (null if passed or no detail)
  * @param flatErr    - errorDetail from flatCompare  (null if passed or no detail)
  */
-export function buildFailureDetailLines(
-  smartErr: string | null,
-  flatErr: string | null,
-): string[] {
+export function buildFailureDetailLines(smartErr: string | null, flatErr: string | null): string[] {
   if (smartErr !== null && flatErr !== null && smartErr === flatErr) {
     return [`  Both comparers: ${smartErr}...`];
   }
@@ -405,11 +396,7 @@ export function classifyHydrationFailTag(smartErr: string | null, flatErr: strin
   }
 
   // Identity / reference-sharing mismatch: clean developer-meaningful phrase.
-  if (
-    combined.includes('cycle structure mismatch') ||
-    combined.includes('is paired with more than one') ||
-    combined.includes('not present in the top-level')
-  ) {
+  if (combined.includes('cycle structure mismatch') || combined.includes('is paired with more than one') || combined.includes('not present in the top-level')) {
     return '— shared references were duplicated';
   }
 
@@ -514,7 +501,7 @@ export function normalizeFullDetailPhaseState(
   hydrationResultText: string,
   probeSummaryText: string,
   headlineTimeMs: number,
-  headlineRamMb: number,
+  headlineRamMb: number
 ): FullDetailPhaseState {
   // Clamp to enforce structural invariants that the render helpers rely on:
   //   - A conflict means neither comparer accepted the output, so hydration cannot
@@ -557,11 +544,7 @@ export function normalizeFullDetailPhaseState(
  * @param disagree    - Whether the two comparers disagree (one pass, one fail).
  * @param resultLine  - Pre-formatted result text (e.g. "✅ PASS (double-verified)" or "❌ FAIL [...]").
  */
-export function buildDetailHydrationLine(
-  bothPass: boolean,
-  disagree: boolean,
-  resultLine: string,
-): string {
+export function buildDetailHydrationLine(bothPass: boolean, disagree: boolean, resultLine: string): string {
   if (disagree) return `  Hydration:     🚨 CONFLICT — comparers disagree`;
   void bothPass; // resultLine already encodes the pass/fail state
   return `  Hydration:     ${resultLine}`;
@@ -574,15 +557,9 @@ export function buildDetailHydrationLine(
  * @param probeSummary - Space-joined probe result string when probes ran (ignored otherwise).
  * @param disagree     - Whether this is a conflict (affects the "not run" reason phrase).
  */
-export function buildDetailConsumerProbesLine(
-  probesRan: boolean,
-  probeSummary: string,
-  disagree = false,
-): string {
+export function buildDetailConsumerProbesLine(probesRan: boolean, probeSummary: string, disagree = false): string {
   if (!probesRan) {
-    return disagree
-      ? `  Consumer probes: not run (comparers conflicted)`
-      : `  Consumer probes: not run (hydration failed)`;
+    return disagree ? `  Consumer probes: not run (comparers conflicted)` : `  Consumer probes: not run (hydration failed)`;
   }
   return `  Consumer probes: ${probeSummary}`;
 }
@@ -596,13 +573,7 @@ export function buildDetailConsumerProbesLine(
  * @param headlineTimeMs - Headline timing (hydration + fastest passing probe) in ms.
  * @param headlineRamMb  - Peak heap delta over the full experiment window (MB).
  */
-export function buildDetailFullRunLine(
-  endToEndPass: boolean,
-  bothPass: boolean,
-  disagree: boolean,
-  headlineTimeMs: number,
-  headlineRamMb: number,
-): string {
+export function buildDetailFullRunLine(endToEndPass: boolean, bothPass: boolean, disagree: boolean, headlineTimeMs: number, headlineRamMb: number): string {
   if (disagree) return `  Full Run:      🚨 CONFLICT`;
   if (!bothPass) return `  Full Run:      not run (hydration failed)`;
   if (endToEndPass) {
@@ -632,13 +603,7 @@ export function renderFullDetailLines(state: FullDetailPhaseState): [string, str
   return [
     buildDetailHydrationLine(state.hydrationPassed, state.comparersConflict, state.hydrationResultText),
     buildDetailConsumerProbesLine(state.probesRan, state.probeSummaryText, state.comparersConflict),
-    buildDetailFullRunLine(
-      state.endToEndPass,
-      state.hydrationPassed,
-      state.comparersConflict,
-      state.headlineTimeMs,
-      state.headlineRamMb,
-    ),
+    buildDetailFullRunLine(state.endToEndPass, state.hydrationPassed, state.comparersConflict, state.headlineTimeMs, state.headlineRamMb),
   ];
 }
 
@@ -724,9 +689,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
   const omitted = outcomes.filter((o) => o.baselineSkipped || o.knownPriorFailure);
   const newFails = outcomes.filter((o) => o.isNewFailure);
   const conflicts = outcomes.filter((o) => o.isConflict);
-  const stablePasses = outcomes.filter(
-    (o) => !o.baselineSkipped && !o.knownPriorFailure && !o.isNewFailure && !o.isConflict,
-  );
+  const stablePasses = outcomes.filter((o) => !o.baselineSkipped && !o.knownPriorFailure && !o.isNewFailure && !o.isConflict);
 
   // ── Compact note for omitted algorithms ──────────────────────────────────
   if (omitted.length > 0) {
@@ -808,13 +771,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
  * @param headlineTimeMs - Headline timing in ms (hydration + fastest passing probe).
  * @param headlineRamMb  - Peak heap delta over the full experiment window (MB).
  */
-export function buildFullRunLine(
-  bothPass: boolean,
-  endToEndPass: boolean,
-  resultLine: string,
-  headlineTimeMs: number,
-  headlineRamMb: number,
-): string {
+export function buildFullRunLine(bothPass: boolean, endToEndPass: boolean, resultLine: string, headlineTimeMs: number, headlineRamMb: number): string {
   if (!bothPass) {
     // Hydration failed — always use "Hydration:" label, never show metrics.
     return `  Hydration:     ${resultLine}`;
@@ -873,17 +830,12 @@ export function cleanDatasetReports(datasetReportsDir: string, keepFilename?: st
  * Inputs that are volatile and intentionally excluded:
  *   - Wall-clock time, RAM measurements, OS platform, run timestamps
  */
-export function computeFingerprint(
-  manifest: Manifest,
-  datasets: string[],
-  algorithmNames: string[],
-  probeNames: string[],
-): string {
+export function computeFingerprint(manifest: Manifest, datasets: string[], algorithmNames: string[], probeNames: string[]): string {
   const relevantFileHashes = Object.fromEntries(
     Object.entries(manifest.files)
       .filter(([k]) => datasets.some((d) => k === `${d}${INPUT_SUFFIX}` || k === `${d}${ANSWER_SUFFIX}`))
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => [k, v?.contentHash ?? null]),
+      .map(([k, v]) => [k, v?.contentHash ?? null])
   );
 
   const input = JSON.stringify({
@@ -940,7 +892,7 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
  * flag before the Node process can see it.
  */
 export function isForceMode(): boolean {
-  return process.env.POPULATE_ALL_FORCE === '1';
+  return process.env['POPULATE_ALL_FORCE'] === '1';
 }
 
 function runBenchmark() {
@@ -1061,16 +1013,18 @@ function runBenchmark() {
   const documentedFailures = new Map<string, string>();
 
   // Summary data collected for the final table.
-  const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map(
-    (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
-  );
+  const summaryRows: { algoName: string; results: Map<string, boolean | null> }[] = algorithms.map((a) => ({
+    algoName: `[${a.category}] ${a.name}`,
+    results: new Map(),
+  }));
 
   // Consumer probe summary: compact per-algorithm per-dataset probe results.
   // Values: probe outcome icons like "✅/✅" or "❌/✅", "—" (not run),
   // "(skip)" (skipped after failing the cyclic baseline), or "⚠️" (conflict).
-  const probeSummaryRows: { algoName: string; results: Map<string, string> }[] = algorithms.map(
-    (a) => ({ algoName: `[${a.category}] ${a.name}`, results: new Map() }),
-  );
+  const probeSummaryRows: { algoName: string; results: Map<string, string> }[] = algorithms.map((a) => ({
+    algoName: `[${a.category}] ${a.name}`,
+    results: new Map(),
+  }));
 
   // Track per-dataset report paths for the experiment index.
   const reportPaths: Record<string, string> = {};
@@ -1231,8 +1185,7 @@ function runBenchmark() {
             // A probe's overall pass requires: (1) generation succeeded AND
             // (2) output accuracy check passed (if applicable).
             const overallPass = r.pass && (outputVerification === null || outputVerification.pass);
-            const overallError =
-              r.errorDetail ?? (outputVerification !== null && !outputVerification.pass ? outputVerification.errorDetail : null);
+            const overallError = r.errorDetail ?? (outputVerification !== null && !outputVerification.pass ? outputVerification.errorDetail : null);
 
             probeTimingsMs[probe.name] = Number((performance.now() - probeStart).toFixed(3));
             return {
@@ -1264,9 +1217,7 @@ function runBenchmark() {
       // End-to-end pass: hydration must succeed AND the cycle-aware consumer
       // (cycle-flat) must pass.  naive-json failure is expected for cyclic graphs
       // and does not affect the summary result.
-      const cycleFlatResult = consumerProbeResult.ran
-        ? consumerProbeResult.probes.find((p) => p.name === 'cycle-flat')
-        : undefined;
+      const cycleFlatResult = consumerProbeResult.ran ? consumerProbeResult.probes.find((p) => p.name === 'cycle-flat') : undefined;
       const endToEndPass = bothPass && (cycleFlatResult?.pass ?? false);
 
       // Headline time: hydration + fastest authoritative passing probe.
@@ -1338,8 +1289,7 @@ function runBenchmark() {
       const probeFingerprint: string = consumerProbeResult.ran
         ? consumerProbeResult.probes
             .map((p) => {
-              const verifyTag =
-                p.outputVerification !== null ? (p.outputVerification.pass ? '+ok' : '+fail') : '';
+              const verifyTag = p.outputVerification !== null ? (p.outputVerification.pass ? '+ok' : '+fail') : '';
               return `${p.name}:${p.pass ? 'pass' : 'fail'}${verifyTag}`;
             })
             .join(',')
@@ -1350,12 +1300,7 @@ function runBenchmark() {
         ? consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
-              const verifyIcon =
-                p.outputVerification !== null
-                  ? p.outputVerification.pass
-                    ? ' (output ✅)'
-                    : ' (output ❌)'
-                  : '';
+              const verifyIcon = p.outputVerification !== null ? (p.outputVerification.pass ? ' (output ✅)' : ' (output ❌)') : '';
               return `${probeIcon} ${p.name}${verifyIcon}`;
             })
             .join('  ')
@@ -1365,8 +1310,14 @@ function runBenchmark() {
         // ── Full-detail datasets (acyclic-control, basic): three-line phase contract ──
         // Normalize the raw run result into a typed state, then render all three lines.
         const phaseState = normalizeFullDetailPhaseState(
-          bothPass, disagree, endToEndPass, consumerProbeResult.ran,
-          resultLine, probeSummaryStr, headlineTimeMs, headlineRamMb,
+          bothPass,
+          disagree,
+          endToEndPass,
+          consumerProbeResult.ran,
+          resultLine,
+          probeSummaryStr,
+          headlineTimeMs,
+          headlineRamMb
         );
         const [phaseHydrationLine, phaseProbesLine, phaseFullRunLine] = renderFullDetailLines(phaseState);
         console.log(phaseHydrationLine);
@@ -1381,21 +1332,17 @@ function runBenchmark() {
           if (!bothPass && !disagree) {
             baselineHydration.set(algo.name, hydration);
             baselineFailedAlgorithms.add(algo.name);
-            const failFingerprint =
-              `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
+            const failFingerprint = `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`;
             documentedFailures.set(algo.name, failFingerprint);
           }
         }
       } else {
         // ── Later dataset: collect outcome for deferred batch formatting ──────
         const failFingerprint =
-          !bothPass && !disagree
-            ? `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}`
-            : null;
+          !bothPass && !disagree ? `smart:${(smartResult.errorDetail ?? '').substring(0, 80)}|flat:${(flatResult.errorDetail ?? '').substring(0, 80)}` : null;
 
         // Determine whether this failure is already documented from a prior tier.
-        const knownPrior =
-          failFingerprint !== null && documentedFailures.get(algo.name) === failFingerprint;
+        const knownPrior = failFingerprint !== null && documentedFailures.get(algo.name) === failFingerprint;
         const isNewFail = failFingerprint !== null && !knownPrior;
 
         if (isNewFail) {
@@ -1422,25 +1369,17 @@ function runBenchmark() {
         //  - Also emit when the probe fingerprint changed but all probes still passed.
         let probeChangeLine: string | null = null;
         const baselineProbe = probeBaseline.get(algo.name);
-        const probeFingerprightChanged =
-          baselineProbe !== undefined && baselineProbe !== probeFingerprint;
+        const probeFingerprightChanged = baselineProbe !== undefined && baselineProbe !== probeFingerprint;
         if (consumerProbeResult.ran && (probesFailed || probeFingerprightChanged)) {
           const probeSummary = consumerProbeResult.probes
             .map((p) => {
               const probeIcon = p.pass ? '✅' : '❌';
-              const verifyIcon =
-                p.outputVerification !== null
-                  ? p.outputVerification.pass
-                    ? ' (output ✅)'
-                    : ' (output ❌)'
-                  : '';
+              const verifyIcon = p.outputVerification !== null ? (p.outputVerification.pass ? ' (output ✅)' : ' (output ❌)') : '';
               return `${probeIcon} ${p.name}${verifyIcon}`;
             })
             .join('  ');
           // Use a fail label when probes actually failed; a change label otherwise.
-          probeChangeLine = probesFailed
-            ? `  Consumer probes: ❌ FAIL — ${probeSummary}`
-            : `  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`;
+          probeChangeLine = probesFailed ? `  Consumer probes: ❌ FAIL — ${probeSummary}` : `  Consumer probes: ⚠️  changed from baseline — ${probeSummary}`;
         }
 
         laterOutcomes.push({
@@ -1495,17 +1434,12 @@ function runBenchmark() {
     metadata: runMetadata,
     reports: reportPaths,
   };
-  fs.writeFileSync(
-    path.join(reportsDir, 'experiment-run.json'),
-    JSON.stringify(experimentIndex, null, 2),
-  );
+  fs.writeFileSync(path.join(reportsDir, 'experiment-run.json'), JSON.stringify(experimentIndex, null, 2));
 
   // ---------------------------------------------------------------------------
   // Post-run summary table
   // ---------------------------------------------------------------------------
-  const processedDatasets = datasets.filter((d) =>
-    summaryRows.some((r) => r.results.has(d)),
-  );
+  const processedDatasets = datasets.filter((d) => summaryRows.some((r) => r.results.has(d)));
 
   if (processedDatasets.length > 0) {
     // ── Column widths — computed once, shared by both summary tables ─────────
@@ -1516,9 +1450,7 @@ function runBenchmark() {
     const COL_WIDTH = Math.max(10, ...processedDatasets.map((d) => d.length + 2));
     const algoColWidth = Math.max(...summaryRows.map((r) => r.algoName.length)) + 2;
 
-    const header =
-      `Algorithm`.padEnd(algoColWidth) +
-      processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
+    const header = `Algorithm`.padEnd(algoColWidth) + processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
     const divider = '─'.repeat(algoColWidth + COL_WIDTH * processedDatasets.length);
 
     console.log(`=== Run Summary ===`);
@@ -1541,9 +1473,7 @@ function runBenchmark() {
     // "(skip)" means the algorithm was suppressed at this tier (failed at the cyclic baseline).
     // "⚠️" means the comparers conflicted and probes were not run.
     // Uses the same COL_WIDTH as the Run Summary so the two tables stay aligned.
-    const probeHeader =
-      `Algorithm`.padEnd(algoColWidth) +
-      processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
+    const probeHeader = `Algorithm`.padEnd(algoColWidth) + processedDatasets.map((d) => d.padStart(COL_WIDTH)).join('');
     const probeDivider = '─'.repeat(algoColWidth + COL_WIDTH * processedDatasets.length);
 
     console.log('');

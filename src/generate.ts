@@ -4,8 +4,8 @@ import path from 'path';
 import seedrandom from 'seedrandom';
 import YAML from 'yaml';
 
-import config from './generate-config.json';
 import { AnswerEntry, ComponentFlat } from './algorithms/types';
+import config from './generate-config.json';
 import { Manifest, ManifestEntry } from './types';
 
 // Hardcoded seed ensures our test data is mathematically identical on every run
@@ -125,21 +125,17 @@ function run() {
 
   // Force mode: bypass the idempotency guard and regenerate even when files are present.
   // Set POPULATE_ALL_FORCE=1 (via `npm run generate:force`) to activate.
-  const forceRegen = process.env.POPULATE_ALL_FORCE === '1';
+  const forceRegen = process.env['POPULATE_ALL_FORCE'] === '1';
 
   const outputDir = path.join(__dirname, config.outputDir);
   const manifestPath = path.join(outputDir, 'manifest.json');
 
   // Determine which datasets to generate (all enabled ones, or just the filtered one).
-  const datasetsToProcess = config.datasets.filter(
-    (d) => d.enabled && (tierFilter === null || d.name === tierFilter)
-  );
+  const datasetsToProcess = config.datasets.filter((d) => d.enabled && (tierFilter === null || d.name === tierFilter));
 
   if (datasetsToProcess.length === 0) {
     console.log(
-      tierFilter !== null
-        ? `⏭️  Dataset "${tierFilter}" is disabled or not found — nothing to generate.`
-        : '⏭️  All datasets are disabled — nothing to generate.'
+      tierFilter !== null ? `⏭️  Dataset "${tierFilter}" is disabled or not found — nothing to generate.` : '⏭️  All datasets are disabled — nothing to generate.'
     );
     return;
   }
@@ -184,9 +180,7 @@ function run() {
 
   for (const dataset of datasetsToProcess) {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
-    const { flatComponents } = dataset.acyclic
-      ? generateAcyclicDataset(dataset.size, dataset.seedSuffix)
-      : generateDataset(dataset.size, dataset.seedSuffix);
+    const { flatComponents } = dataset.acyclic ? generateAcyclicDataset(dataset.size, dataset.seedSuffix) : generateDataset(dataset.size, dataset.seedSuffix);
 
     // Create per-dataset subdirectory.
     const datasetDir = path.join(outputDir, dataset.name);

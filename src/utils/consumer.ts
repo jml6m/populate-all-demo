@@ -92,8 +92,7 @@ export const naiveJsonProbe: ConsumerProbe = {
  */
 export const cycleFlatProbe: ConsumerProbe = {
   name: 'cycle-flat',
-  description:
-    'Iterative index-based export (AnswerEntry format) — cycle-safe at any graph scale',
+  description: 'Iterative index-based export (AnswerEntry format) — cycle-safe at any graph scale',
   consume: (graph: ComponentPopulated[]): ConsumerResult => {
     try {
       // Build an identity-index map in O(V)

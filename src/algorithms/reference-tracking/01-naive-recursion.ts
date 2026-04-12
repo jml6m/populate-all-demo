@@ -1,11 +1,11 @@
-import { PopulateAlgorithm, ComponentFlat, ComponentPopulated } from '../types';
+import { ComponentFlat, ComponentPopulated, PopulateAlgorithm } from '../types';
 
 export const naiveRecursion: PopulateAlgorithm = {
-  name: "Naive Recursion",
-  category: "Reference Tracking",
-  timeComplexity: "O(∞)",
-  spaceComplexity: "O(∞)",
-  description: "Standard recursive population without cycle tracking. Will cause a stack overflow on cyclic graphs.",
+  name: 'Naive Recursion',
+  category: 'Reference Tracking',
+  timeComplexity: 'O(∞)',
+  spaceComplexity: 'O(∞)',
+  description: 'Standard recursive population without cycle tracking. Will cause a stack overflow on cyclic graphs.',
   execute: (flatDatabaseState: ComponentFlat[]): ComponentPopulated[] => {
     const dbMap = new Map<string, ComponentFlat>();
     for (const comp of flatDatabaseState) {
@@ -18,7 +18,7 @@ export const naiveRecursion: PopulateAlgorithm = {
 
       const populated: ComponentPopulated = {
         id: flat.id,
-        dependencies: []
+        dependencies: [],
       };
 
       for (const depId of flat.dependencies) {
@@ -28,6 +28,6 @@ export const naiveRecursion: PopulateAlgorithm = {
       return populated;
     }
 
-    return flatDatabaseState.map(comp => populate(comp.id));
-  }
+    return flatDatabaseState.map((comp) => populate(comp.id));
+  },
 };

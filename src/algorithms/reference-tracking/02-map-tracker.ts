@@ -1,11 +1,11 @@
-import { PopulateAlgorithm, ComponentFlat, ComponentPopulated } from '../types';
+import { ComponentFlat, ComponentPopulated, PopulateAlgorithm } from '../types';
 
 export const mapTracker: PopulateAlgorithm = {
-  name: "Map Tracker",
-  category: "Reference Tracking",
-  timeComplexity: "O(V + E)",
-  spaceComplexity: "O(V)",
-  description: "Uses a Map to track visited nodes during graph traversal to safely close cycles in RAM.",
+  name: 'Map Tracker',
+  category: 'Reference Tracking',
+  timeComplexity: 'O(V + E)',
+  spaceComplexity: 'O(V)',
+  description: 'Uses a Map to track visited nodes during graph traversal to safely close cycles in RAM.',
   execute: (flatDatabaseState: ComponentFlat[]): ComponentPopulated[] => {
     const dbMap = new Map<string, ComponentFlat>();
     for (const comp of flatDatabaseState) {
@@ -24,7 +24,7 @@ export const mapTracker: PopulateAlgorithm = {
 
       const populated: ComponentPopulated = {
         id: flat.id,
-        dependencies: []
+        dependencies: [],
       };
 
       visited.set(id, populated);
@@ -36,6 +36,6 @@ export const mapTracker: PopulateAlgorithm = {
       return populated;
     }
 
-    return flatDatabaseState.map(comp => populate(comp.id));
-  }
+    return flatDatabaseState.map((comp) => populate(comp.id));
+  },
 };

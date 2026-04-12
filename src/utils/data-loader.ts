@@ -63,9 +63,7 @@ export function loadYaml(filename: string): unknown {
   const embeddedContentHash = parts[1];
   const actualHash = crypto.createHash('sha256').update(fileContent).digest('hex').slice(0, 8);
   if (actualHash !== embeddedContentHash) {
-    throw new Error(
-      `Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`
-    );
+    throw new Error(`Content hash mismatch for "${filename}": expected ${embeddedContentHash}, got ${actualHash}. File may have been tampered with.`);
   }
 
   // Disabling maxAliasCount (using hashes to verify files instead)

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
+import { describe, it } from 'node:test';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
+import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 import { flatCompare } from './flat-compare';
 
@@ -168,7 +168,13 @@ describe('flatCompare — mismatch detection', () => {
     const b = makeNode('b');
     a.dependencies.push(b);
     // actual has dep on b (index 1), but entry says no deps
-    const r = flatCompare([a, b], [{ id: 'a', depIndices: [] }, { id: 'b', depIndices: [] }]);
+    const r = flatCompare(
+      [a, b],
+      [
+        { id: 'a', depIndices: [] },
+        { id: 'b', depIndices: [] },
+      ]
+    );
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep count mismatch'));
   });
@@ -179,7 +185,14 @@ describe('flatCompare — mismatch detection', () => {
     const c = makeNode('c');
     a.dependencies.push(b); // actual: a → b (index 1)
     // entry says a → c (index 2)
-    const r = flatCompare([a, b, c], [{ id: 'a', depIndices: [2] }, { id: 'b', depIndices: [] }, { id: 'c', depIndices: [] }]);
+    const r = flatCompare(
+      [a, b, c],
+      [
+        { id: 'a', depIndices: [2] },
+        { id: 'b', depIndices: [] },
+        { id: 'c', depIndices: [] },
+      ]
+    );
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep mismatch'));
   });
@@ -190,7 +203,13 @@ describe('flatCompare — mismatch detection', () => {
     const b = makeNode('b');
     a.dependencies.push(b);
     // entries claim b → a (cycle), actual does not have this
-    const r = flatCompare([a, b], [{ id: 'a', depIndices: [1] }, { id: 'b', depIndices: [0] }]);
+    const r = flatCompare(
+      [a, b],
+      [
+        { id: 'a', depIndices: [1] },
+        { id: 'b', depIndices: [0] },
+      ]
+    );
     assert.equal(r.pass, false);
   });
 
@@ -291,4 +310,3 @@ describe('flatCompare — differentiation from smartCompare', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep count mismatch'));
   });
 });
-

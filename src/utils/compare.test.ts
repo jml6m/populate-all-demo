@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { after, before, describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
+import { after, before, describe, it } from 'node:test';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
+import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
 import { buildPopulatedFromAnswer } from './answer-builder';
 import { smartCompare } from './compare';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
@@ -29,7 +29,10 @@ function linearPair(): [ComponentPopulated[], ComponentPopulated[]] {
   const b2 = makeNode('b');
   a2.dependencies.push(b2);
 
-  return [[a1, b1], [a2, b2]];
+  return [
+    [a1, b1],
+    [a2, b2],
+  ];
 }
 
 // A → B → A (simple 2-node cycle using shared object references)
@@ -44,7 +47,10 @@ function twoCycle(): [ComponentPopulated[], ComponentPopulated[]] {
   a2.dependencies.push(b2);
   b2.dependencies.push(a2);
 
-  return [[a1, b1], [a2, b2]];
+  return [
+    [a1, b1],
+    [a2, b2],
+  ];
 }
 
 // Diamond: A→B, A→C, B→D, C→D  (D is a shared node referenced twice)
@@ -65,7 +71,10 @@ function diamond(): [ComponentPopulated[], ComponentPopulated[]] {
   b2.dependencies.push(d2);
   c2.dependencies.push(d2);
 
-  return [[a1, b1, c1, d1], [a2, b2, c2, d2]];
+  return [
+    [a1, b1, c1, d1],
+    [a2, b2, c2, d2],
+  ];
 }
 
 // Self-referential chain: 0→1→2→...→(n-1)→0
@@ -302,15 +311,19 @@ describe('smartCompare — mismatch detection', () => {
     // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
     // The reversePaired map enforces a one-to-one mapping from expected nodes to actual nodes:
     // when processing a2→a3 vs e2→e1, de=e1 is already reversePaired with a1 → mismatch.
-    const a0 = makeNode('p'), a1 = makeNode('q');
-    const a2 = makeNode('r'), a3 = makeNode('s');
+    const a0 = makeNode('p'),
+      a1 = makeNode('q');
+    const a2 = makeNode('r'),
+      a3 = makeNode('s');
     a0.dependencies.push(a1);
     a1.dependencies.push(a0); // cycle 1: p↔q
     a2.dependencies.push(a3);
     a3.dependencies.push(a2); // cycle 2: r↔s
 
-    const e0 = makeNode('p'), e1 = makeNode('q');
-    const e2 = makeNode('r'), e3 = makeNode('s');
+    const e0 = makeNode('p'),
+      e1 = makeNode('q');
+    const e2 = makeNode('r'),
+      e3 = makeNode('s');
     e0.dependencies.push(e1);
     e1.dependencies.push(e0); // correct cycle 1: p↔q
     e2.dependencies.push(e1); // WRONG: r→q (points to first cycle's node!)
@@ -372,7 +385,7 @@ function makeGroupedCycleGraph(n: number): [ComponentPopulated[], ComponentPopul
       const size = end - start;
       for (let i = 0; i < size; i++) {
         for (let k = 1; k <= DEGREE; k++) {
-          nodes[start + i].dependencies.push(nodes[start + (i + k) % size]);
+          nodes[start + i].dependencies.push(nodes[start + ((i + k) % size)]);
         }
       }
     }
@@ -448,7 +461,7 @@ describe('smartCompare — O(V+E) complexity proof', () => {
 
       assert.ok(
         actualRatio >= lo && actualRatio <= hi,
-        `Runtime ratio for ${scale}× scale is ${actualRatio.toFixed(2)}, expected in [${lo.toFixed(2)}, ${hi.toFixed(2)}]`,
+        `Runtime ratio for ${scale}× scale is ${actualRatio.toFixed(2)}, expected in [${lo.toFixed(2)}, ${hi.toFixed(2)}]`
       );
     }
 
@@ -470,17 +483,11 @@ describe('smartCompare — O(V+E) complexity proof', () => {
     }
 
     if (opCountPassed && runtimePassed) {
-      console.log(
-        '   ✅ O(V+E) VERIFIED: both operation count and runtime checks confirm linear scaling.',
-      );
+      console.log('   ✅ O(V+E) VERIFIED: both operation count and runtime checks confirm linear scaling.');
     } else if (opCountPassed && !runtimePassed) {
-      console.error(
-        '   ⚠️  O(V+E) PARTIAL: operation count mathematically confirms linear scaling; runtime check inconclusive (possible CI measurement noise).',
-      );
+      console.error('   ⚠️  O(V+E) PARTIAL: operation count mathematically confirms linear scaling; runtime check inconclusive (possible CI measurement noise).');
     } else if (!opCountPassed && runtimePassed) {
-      console.error(
-        '   ⚠️  O(V+E) PARTIAL: runtime approximately confirms linear scaling; operation count check failed unexpectedly.',
-      );
+      console.error('   ⚠️  O(V+E) PARTIAL: runtime approximately confirms linear scaling; operation count check failed unexpectedly.');
     } else {
       console.error('   ❌ O(V+E) NOT VERIFIED: both operation count and runtime checks failed.');
       assert.fail('O(V+E) not verified: both operation count and runtime checks failed.');
@@ -596,10 +603,14 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
 
     // --- Scenario 1: 2-node cycle back-edge (pass) ---
     {
-      const a0 = makeNode('comp_0'), a1 = makeNode('comp_1');
-      a0.dependencies.push(a1); a1.dependencies.push(a0);
-      const e0 = makeNode('comp_0'), e1 = makeNode('comp_1');
-      e0.dependencies.push(e1); e1.dependencies.push(e0);
+      const a0 = makeNode('comp_0'),
+        a1 = makeNode('comp_1');
+      a0.dependencies.push(a1);
+      a1.dependencies.push(a0);
+      const e0 = makeNode('comp_0'),
+        e1 = makeNode('comp_1');
+      e0.dependencies.push(e1);
+      e1.dependencies.push(e0);
 
       const logLines: string[] = [];
       t.mock.method(console, 'log', (...args: unknown[]) => {
@@ -614,23 +625,27 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       assert.equal(r.nodesProcessed, 2);
       assert.equal(r.edgesTraversed, 2);
 
-      sections.push([
-        '=== smartCompare verbose trace — 2-node cycle back-edge ===',
-        `nodesProcessed: ${r.nodesProcessed}`,
-        `edgesTraversed: ${r.edgesTraversed}`,
-        `pass: ${r.pass}`,
-        '',
-        ...logLines,
-        '',
-      ].join('\n'));
+      sections.push(
+        [
+          '=== smartCompare verbose trace — 2-node cycle back-edge ===',
+          `nodesProcessed: ${r.nodesProcessed}`,
+          `edgesTraversed: ${r.edgesTraversed}`,
+          `pass: ${r.pass}`,
+          '',
+          ...logLines,
+          '',
+        ].join('\n')
+      );
     }
 
     // --- Scenario 2: wrong back-edge target (A→B→A vs A→B→B self-loop, fail) ---
     {
-      const actualA = makeNode('a'), actualB = makeNode('b');
+      const actualA = makeNode('a'),
+        actualB = makeNode('b');
       actualA.dependencies.push(actualB);
       actualB.dependencies.push(actualA);
-      const expectedA = makeNode('a'), expectedB = makeNode('b');
+      const expectedA = makeNode('a'),
+        expectedB = makeNode('b');
       expectedA.dependencies.push(expectedB);
       expectedB.dependencies.push(expectedB); // self-loop
 
@@ -646,23 +661,34 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       assert.equal(r.pass, false);
       assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
 
-      sections.push([
-        '=== smartCompare verbose trace — wrong back-edge target (A→B→A vs A→B→B) ===',
-        `pass: ${r.pass}`,
-        `errorDetail: ${r.errorDetail}`,
-        '',
-        ...logLines,
-        '',
-      ].join('\n'));
+      sections.push(
+        [
+          '=== smartCompare verbose trace — wrong back-edge target (A→B→A vs A→B→B) ===',
+          `pass: ${r.pass}`,
+          `errorDetail: ${r.errorDetail}`,
+          '',
+          ...logLines,
+          '',
+        ].join('\n')
+      );
     }
 
     // --- Scenario 3: swapped 2-cycle targets (reversePaired mismatch, fail) ---
     {
-      const a0 = makeNode('p'), a1 = makeNode('q'), a2 = makeNode('r'), a3 = makeNode('s');
-      a0.dependencies.push(a1); a1.dependencies.push(a0);
-      a2.dependencies.push(a3); a3.dependencies.push(a2);
-      const e0 = makeNode('p'), e1 = makeNode('q'), e2 = makeNode('r'), e3 = makeNode('s');
-      e0.dependencies.push(e1); e1.dependencies.push(e0);
+      const a0 = makeNode('p'),
+        a1 = makeNode('q'),
+        a2 = makeNode('r'),
+        a3 = makeNode('s');
+      a0.dependencies.push(a1);
+      a1.dependencies.push(a0);
+      a2.dependencies.push(a3);
+      a3.dependencies.push(a2);
+      const e0 = makeNode('p'),
+        e1 = makeNode('q'),
+        e2 = makeNode('r'),
+        e3 = makeNode('s');
+      e0.dependencies.push(e1);
+      e1.dependencies.push(e0);
       e2.dependencies.push(e1); // WRONG: r→q
       e3.dependencies.push(e0); // WRONG: s→p
 
@@ -678,14 +704,16 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       assert.equal(r.pass, false);
       assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
 
-      sections.push([
-        '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
-        `pass: ${r.pass}`,
-        `errorDetail: ${r.errorDetail}`,
-        '',
-        ...logLines,
-        '',
-      ].join('\n'));
+      sections.push(
+        [
+          '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
+          `pass: ${r.pass}`,
+          `errorDetail: ${r.errorDetail}`,
+          '',
+          ...logLines,
+          '',
+        ].join('\n')
+      );
     }
 
     // Write all three scenarios to a single file in one atomic operation.
@@ -724,15 +752,19 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     assert.ok(result.edgesTraversed > 0, 'edgesTraversed must be > 0');
 
     const tracePath = path.join(LOGS_DIR, 'basic-tier-accuracy-trace.log');
-    fs.writeFileSync(tracePath, [
-      '=== smartCompare verbose trace — basic tier ===',
-      `nodesProcessed: ${result.nodesProcessed}`,
-      `edgesTraversed: ${result.edgesTraversed}`,
-      `pass: ${result.pass}`,
-      '',
-      ...logLines,
-      '',
-    ].join('\n'), 'utf8');
+    fs.writeFileSync(
+      tracePath,
+      [
+        '=== smartCompare verbose trace — basic tier ===',
+        `nodesProcessed: ${result.nodesProcessed}`,
+        `edgesTraversed: ${result.edgesTraversed}`,
+        `pass: ${result.pass}`,
+        '',
+        ...logLines,
+        '',
+      ].join('\n'),
+      'utf8'
+    );
     traceArtifacts.push(tracePath);
   });
 
@@ -806,20 +838,24 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
 
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
-    fs.writeFileSync(tracePath, [
-      '=== smartCompare verbose trace — acyclic-control tier ===',
-      `nodesProcessed: ${twpResult.nodesProcessed}`,
-      `edgesTraversed: ${twpResult.edgesTraversed}`,
-      `twoPassWire pass: ${twpResult.pass}`,
-      '',
-      'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
-      'No cycles exist.  Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC)',
-      'pass cleanly.  Naive Recursion fails: it creates a fresh object per populate() call,',
-      'producing a shared-reference mismatch even without cycles.',
-      '',
-      ...logLines,
-      '',
-    ].join('\n'), 'utf8');
+    fs.writeFileSync(
+      tracePath,
+      [
+        '=== smartCompare verbose trace — acyclic-control tier ===',
+        `nodesProcessed: ${twpResult.nodesProcessed}`,
+        `edgesTraversed: ${twpResult.edgesTraversed}`,
+        `twoPassWire pass: ${twpResult.pass}`,
+        '',
+        'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
+        'No cycles exist.  Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC)',
+        'pass cleanly.  Naive Recursion fails: it creates a fresh object per populate() call,',
+        'producing a shared-reference mismatch even without cycles.',
+        '',
+        ...logLines,
+        '',
+      ].join('\n'),
+      'utf8'
+    );
     traceArtifacts.push(tracePath);
   });
 

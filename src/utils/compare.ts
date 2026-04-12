@@ -1,10 +1,16 @@
 import { ComponentPopulated } from '../algorithms/types';
 
 /** Explicit call-frame type used by the iterative DFS stack in compareNode. */
-interface CompareFrame { a: ComponentPopulated; e: ComponentPopulated; depIdx: number }
+interface CompareFrame {
+  a: ComponentPopulated;
+  e: ComponentPopulated;
+  depIdx: number;
+}
 
 /** Shared no-op used when verbose=false to avoid allocating a new function on every smartCompare call. */
-function noop(_msg: string): void { /* intentionally empty */ }
+function noop(_msg: string): void {
+  /* intentionally empty */
+}
 
 /**
  * Cycle-aware graph comparator — O(V + E).
