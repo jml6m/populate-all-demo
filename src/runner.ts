@@ -289,21 +289,25 @@ function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[])
   return { pass: true, errorDetail: null };
 }
 
+// ANSI blue: wraps the entire formatted value so the numeric portion is consistently blue.
+const BLUE = '\x1b[34m';
+const RESET = '\x1b[0m';
+
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
 function formatTime(ms: number): string {
-  if (ms < 0.1) return '< 0.1ms';
-  if (ms < 10) return `${ms.toFixed(1)}ms`;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return '> 60s';
+  if (ms < 0.1) return `${BLUE}< 0.1ms${RESET}`;
+  if (ms < 10) return `${BLUE}${ms.toFixed(1)}ms${RESET}`;
+  if (ms < 1000) return `${BLUE}${Math.round(ms)}ms${RESET}`;
+  if (ms < 60000) return `${BLUE}${(ms / 1000).toFixed(1)}s${RESET}`;
+  return `${BLUE}> 60s${RESET}`;
 }
 
 // RAM: sub-0.1 MB heap deltas are within measurement noise; scale to GB at 1024 MB.
 function formatRam(mb: number): string {
-  if (mb < 0.1) return '< 0.1 MB';
-  if (mb < 10) return `${mb.toFixed(1)} MB`;
-  if (mb < 1000) return `${Math.round(mb)} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb < 0.1) return `${BLUE}< 0.1 MB${RESET}`;
+  if (mb < 10) return `${BLUE}${mb.toFixed(1)} MB${RESET}`;
+  if (mb < 1000) return `${BLUE}${Math.round(mb)} MB${RESET}`;
+  return `${BLUE}${(mb / 1024).toFixed(1)} GB${RESET}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -711,10 +715,11 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
     // full survivor picture is visible.
 
     // Conflicts: full block (comparers disagreeing is always notable).
+    // Use the normalized two-line conflict format — no verbose metric line.
     for (const c of conflicts) {
       lines.push(`[${c.algoCategory}] ${c.algoName}`);
-      lines.push(`  Hydration: 🚨 CONFLICT — comparers disagree`);
-      if (c.hydrationLine !== null) lines.push(c.hydrationLine);
+      lines.push(`  Hydration:     🚨 CONFLICT — comparers disagree`);
+      lines.push(`  Full Run:      🚨 CONFLICT`);
       if (c.probeChangeLine !== null) lines.push(c.probeChangeLine);
     }
 

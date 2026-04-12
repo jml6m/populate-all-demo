@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import {
   buildDetailConsumerProbesLine,
   buildDetailFullRunLine,
@@ -575,7 +575,7 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
     isNewFailure: false,
     isConflict: true,
     probesFailed: false,
-    hydrationLine: `  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL | Time: 5ms | RAM: < 0.1 MB`,
+    hydrationLine: null,
     failureDetailLines: [],
     probeChangeLine: null,
   };
@@ -1641,6 +1641,14 @@ describe('full-detail state matrix validity — no contradictory text', () => {
 // ---------------------------------------------------------------------------
 
 describe('dataset-output-format-matrix — generate audit log', () => {
+  let matrixArtifactPath: string | null = null;
+
+  after(() => {
+    if (matrixArtifactPath !== null) {
+      console.log(`[test] Artifact written: ${matrixArtifactPath}`);
+    }
+  });
+
   it('writes logs/dataset-output-format-matrix.log with all display states', () => {
     fs.mkdirSync(LOGS_DIR, { recursive: true });
     const lines: string[] = [];
@@ -1870,7 +1878,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     // Write the file
     const matrixPath = path.join(LOGS_DIR, 'dataset-output-format-matrix.log');
     fs.writeFileSync(matrixPath, lines.join('\n') + '\n', 'utf8');
-    console.log(`[test] Dataset output format matrix written to ${matrixPath}`);
+    matrixArtifactPath = matrixPath;
 
     // Sanity assertions on the generated content
     const content = fs.readFileSync(matrixPath, 'utf8');

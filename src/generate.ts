@@ -41,8 +41,8 @@ function generateDataset(size: number, seedSuffix: string) {
 /**
  * Generates a genuinely acyclic dataset (DAG).
  *
- * Edges only go from a higher-index node to a lower-index node, which
- * guarantees no cycles exist (topological order is simply descending index).
+ * Edges only go from a lower-index node to a higher-index node, which
+ * guarantees no cycles exist (topological order is simply ascending index).
  * This contrasts with generateDataset(), which allows arbitrary edges and
  * intentionally produces cyclic graphs.
  *
@@ -57,6 +57,9 @@ function generateDataset(size: number, seedSuffix: string) {
  * This makes acyclic-control a precise control: it isolates the shared-reference
  * requirement from the cycle-detection requirement.  An algorithm failing here
  * lacks memoization, not cycle-handling.
+ *
+ * comp_0 acts as the root of the DAG: it has the most outward edges and is
+ * traversed first, with its dependencies fanning out toward higher-index leaf nodes.
  */
 function generateAcyclicDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
@@ -67,14 +70,15 @@ function generateAcyclicDataset(size: number, seedSuffix: string) {
     flatComponents.push({ id: `comp_${i}`, dependencies: [] });
   }
 
-  // 2. Assign edges only from higher-index nodes to lower-index nodes.
-  // Node at index 0 cannot depend on any lower-index node, because none exist,
-  // so we start from index 1.
-  for (let i = 1; i < size; i++) {
+  // 2. Assign edges only from lower-index nodes to higher-index nodes.
+  // Node at index (size-1) cannot depend on any higher-index node, because none exist,
+  // so we stop before the last node.
+  for (let i = 0; i < size - 1; i++) {
+    const remaining = size - 1 - i; // number of higher-index nodes available as targets
     const numDeps = Math.floor(rng() * 2) + 1; // 1 or 2 dependencies per node (range [1, 2])
     for (let d = 0; d < numDeps; d++) {
-      // Target is always a lower-index node, guaranteeing acyclicity.
-      const targetIdx = Math.floor(rng() * i);
+      // Target is always a higher-index node, guaranteeing acyclicity.
+      const targetIdx = i + 1 + Math.floor(rng() * remaining);
       const targetId = `comp_${targetIdx}`;
       if (!flatComponents[i].dependencies.includes(targetId)) {
         flatComponents[i].dependencies.push(targetId);
