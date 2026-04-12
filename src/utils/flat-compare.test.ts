@@ -9,6 +9,28 @@ import { getDataDir, loadManifest, loadYaml } from './data-loader';
 import { flatCompare } from './flat-compare';
 
 // ---------------------------------------------------------------------------
+// Why flatCompare exists alongside smartCompare
+//
+// The experiment uses two independent accuracy checks that together eliminate
+// entire categories of false-positive results:
+//
+//   smartCompare  — validates object-identity (shared references, cycle structure).
+//                   Requires a reference graph built by buildPopulatedFromAnswer.
+//                   If both the algorithm and buildPopulatedFromAnswer share the same
+//                   structural bug, smartCompare may still pass (both sides carry the
+//                   same defect, so they appear to match each other).
+//
+//   flatCompare   — validates the index-level flat representation directly against
+//                   the raw AnswerEntry[] from the answer YAML file.
+//                   Catches bugs invisible to smartCompare when the same structural
+//                   error appears in both the algorithm output and the reference graph.
+//
+// Together they form a cross-verification layer: correctness requires BOTH checks
+// to pass, and a comparer conflict (one passes, the other fails) is surfaced
+// prominently in experiment output.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Helpers — build small, controlled graphs paired with their AnswerEntry[]
 // ---------------------------------------------------------------------------
 
@@ -241,3 +263,32 @@ describe('flatCompare — basic-tier integration', () => {
     assert.equal(r.pass, true, `flatCompare failed: ${r.errorDetail ?? ''}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-check differentiation — bugs flatCompare catches that reference-only
+// comparisons may miss
+// ---------------------------------------------------------------------------
+
+describe('flatCompare — differentiation from smartCompare', () => {
+  it('catches a missing dependency that a reference-only comparison would miss', () => {
+    // Scenario: the algorithm forgets to wire a → b, but the raw answer file says
+    // a should depend on b. A reference graph built from the same buggy output would
+    // also lack the a→b edge, so smartCompare (which compares two hydrated graphs)
+    // would see a "match" — both sides have no dep. flatCompare compares the actual
+    // against the raw AnswerEntry[] from the YAML answer file and catches the bug.
+    const actualA = makeNode('a');
+    const actualB = makeNode('b');
+    // BUG: actualA.dependencies is empty — the a→b edge is missing
+    const actual = [actualA, actualB];
+
+    const rawEntries: AnswerEntry[] = [
+      { id: 'a', depIndices: [1] }, // truth: a should depend on b
+      { id: 'b', depIndices: [] },
+    ];
+
+    const r = flatCompare(actual, rawEntries);
+    assert.equal(r.pass, false);
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep count mismatch'));
+  });
+});
+

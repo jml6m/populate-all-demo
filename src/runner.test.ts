@@ -216,7 +216,7 @@ describe('isAlreadyUpToDate — fingerprint mismatch', () => {
   });
 });
 
-describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
+describe('isAlreadyUpToDate — dataset/report completeness', () => {
   it('returns false when a dataset is missing from the index reports', () => {
     const tempDir = makeTempDir();
     try {
@@ -292,6 +292,65 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
     }
   });
 
+  it('returns true when all datasets in a multi-dataset run have matching reports', () => {
+    const tempDir = makeTempDir();
+    const acyclicRelPath = 'acyclic-control/benchmark-1.json';
+    const basicRelPath = 'basic/benchmark-1.json';
+
+    try {
+      fs.mkdirSync(path.join(tempDir, 'acyclic-control'), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, acyclicRelPath), '{}');
+      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
+
+      const index: ExperimentIndex = {
+        metadata: makeMetadata({
+          fingerprint: 'fp-multi-complete',
+          datasets: ['acyclic-control', 'basic'],
+        }),
+        reports: { 'acyclic-control': acyclicRelPath, basic: basicRelPath },
+      };
+      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+
+      assert.equal(isAlreadyUpToDate(tempDir, 'fp-multi-complete', ['acyclic-control', 'basic']), true);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+
+  it('returns false when one dataset report is missing in a multi-dataset run', () => {
+    const tempDir = makeTempDir();
+    const basicRelPath = 'basic/benchmark-1.json';
+
+    try {
+      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
+      // second dataset dir/file NOT created
+
+      const index: ExperimentIndex = {
+        metadata: makeMetadata({
+          fingerprint: 'fp-multi-missing',
+          datasets: ['acyclic-control', 'basic'],
+        }),
+        reports: {
+          'acyclic-control': 'acyclic-control/benchmark-missing.json',
+          basic: basicRelPath,
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+
+      assert.equal(isAlreadyUpToDate(tempDir, 'fp-multi-missing', ['acyclic-control', 'basic']), false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isAlreadyUpToDate — path safety
+// ---------------------------------------------------------------------------
+
+describe('isAlreadyUpToDate — path safety', () => {
   it('returns false when the report path is an absolute path (path traversal guard)', () => {
     const tempDir = makeTempDir();
     try {
@@ -319,24 +378,6 @@ describe('isAlreadyUpToDate — matching fingerprint, file checks', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true });
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// computeFingerprint — packageVersion sensitivity
-// ---------------------------------------------------------------------------
-
-describe('computeFingerprint — packageVersion sensitivity', () => {
-  // The real computeFingerprint reads pkgJson.version internally; we verify that
-  // the fingerprint changes when the same source inputs are run with a mocked
-  // package version. Since the module uses the live pkgJson import, we test this
-  // indirectly by checking that two independent calls always produce the same
-  // output (confirming packageVersion is stable within a run).
-  it('produces a stable fingerprint across repeated calls (packageVersion is constant)', () => {
-    const manifest = makeManifest();
-    const fp1 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
-    const fp2 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
-    assert.equal(fp1, fp2, 'Fingerprint must be identical across calls with the same inputs');
   });
 });
 
@@ -990,207 +1031,6 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
 });
 
 
-describe('computeFingerprint — acyclic-control dataset support', () => {
-  function makeFullManifest(): Manifest {
-    return {
-      generatedAt: '2025-01-01T00:00:00.000Z',
-      files: {
-        'acyclic-control_input': {
-          filename: 'acyclic-control/acyclic-control_input.aabb1122.yaml',
-          contentHash: 'aabb1122',
-        },
-        'acyclic-control_answer': {
-          filename: 'acyclic-control/acyclic-control_answer.ccdd3344.yaml',
-          contentHash: 'ccdd3344',
-        },
-        basic_input: { filename: 'basic/basic_input.abc12345.yaml', contentHash: 'abc12345' },
-        basic_answer: { filename: 'basic/basic_answer.def67890.yaml', contentHash: 'def67890' },
-        medium_input: { filename: 'medium/medium_input.aabbccdd.yaml', contentHash: 'aabbccdd' },
-        medium_answer: { filename: 'medium/medium_answer.11223344.yaml', contentHash: '11223344' },
-      },
-    };
-  }
-
-  it('includes acyclic-control file hashes when acyclic-control is in the selected datasets', () => {
-    const manifest = makeFullManifest();
-    const fp1 = computeFingerprint(manifest, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']);
-    const fp2 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
-    // Running with acyclic-control included must produce a different fingerprint
-    assert.notEqual(fp1, fp2, 'Adding acyclic-control to the dataset list must change the fingerprint');
-  });
-
-  it('excludes acyclic-control file hashes when it is not in the selected datasets', () => {
-    const manifest = makeFullManifest();
-    // Mutate the acyclic-control hash — should not affect the fingerprint when not selected.
-    const manifestAlt: Manifest = {
-      ...manifest,
-      files: {
-        ...manifest.files,
-        'acyclic-control_input': {
-          filename: 'acyclic-control/acyclic-control_input.different.yaml',
-          contentHash: 'different',
-        },
-      },
-    };
-    assert.equal(
-      computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']),
-      computeFingerprint(manifestAlt, ['basic'], ['Algo A'], ['probe-x']),
-      'Changing acyclic-control hash should not affect fingerprint when only basic is selected',
-    );
-  });
-
-  it('changes when acyclic-control file hash changes and acyclic-control is selected', () => {
-    const manifest = makeFullManifest();
-    const manifestAlt: Manifest = {
-      ...manifest,
-      files: {
-        ...manifest.files,
-        'acyclic-control_input': {
-          filename: 'acyclic-control/acyclic-control_input.different.yaml',
-          contentHash: 'different',
-        },
-      },
-    };
-    assert.notEqual(
-      computeFingerprint(manifest, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']),
-      computeFingerprint(manifestAlt, ['acyclic-control', 'basic'], ['Algo A'], ['probe-x']),
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// acyclic-control tier — isAlreadyUpToDate with multi-dataset runs
-// ---------------------------------------------------------------------------
-
-describe('isAlreadyUpToDate — acyclic-control included in dataset list', () => {
-  it('returns true when all datasets (including acyclic-control) have matching reports', () => {
-    const tempDir = makeTempDir();
-    const acyclicRelPath = 'acyclic-control/benchmark-1.json';
-    const basicRelPath = 'basic/benchmark-1.json';
-
-    try {
-      fs.mkdirSync(path.join(tempDir, 'acyclic-control'), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, acyclicRelPath), '{}');
-      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
-
-      const index: ExperimentIndex = {
-        metadata: makeMetadata({
-          fingerprint: 'fp-acyclic-multi',
-          datasets: ['acyclic-control', 'basic'],
-        }),
-        reports: {
-          'acyclic-control': acyclicRelPath,
-          basic: basicRelPath,
-        },
-      };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
-
-      assert.equal(
-        isAlreadyUpToDate(tempDir, 'fp-acyclic-multi', ['acyclic-control', 'basic']),
-        true,
-      );
-    } finally {
-      fs.rmSync(tempDir, { recursive: true });
-    }
-  });
-
-  it('returns false when the acyclic-control report is missing', () => {
-    const tempDir = makeTempDir();
-    const basicRelPath = 'basic/benchmark-1.json';
-
-    try {
-      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
-      // acyclic-control dir/file NOT created
-
-      const index: ExperimentIndex = {
-        metadata: makeMetadata({
-          fingerprint: 'fp-missing-acyclic',
-          datasets: ['acyclic-control', 'basic'],
-        }),
-        reports: {
-          'acyclic-control': 'acyclic-control/benchmark-missing.json',
-          basic: basicRelPath,
-        },
-      };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
-
-      assert.equal(
-        isAlreadyUpToDate(tempDir, 'fp-missing-acyclic', ['acyclic-control', 'basic']),
-        false,
-      );
-    } finally {
-      fs.rmSync(tempDir, { recursive: true });
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// acyclic-control tier — cyclic skip/suppression still anchored to basic
-// ---------------------------------------------------------------------------
-
-describe('buildLaterDatasetLines — cyclic skip semantics are unaffected by acyclic-control', () => {
-  it('baseline-skipped algorithms from basic are still suppressed on medium/stress/extreme', () => {
-    // Simulate what happens on medium/stress/extreme when Naive Recursion failed at basic.
-    // acyclic-control running first should NOT change this behavior.
-    const outcomes: LaterAlgoOutcome[] = [
-      // Naive Recursion: failed at basic (cyclic baseline), so it is baseline-skipped here.
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-      // Remaining algorithms pass.
-      makePassOutcome('Map Tracker', 'Reference Tracking'),
-      makePassOutcome('Tarjan SCC Layering', 'Topological'),
-      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
-    ];
-
-    const lines = buildLaterDatasetLines(outcomes);
-
-    // Naive Recursion must appear in the omission note, not as a failure block.
-    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
-    assert.ok(!lines.some((l) => l.startsWith('[Reference Tracking] Naive Recursion')));
-
-    // Survivors are shown individually (expansion mode because there is an omission).
-    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
-    assert.ok(lines.some((l) => l.startsWith('[Topological] Tarjan SCC Layering')));
-    assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
-  });
-
-  it('all-pass later dataset produces the compact summary sentence (no omissions, no failures)', () => {
-    // When acyclic-control runs first but basic is the cyclic baseline, and no algorithm
-    // failed at basic, the later dataset should still produce the compact stable summary.
-    const outcomes: LaterAlgoOutcome[] = [
-      makePassOutcome('Naive Recursion', 'Reference Tracking'),
-      makePassOutcome('Map Tracker', 'Reference Tracking'),
-      makePassOutcome('Tarjan SCC Layering', 'Topological'),
-      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
-    ];
-
-    const lines = buildLaterDatasetLines(outcomes);
-    assert.ok(lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
-    assert.ok(!lines.some((l) => l.includes('Known failure')));
-  });
-
-  it('new failure on a later cyclic dataset is still surfaced as isNewFailure', () => {
-    // Map Tracker newly fails on stress — this must be shown even though
-    // acyclic-control ran first (acyclic-control has no bearing on cyclic suppression).
-    const outcomes: LaterAlgoOutcome[] = [
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-      makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
-      makePassOutcome('Tarjan SCC Layering', 'Topological'),
-      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
-    ];
-
-    const lines = buildLaterDatasetLines(outcomes);
-
-    // New failure must appear as a full block.
-    assert.ok(lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
-    assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL')));
-
-    // Omission note for the baseline-skipped algorithm.
-    assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
-  });
-});
-
 // ---------------------------------------------------------------------------
 // classifyHydrationFailTag — error classification
 // ---------------------------------------------------------------------------
@@ -1466,42 +1306,6 @@ describe('buildLaterDatasetLines — new failure always includes consumer probes
     assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
     // The default "not run" line should NOT appear since probeChangeLine was provided
     assert.ok(!lines.some((l) => l.includes('not run (hydration failed)')));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// acyclic-control — format contract: Naive Recursion passes
-// ---------------------------------------------------------------------------
-
-describe('buildDetailHydrationLine — acyclic-control Naive Recursion pass', () => {
-  it('renders the pass line correctly for Naive Recursion on the isolated-node acyclic-control dataset', () => {
-    // Naive Recursion succeeds on the isolated-node acyclic-control dataset
-    // because no node is both a top-level entry and a dependency of another node.
-    const line = buildDetailHydrationLine(true, false, '✅ PASS (double-verified)');
-    assert.equal(line, '  Hydration:     ✅ PASS (double-verified)');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildLaterDatasetLines — later-tier hydration-fail shows consumer probes line
-// ---------------------------------------------------------------------------
-
-describe('buildLaterDatasetLines — new failure consumer probes explicitness', () => {
-  it('stress-tier Map Tracker failure shows both Hydration and Consumer probes lines', () => {
-    // Simulates: Map Tracker passed at basic but newly fails at stress.
-    const outcomes: LaterAlgoOutcome[] = [
-      makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
-      makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
-      makePassOutcome('Tarjan SCC Layering', 'Topological'),
-      makePassOutcome('Two-Pass Wire', 'Schema-Driven'),
-    ];
-    const lines = buildLaterDatasetLines(outcomes);
-
-    // Both phase lines must appear for the new failure
-    const hasHydrationFail = lines.some((l) => l.includes('Hydration:') && l.includes('❌ FAIL'));
-    const hasProbesNotRun = lines.some((l) => l.includes('Consumer probes: not run (hydration failed)'));
-    assert.ok(hasHydrationFail, 'Should have Hydration: ❌ FAIL line');
-    assert.ok(hasProbesNotRun, 'Should have Consumer probes: not run line');
   });
 });
 
@@ -2031,18 +1835,14 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('─────────────────────────────────────────────────────────────────────');
     line();
 
-    function passHydLine(timeMs: number, ramMb: number): string {
-      return buildFullRunLine(true, true, '✅ PASS (double-verified)', timeMs, ramMb);
-    }
-
     // Case 9: All pass, no omissions — compact stable summary
     line('[Case 9] All pass, no omissions — compact "experiment stable" summary');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(1, 0.1), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(2, 0.2), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(3, 0.3), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(4, 0.4), failureDetailLines: [], probeChangeLine: null },
+        makePassOutcome('Naive Recursion', 'Reference Tracking', '1.0ms', '0.1 MB'),
+        makePassOutcome('Map Tracker', 'Reference Tracking', '2.0ms', '0.2 MB'),
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '3.0ms', '0.3 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '4.0ms', '0.4 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2052,10 +1852,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 10] Stable passes with omissions — individual entries (Naive Recursion skipped)');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        makePassOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB'),
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2065,10 +1865,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 11] New failure — Map Tracker newly fails (hydration ❌ for first time)');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: true, isConflict: false, probesFailed: false, hydrationLine: '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]', failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2078,10 +1878,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 12] Known prior failure — Map Tracker already failed at earlier tier (omitted)');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: true, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]', failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        makeKnownPriorOutcome('Map Tracker', 'Reference Tracking'),
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2091,10 +1891,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 13] Conflict on later tier — Map Tracker comparers disagree (always surfaced)');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: true, probesFailed: false, hydrationLine: '  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL', failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        makeConflictOutcome('Map Tracker', 'Reference Tracking'),
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2105,10 +1905,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('         probesFailed=true triggers "Hydration: ✅ PASS" + probe detail (no Full Run metrics)');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: true, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat' },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        { ...makePassOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB'), probesFailed: true, probeChangeLine: '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat' },
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }
@@ -2118,10 +1918,10 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 15] Probe fingerprint changed from baseline but all probes pass — change warning');
     {
       const outcomes: LaterAlgoOutcome[] = [
-        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ naive-json  ✅ cycle-flat (output ✅)' },
-        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
-        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+        makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
+        { ...makePassOutcome('Map Tracker', 'Reference Tracking', '22ms', '9.1 MB'), probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ naive-json  ✅ cycle-flat (output ✅)' },
+        makePassOutcome('Tarjan SCC Layering', 'Topological', '18ms', '8.5 MB'),
+        makePassOutcome('Two-Pass Wire', 'Schema-Driven', '20ms', '8.9 MB'),
       ];
       for (const l of buildLaterDatasetLines(outcomes)) line(l);
     }

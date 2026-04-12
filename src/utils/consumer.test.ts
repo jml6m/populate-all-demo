@@ -103,6 +103,13 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
     const r = naiveJsonProbe.consume(makeChainCycle(20));
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null);
+    // Platform-owned error: JSON.stringify on a circular structure always produces this kind of error
+    assert.ok(
+      r.errorDetail.toLowerCase().includes('circular') ||
+        r.errorDetail.toLowerCase().includes('cyclic') ||
+        r.errorDetail.toLowerCase().includes('json'),
+      `Expected circular/cyclic/json error, got: ${r.errorDetail}`,
+    );
   });
 
   it('does not mutate the graph nodes', () => {
@@ -205,8 +212,9 @@ describe('cycleFlatProbe — orphaned dependency detection', () => {
 
     const r = cycleFlatProbe.consume([a]); // orphan is missing from array
     assert.equal(r.pass, false);
-    assert.ok(r.errorDetail !== null);
-    assert.ok(r.errorDetail.includes('orphan') || r.errorDetail.includes('not present'));
+    // App-owned error: matches the exact format from consumer.ts
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('not present in the top-level graph array'),
+      `Expected "not present in the top-level graph array" error, got: ${r.errorDetail}`);
     assert.equal(r.serializedOutput, null);
   });
 });
