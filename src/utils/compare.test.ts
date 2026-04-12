@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
@@ -143,7 +143,7 @@ describe('smartCompare — matching graphs', () => {
     assert.equal(r.errorDetail, null);
   });
 
-  it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', (t) => {
+  it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', () => {
     // comp_0 → comp_1 → comp_0: when the DFS reaches comp_1 → comp_0,
     // comp_0's frame is still on the stack (it pushed comp_1 but hasn't finished),
     // yet comp_0 was added to `paired` before its frame was pushed onto the stack,
@@ -158,33 +158,12 @@ describe('smartCompare — matching graphs', () => {
     e0.dependencies.push(e1);
     e1.dependencies.push(e0);
 
-    const logLines: string[] = [];
-    t.mock.method(console, 'log', (...args: unknown[]) => {
-      const line = args.map(String).join(' ');
-      if (line.startsWith('[smartCompare]')) {
-        logLines.push(line);
-      }
-    });
-
-    const r = smartCompare([a0, a1], [e0, e1], true);
-
-    t.mock.restoreAll();
+    const r = smartCompare([a0, a1], [e0, e1]);
 
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
     assert.equal(r.nodesProcessed, 2);
     assert.equal(r.edgesTraversed, 2);
-
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
-    const header = [
-      '=== smartCompare verbose trace — 2-node cycle back-edge ===',
-      `nodesProcessed: ${r.nodesProcessed}`,
-      `edgesTraversed: ${r.edgesTraversed}`,
-      `pass: ${r.pass}`,
-      '',
-    ];
-    fs.writeFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
   });
 
   it('matches a diamond graph with a shared-reference node', () => {
@@ -192,6 +171,9 @@ describe('smartCompare — matching graphs', () => {
     const r = smartCompare(actual, expected);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
+    // 4 nodes; 4 edges: a→b, a→c, b→d, c→d (the last is a back-edge to the already-visited d)
+    assert.equal(r.nodesProcessed, 4);
+    assert.equal(r.edgesTraversed, 4);
   });
 
   it('matches a long chain-cycle (20 nodes)', () => {
@@ -200,6 +182,9 @@ describe('smartCompare — matching graphs', () => {
     const r = smartCompare(actual, expected);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
+    // Each of 20 nodes is processed once; each of 20 edges (including the closing back-edge) is traversed once
+    assert.equal(r.nodesProcessed, 20);
+    assert.equal(r.edgesTraversed, 20);
   });
 });
 
@@ -243,7 +228,9 @@ describe('smartCompare — mismatch detection', () => {
 
     const r = smartCompare([a1, b1], [a2, b2]);
     assert.equal(r.pass, false);
-    assert.ok(r.errorDetail !== null);
+    // When the DFS reaches b1's dep (a1, cycle back), the expected b2 has 0 deps →
+    // "dependencies length mismatch" fires before any cycle check.
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('dependencies length'));
   });
 
   it('detects when expected cycles to the wrong node', () => {
@@ -262,6 +249,7 @@ describe('smartCompare — mismatch detection', () => {
 
     const r = smartCompare([a1, b1], [a2, b2]);
     assert.equal(r.pass, false);
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
   it('detects when actual has two nodes sharing an id but expected does not', () => {
@@ -281,13 +269,13 @@ describe('smartCompare — mismatch detection', () => {
     b2.dependencies.push(c2b);
 
     const r = smartCompare([a1, b1, sharedC], [a2, b2, c2a]);
-    // a1 pairs with a2 (c→c2a), b1 pairs with b2 (c→c2b); c2b is a different object than c2a
-    // When we visit sharedC the second time (via b1), we expect it to be paired with c2a already,
-    // but b2 points to c2b — a different object → mismatch
+    // When we revisit sharedC via b1→sharedC, it is already paired with c2a, but b2's dep is c2b.
+    // "Cycle structure mismatch at node 'c': expected cycle target differs"
     assert.equal(r.pass, false);
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
-  it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', (t) => {
+  it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', () => {
     // actual:   A → B → A  (B cycles back to A — correct 2-node cycle)
     // expected: A → B → B  (B has a self-loop, NOT a back-edge to A)
     // The alreadyPaired guard (the alreadyPaired !== de check) catches this:
@@ -302,41 +290,18 @@ describe('smartCompare — mismatch detection', () => {
     expectedA.dependencies.push(expectedB);
     expectedB.dependencies.push(expectedB); // self-loop on B instead of back to A
 
-    const logLines: string[] = [];
-    t.mock.method(console, 'log', (...args: unknown[]) => {
-      const line = args.map(String).join(' ');
-      if (line.startsWith('[smartCompare]')) {
-        logLines.push(line);
-      }
-    });
-
-    const r = smartCompare([actualA, actualB], [expectedA, expectedB], true);
-
-    t.mock.restoreAll();
+    const r = smartCompare([actualA, actualB], [expectedA, expectedB]);
 
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
-
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
-    const header = [
-      '',
-      '=== smartCompare verbose trace — wrong back-edge target mismatch (A→B→A vs A→B→B) ===',
-      `pass: ${r.pass}`,
-      `errorDetail: ${r.errorDetail}`,
-      '',
-    ];
-    fs.appendFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
   });
 
-  it('mismatch — swapped 2-cycle targets: reversePaired catches expected node claimed by two actuals', (t) => {
+  it('mismatch — swapped 2-cycle targets: reversePaired catches expected node claimed by two actuals', () => {
     // Actual has two proper 2-node cycles: [p↔q] and [r↔s]
     // Expected has the first cycle correct [p↔q], but the second cycle's back-edges
     // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
-    // This means e1(q) would need to be paired with both a1(q) and a3(s) — impossible.
-    // The reversePaired map, which enforces a one-to-one mapping from expected nodes
-    // to actual nodes, catches this: when processing a2→a3 vs e2→e1, da=a3 is a fresh
-    // actual node but de=e1 is already reversePaired with a1 → mismatch.
+    // The reversePaired map enforces a one-to-one mapping from expected nodes to actual nodes:
+    // when processing a2→a3 vs e2→e1, de=e1 is already reversePaired with a1 → mismatch.
     const a0 = makeNode('p'), a1 = makeNode('q');
     const a2 = makeNode('r'), a3 = makeNode('s');
     a0.dependencies.push(a1);
@@ -351,31 +316,10 @@ describe('smartCompare — mismatch detection', () => {
     e2.dependencies.push(e1); // WRONG: r→q (points to first cycle's node!)
     e3.dependencies.push(e0); // WRONG: s→p (points to first cycle's node!)
 
-    const logLines: string[] = [];
-    t.mock.method(console, 'log', (...args: unknown[]) => {
-      const line = args.map(String).join(' ');
-      if (line.startsWith('[smartCompare]')) {
-        logLines.push(line);
-      }
-    });
-
-    const r = smartCompare([a0, a1, a2, a3], [e0, e1, e2, e3], true);
-
-    t.mock.restoreAll();
+    const r = smartCompare([a0, a1, a2, a3], [e0, e1, e2, e3]);
 
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
-
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
-    const header = [
-      '',
-      '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
-      `pass: ${r.pass}`,
-      `errorDetail: ${r.errorDetail}`,
-      '',
-    ];
-    fs.appendFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
   });
 });
 
@@ -545,21 +489,20 @@ describe('smartCompare — O(V+E) complexity proof', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Verbose basic-tier trace — loads real data files, exercises twoPassWire,
-// and writes a step-by-step smartCompare log to analysis/.
+// Data-generation helpers for basic and acyclic-control tiers —
+// used only by trace tests that need real dataset files.
 // ---------------------------------------------------------------------------
 
 /**
  * Ensures the basic-tier data files are present, generating only the basic dataset
- * if they are missing.  Using --tier basic avoids spinning up the medium (5 K) and
- * stress (50 K) generation that would happen with a bare `npm run generate`.
+ * if they are missing.  Using --tier basic avoids spinning up medium (5K) and
+ * stress (50K) generation that would happen with a bare `npm run generate`.
  */
 function ensureDataGenerated(): void {
   const dataDir = getDataDir();
   const manifestPath = path.join(dataDir, 'manifest.json');
 
   if (fs.existsSync(manifestPath)) {
-    // Check that the basic entries specifically are present and their files exist.
     const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
       files?: Record<string, { filename?: string } | undefined>;
     };
@@ -571,139 +514,17 @@ function ensureDataGenerated(): void {
       fs.existsSync(path.join(dataDir, inputFilename)) &&
       fs.existsSync(path.join(dataDir, answerFilename))
     ) {
-      return; // Basic-tier files already present
+      return;
     }
   }
 
-  // Generate only the basic dataset to avoid creating medium (5 K) and stress (50 K) files.
   console.log('[test] Basic-tier data files not found — running npm run generate --tier basic...');
   const projectRoot = path.resolve(__dirname, '..', '..');
   execSync('npm run generate -- --tier basic', { cwd: projectRoot, stdio: 'inherit' });
   if (!fs.existsSync(manifestPath)) {
-    throw new Error('Data generation did not produce manifest.json. Cannot run verbose trace test.');
+    throw new Error('Data generation did not produce manifest.json. Cannot run trace test.');
   }
 }
-
-describe('smartCompare — verbose basic-tier trace', () => {
-  it('runs twoPassWire on basic data, verifies with smartCompare, writes trace log', (t) => {
-    ensureDataGenerated();
-
-    const manifest = loadManifest();
-    const inputEntry = manifest.files['basic_input'];
-    const answerEntry = manifest.files['basic_answer'];
-    assert.ok(inputEntry, 'basic_input missing from manifest');
-    assert.ok(answerEntry, 'basic_answer missing from manifest');
-
-    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
-    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
-    const expected = buildPopulatedFromAnswer(rawAnswerEntries);
-    const actual = twoPassWire.execute(inputData);
-
-    // Use node:test's scoped mock so the override is automatically restored after the
-    // test ends and does not bleed into other tests running concurrently.
-    const logLines: string[] = [];
-    t.mock.method(console, 'log', (...args: unknown[]) => {
-      const line = args.map(String).join(' ');
-      if (line.startsWith('[smartCompare]')) {
-        logLines.push(line);
-      }
-      // [smartCompare] verbose lines are captured to the log file only; suppress from stdout
-      // to keep test output clean.
-    });
-
-    const result = smartCompare(actual, expected, true);
-
-    // Restore console.log before any further logging so the file-written message appears.
-    t.mock.restoreAll();
-
-    assert.equal(result.pass, true, `smartCompare failed: ${result.errorDetail ?? ''}`);
-    assert.equal(result.nodesProcessed, 10, 'basic tier must have exactly 10 nodes processed');
-    assert.ok(result.edgesTraversed > 0, 'edgesTraversed must be > 0');
-
-    // Write trace to analysis directory
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'basic-tier-accuracy-trace.log');
-    const header = [
-      '=== smartCompare verbose trace — basic tier ===',
-      `nodesProcessed: ${result.nodesProcessed}`,
-      `edgesTraversed: ${result.edgesTraversed}`,
-      `pass: ${result.pass}`,
-      '',
-    ];
-    fs.writeFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
-    console.log(`[test] Verbose trace written to ${tracePath}`);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildPopulatedFromAnswer verbose trace — manually steps through the two
-// passes and writes each shell creation, wire operation, and identity check
-// to the same analysis log (appended after the smartCompare trace).
-// ---------------------------------------------------------------------------
-
-describe('buildPopulatedFromAnswer — verbose basic-tier trace', () => {
-  it('steps through shell creation and wiring with identity checks, appends to trace log', () => {
-    ensureDataGenerated();
-
-    const manifest = loadManifest();
-    const answerEntry = manifest.files['basic_answer'];
-    assert.ok(answerEntry, 'basic_answer missing from manifest');
-
-    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
-
-    const traceLines: string[] = ['', '=== buildPopulatedFromAnswer verbose trace — basic tier ===', ''];
-
-    // Pass 1: create shells
-    traceLines.push('--- Pass 1: Shell creation ---');
-    const nodes: ComponentPopulated[] = rawAnswerEntries.map((e) => {
-      traceLines.push(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
-      return { id: e.id, dependencies: [] };
-    });
-
-    // Pass 2: wire and verify identity
-    traceLines.push('');
-    traceLines.push('--- Pass 2: Wiring ---');
-    for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        nodes[i].dependencies.push(nodes[depIdx]);
-        traceLines.push(`Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`);
-      }
-    }
-
-    traceLines.push('');
-    traceLines.push('--- Identity checks ---');
-    for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
-        traceLines.push(`Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`);
-        assert.equal(sameObject, true, `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`);
-      }
-    }
-
-    // Write trace to analysis directory
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'build-answer-trace.log');
-    fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
-    console.log(`[test] buildPopulatedFromAnswer trace written to ${tracePath}`);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Acyclic-control tier trace logs
-//
-// Mirrors the basic-tier trace tests but for the acyclic-control dataset.
-// Generates two canonical developer-facing trace logs:
-//   - acyclic-control-accuracy-trace.log  (smartCompare verbose trace for twoPassWire)
-//   - acyclic-control-build-answer-trace.log  (buildPopulatedFromAnswer trace)
-//
-// The acyclic-control dataset is a genuine DAG: edges go from higher-index nodes to
-// lower-index nodes only, guaranteeing no cycles.  Algorithms with memoization (Map
-// Tracker, Two-Pass Wire, Tarjan SCC) pass cleanly.  Naive Recursion fails because it
-// creates a fresh object per populate() call — the same shared-reference mismatch as on
-// the cyclic 'basic' dataset, proving the limitation is about memoization, not cycles.
-// ---------------------------------------------------------------------------
 
 /**
  * Ensures acyclic-control data files are present, generating only that tier
@@ -725,7 +546,7 @@ function ensureAcyclicControlDataGenerated(): void {
       fs.existsSync(path.join(dataDir, inputFilename)) &&
       fs.existsSync(path.join(dataDir, answerFilename))
     ) {
-      return; // Acyclic-control files already present
+      return;
     }
   }
 
@@ -737,8 +558,228 @@ function ensureAcyclicControlDataGenerated(): void {
   }
 }
 
-describe('smartCompare — verbose acyclic-control trace', () => {
-  it('runs twoPassWire on acyclic-control data, verifies it passes, writes trace log', (t) => {
+// ---------------------------------------------------------------------------
+// Trace artifact generation — cycle-structure mismatches, basic-tier, acyclic-control
+//
+// Writes developer-facing trace logs to logs/.  All trace-writing tests are
+// grouped in this section so that artifact messages appear together at the
+// end of test output rather than interspersed with correctness results.
+// ---------------------------------------------------------------------------
+
+describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => {
+  // Paths to trace files written during this run; printed once via the `after`
+  // hook so a single summary appears at the very end of the trace section.
+  const traceArtifacts: string[] = [];
+
+  before(() => {
+    // Ensure the logs directory exists before any trace test runs, so that
+    // individual tests never need to create it themselves and appendFileSync
+    // can never throw ENOENT regardless of execution order or isolation.
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+  });
+
+  after(() => {
+    if (traceArtifacts.length > 0) {
+      console.log('[test] Trace artifacts written:');
+      for (const p of traceArtifacts) console.log(`  ${p}`);
+    }
+  });
+
+  // ── Cycle-structure trace — smart-compare-trace.log ────────────────────
+  //
+  // All three cycle-guard scenarios (back-edge pass, wrong-back-edge, swapped
+  // targets) are collected in a single self-contained test so the combined log
+  // file is always written atomically and does not depend on test ordering.
+
+  it('trace: cycle-structure scenarios (back-edge, wrong target, swapped targets) — writes smart-compare-trace.log', (t) => {
+    const sections: string[] = [];
+
+    // --- Scenario 1: 2-node cycle back-edge (pass) ---
+    {
+      const a0 = makeNode('comp_0'), a1 = makeNode('comp_1');
+      a0.dependencies.push(a1); a1.dependencies.push(a0);
+      const e0 = makeNode('comp_0'), e1 = makeNode('comp_1');
+      e0.dependencies.push(e1); e1.dependencies.push(e0);
+
+      const logLines: string[] = [];
+      t.mock.method(console, 'log', (...args: unknown[]) => {
+        const line = args.map(String).join(' ');
+        if (line.startsWith('[smartCompare]')) logLines.push(line);
+      });
+
+      const r = smartCompare([a0, a1], [e0, e1], true);
+      t.mock.restoreAll();
+
+      assert.equal(r.pass, true);
+      assert.equal(r.nodesProcessed, 2);
+      assert.equal(r.edgesTraversed, 2);
+
+      sections.push([
+        '=== smartCompare verbose trace — 2-node cycle back-edge ===',
+        `nodesProcessed: ${r.nodesProcessed}`,
+        `edgesTraversed: ${r.edgesTraversed}`,
+        `pass: ${r.pass}`,
+        '',
+        ...logLines,
+        '',
+      ].join('\n'));
+    }
+
+    // --- Scenario 2: wrong back-edge target (A→B→A vs A→B→B self-loop, fail) ---
+    {
+      const actualA = makeNode('a'), actualB = makeNode('b');
+      actualA.dependencies.push(actualB);
+      actualB.dependencies.push(actualA);
+      const expectedA = makeNode('a'), expectedB = makeNode('b');
+      expectedA.dependencies.push(expectedB);
+      expectedB.dependencies.push(expectedB); // self-loop
+
+      const logLines: string[] = [];
+      t.mock.method(console, 'log', (...args: unknown[]) => {
+        const line = args.map(String).join(' ');
+        if (line.startsWith('[smartCompare]')) logLines.push(line);
+      });
+
+      const r = smartCompare([actualA, actualB], [expectedA, expectedB], true);
+      t.mock.restoreAll();
+
+      assert.equal(r.pass, false);
+      assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
+
+      sections.push([
+        '=== smartCompare verbose trace — wrong back-edge target (A→B→A vs A→B→B) ===',
+        `pass: ${r.pass}`,
+        `errorDetail: ${r.errorDetail}`,
+        '',
+        ...logLines,
+        '',
+      ].join('\n'));
+    }
+
+    // --- Scenario 3: swapped 2-cycle targets (reversePaired mismatch, fail) ---
+    {
+      const a0 = makeNode('p'), a1 = makeNode('q'), a2 = makeNode('r'), a3 = makeNode('s');
+      a0.dependencies.push(a1); a1.dependencies.push(a0);
+      a2.dependencies.push(a3); a3.dependencies.push(a2);
+      const e0 = makeNode('p'), e1 = makeNode('q'), e2 = makeNode('r'), e3 = makeNode('s');
+      e0.dependencies.push(e1); e1.dependencies.push(e0);
+      e2.dependencies.push(e1); // WRONG: r→q
+      e3.dependencies.push(e0); // WRONG: s→p
+
+      const logLines: string[] = [];
+      t.mock.method(console, 'log', (...args: unknown[]) => {
+        const line = args.map(String).join(' ');
+        if (line.startsWith('[smartCompare]')) logLines.push(line);
+      });
+
+      const r = smartCompare([a0, a1, a2, a3], [e0, e1, e2, e3], true);
+      t.mock.restoreAll();
+
+      assert.equal(r.pass, false);
+      assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
+
+      sections.push([
+        '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
+        `pass: ${r.pass}`,
+        `errorDetail: ${r.errorDetail}`,
+        '',
+        ...logLines,
+        '',
+      ].join('\n'));
+    }
+
+    // Write all three scenarios to a single file in one atomic operation.
+    const tracePath = path.join(LOGS_DIR, 'smart-compare-trace.log');
+    fs.writeFileSync(tracePath, sections.join('\n'), 'utf8');
+    traceArtifacts.push(tracePath);
+  });
+
+  // ── Basic-tier integration trace ───────────────────────────────────────
+
+  it('trace: basic-tier twoPassWire — writes basic-tier-accuracy-trace.log', (t) => {
+    ensureDataGenerated();
+
+    const manifest = loadManifest();
+    const inputEntry = manifest.files['basic_input'];
+    const answerEntry = manifest.files['basic_answer'];
+    assert.ok(inputEntry, 'basic_input missing from manifest');
+    assert.ok(answerEntry, 'basic_answer missing from manifest');
+
+    const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+    const expected = buildPopulatedFromAnswer(rawAnswerEntries);
+    const actual = twoPassWire.execute(inputData);
+
+    const logLines: string[] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => {
+      const line = args.map(String).join(' ');
+      if (line.startsWith('[smartCompare]')) logLines.push(line);
+    });
+
+    const result = smartCompare(actual, expected, true);
+    t.mock.restoreAll();
+
+    assert.equal(result.pass, true, `smartCompare failed: ${result.errorDetail ?? ''}`);
+    assert.equal(result.nodesProcessed, 10, 'basic tier must have exactly 10 nodes processed');
+    assert.ok(result.edgesTraversed > 0, 'edgesTraversed must be > 0');
+
+    const tracePath = path.join(LOGS_DIR, 'basic-tier-accuracy-trace.log');
+    fs.writeFileSync(tracePath, [
+      '=== smartCompare verbose trace — basic tier ===',
+      `nodesProcessed: ${result.nodesProcessed}`,
+      `edgesTraversed: ${result.edgesTraversed}`,
+      `pass: ${result.pass}`,
+      '',
+      ...logLines,
+      '',
+    ].join('\n'), 'utf8');
+    traceArtifacts.push(tracePath);
+  });
+
+  it('trace: basic-tier buildPopulatedFromAnswer — writes build-answer-trace.log', () => {
+    ensureDataGenerated();
+
+    const manifest = loadManifest();
+    const answerEntry = manifest.files['basic_answer'];
+    assert.ok(answerEntry, 'basic_answer missing from manifest');
+
+    const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
+
+    const traceLines: string[] = ['', '=== buildPopulatedFromAnswer verbose trace — basic tier ===', ''];
+
+    traceLines.push('--- Pass 1: Shell creation ---');
+    const nodes: ComponentPopulated[] = rawAnswerEntries.map((e) => {
+      traceLines.push(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
+      return { id: e.id, dependencies: [] };
+    });
+
+    traceLines.push('', '--- Pass 2: Wiring ---');
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        nodes[i].dependencies.push(nodes[depIdx]);
+        traceLines.push(`Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`);
+      }
+    }
+
+    traceLines.push('', '--- Identity checks ---');
+    for (let i = 0; i < rawAnswerEntries.length; i++) {
+      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i].depIndices[d];
+        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
+        traceLines.push(`Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`);
+        assert.equal(sameObject, true, `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`);
+      }
+    }
+
+    const tracePath = path.join(LOGS_DIR, 'build-answer-trace.log');
+    fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
+    traceArtifacts.push(tracePath);
+  });
+
+  // ── Acyclic-control tier trace ─────────────────────────────────────────
+
+  it('trace: acyclic-control twoPassWire — writes acyclic-control-accuracy-trace.log', (t) => {
     ensureAcyclicControlDataGenerated();
 
     const manifest = loadManifest();
@@ -750,29 +791,22 @@ describe('smartCompare — verbose acyclic-control trace', () => {
     const inputData = loadYaml(inputEntry.filename) as ComponentFlat[];
     const rawAnswerEntries = loadYaml(answerEntry.filename) as AnswerEntry[];
     const expected = buildPopulatedFromAnswer(rawAnswerEntries);
-
-    // Run twoPassWire (reference passing algorithm)
     const actualTwp = twoPassWire.execute(inputData);
 
     const logLines: string[] = [];
     t.mock.method(console, 'log', (...args: unknown[]) => {
       const line = args.map(String).join(' ');
-      if (line.startsWith('[smartCompare]')) {
-        logLines.push(line);
-      }
+      if (line.startsWith('[smartCompare]')) logLines.push(line);
     });
 
     const twpResult = smartCompare(actualTwp, expected, true);
-
     t.mock.restoreAll();
 
     assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
     assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
 
-    // Write trace log
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
-    const header = [
+    fs.writeFileSync(tracePath, [
       '=== smartCompare verbose trace — acyclic-control tier ===',
       `nodesProcessed: ${twpResult.nodesProcessed}`,
       `edgesTraversed: ${twpResult.edgesTraversed}`,
@@ -783,14 +817,13 @@ describe('smartCompare — verbose acyclic-control trace', () => {
       'pass cleanly.  Naive Recursion fails: it creates a fresh object per populate() call,',
       'producing a shared-reference mismatch even without cycles.',
       '',
-    ];
-    fs.writeFileSync(tracePath, [...header, ...logLines].join('\n') + '\n', 'utf8');
-    console.log(`[test] Acyclic-control accuracy trace written to ${tracePath}`);
+      ...logLines,
+      '',
+    ].join('\n'), 'utf8');
+    traceArtifacts.push(tracePath);
   });
-});
 
-describe('buildPopulatedFromAnswer — verbose acyclic-control trace', () => {
-  it('steps through shell creation for acyclic-control nodes, writes trace log', () => {
+  it('trace: acyclic-control buildPopulatedFromAnswer — writes acyclic-control-build-answer-trace.log', () => {
     ensureAcyclicControlDataGenerated();
 
     const manifest = loadManifest();
@@ -810,53 +843,39 @@ describe('buildPopulatedFromAnswer — verbose acyclic-control trace', () => {
       '',
     ];
 
-    // Pass 1: create shells
     traceLines.push('--- Pass 1: Shell creation ---');
     const nodes: ComponentPopulated[] = rawAnswerEntries.map((e) => {
       traceLines.push(`Shell: ${e.id} (deps: [${e.depIndices.join(', ')}])`);
       return { id: e.id, dependencies: [] };
     });
 
-    // Pass 2: wire dependencies and verify
-    traceLines.push('');
-    traceLines.push('--- Pass 2: Wiring ---');
+    traceLines.push('', '--- Pass 2: Wiring ---');
     let totalEdges = 0;
     for (let i = 0; i < rawAnswerEntries.length; i++) {
       for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
         const depIdx = rawAnswerEntries[i].depIndices[d];
         nodes[i].dependencies.push(nodes[depIdx]);
-        traceLines.push(
-          `Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`,
-        );
+        traceLines.push(`Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`);
         totalEdges++;
       }
     }
     traceLines.push(`Total edges wired: ${totalEdges}`);
 
-    traceLines.push('');
-    traceLines.push('--- Identity checks ---');
+    traceLines.push('', '--- Identity checks ---');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
       for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
         const depIdx = rawAnswerEntries[i].depIndices[d];
         const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
-        traceLines.push(
-          `Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`,
-        );
-        assert.equal(
-          sameObject,
-          true,
-          `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`,
-        );
+        traceLines.push(`Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`);
+        assert.equal(sameObject, true, `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`);
       }
     }
     if (totalEdges === 0) {
       traceLines.push('(no identity checks required — zero dependency edges)');
     }
 
-    // Write trace log
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-build-answer-trace.log');
     fs.writeFileSync(tracePath, traceLines.join('\n') + '\n', 'utf8');
-    console.log(`[test] Acyclic-control buildPopulatedFromAnswer trace written to ${tracePath}`);
+    traceArtifacts.push(tracePath);
   });
 });
