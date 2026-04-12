@@ -575,6 +575,9 @@ function makeConflictOutcome(name: string, category: string): LaterAlgoOutcome {
     isNewFailure: false,
     isConflict: true,
     probesFailed: false,
+    // hydrationLine is not used for conflict outcomes — buildLaterDatasetLines
+    // emits hardcoded normalized conflict lines ("Hydration: 🚨 CONFLICT" +
+    // "Full Run: 🚨 CONFLICT") for all conflicts, regardless of this field.
     hydrationLine: null,
     failureDetailLines: [],
     probeChangeLine: null,

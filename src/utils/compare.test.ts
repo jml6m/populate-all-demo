@@ -852,6 +852,8 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     // In a DAG traversal, edges to already-visited nodes are cross-edges (not back-edges,
     // which would imply a cycle). Replace the generic smartCompare "back-edge" label with
     // the graph-theory-accurate "cross-edge" label for the acyclic-control trace.
+    // Post-processing is used here so smartCompare itself stays general-purpose (it handles
+    // both cyclic and acyclic graphs and cannot distinguish the two at the call-site).
     const acyclicLogLines = logLines.map((l) => l.replace(/: back-edge/g, ': cross-edge'));
 
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');

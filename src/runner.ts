@@ -715,7 +715,9 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
     // full survivor picture is visible.
 
     // Conflicts: full block (comparers disagreeing is always notable).
-    // Use the normalized two-line conflict format — no verbose metric line.
+    // The two-line normalized format is emitted directly — hydrationLine from the
+    // outcome is intentionally not used here (conflicts use canonical wording,
+    // not the raw metric-laden line that hydrationLine would carry).
     for (const c of conflicts) {
       lines.push(`[${c.algoCategory}] ${c.algoName}`);
       lines.push(`  Hydration:     🚨 CONFLICT — comparers disagree`);
