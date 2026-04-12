@@ -516,11 +516,21 @@ export function normalizeFullDetailPhaseState(
   headlineTimeMs: number,
   headlineRamMb: number,
 ): FullDetailPhaseState {
+  // Clamp to enforce structural invariants that the render helpers rely on:
+  //   - A conflict means neither comparer accepted the output, so hydration cannot
+  //     be considered passing, probes cannot have run, and there is no end-to-end pass.
+  //   - Probes require hydration to pass; end-to-end pass requires probes to have run.
+  // These invariants always hold in the runner, but clamping here makes the function
+  // a true normalization step — it produces a self-consistent state from any input.
+  const effectiveHydrationPassed = comparersConflict ? false : hydrationPassed;
+  const effectiveProbesRan = effectiveHydrationPassed ? probesRan : false;
+  const effectiveEndToEndPass = effectiveProbesRan ? endToEndPass : false;
+
   return {
     comparersConflict,
-    hydrationPassed,
-    probesRan,
-    endToEndPass,
+    hydrationPassed: effectiveHydrationPassed,
+    probesRan: effectiveProbesRan,
+    endToEndPass: effectiveEndToEndPass,
     hydrationResultText,
     probeSummaryText,
     headlineTimeMs,

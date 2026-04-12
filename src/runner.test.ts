@@ -1567,6 +1567,76 @@ describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', ()
 });
 
 // ---------------------------------------------------------------------------
+// normalizeFullDetailPhaseState — invariant clamping
+//
+// Verifies that the normalization step enforces structural consistency even
+// when callers pass logically contradictory flag combinations.
+// ---------------------------------------------------------------------------
+
+describe('normalizeFullDetailPhaseState — clamping: conflict forces hydration/probes/endToEnd false', () => {
+  it('clamps hydrationPassed=false when comparersConflict=true, even if caller passes true', () => {
+    const state = normalizeFullDetailPhaseState(
+      true /* hydrationPassed */, true /* comparersConflict */, true /* endToEndPass */, true /* probesRan */,
+      '🚨 CONFLICT', '', 5, 0.1,
+    );
+    // A conflict means neither comparer agreed — hydration cannot be "passed"
+    assert.equal(state.hydrationPassed, false, 'hydrationPassed must be false when comparers conflict');
+    assert.equal(state.probesRan, false, 'probesRan must be false when comparers conflict');
+    assert.equal(state.endToEndPass, false, 'endToEndPass must be false when comparers conflict');
+    // comparersConflict itself is preserved as-is (it's the root flag)
+    assert.equal(state.comparersConflict, true);
+  });
+
+  it('renders correct conflict output even when contradictory inputs are given', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, true, true, true, '🚨 CONFLICT', '✅ naive-json', 5, 0.1,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     🚨 CONFLICT — comparers disagree');
+    assert.equal(p, '  Consumer probes: not run (comparers conflicted)');
+    assert.equal(f, '  Full Run:      🚨 CONFLICT');
+    // No metrics should appear on any line
+    assert.ok(!f.includes('Time:'), 'Conflict must not show metrics');
+    assert.ok(!h.includes('✅'), 'Conflict Hydration line must not show ✅');
+  });
+});
+
+describe('normalizeFullDetailPhaseState — clamping: no probes when hydration failed', () => {
+  it('clamps probesRan=false when hydrationPassed=false, even if caller passes true', () => {
+    const state = normalizeFullDetailPhaseState(
+      false /* hydrationPassed */, false /* conflict */, false, true /* probesRan: contradictory */,
+      '❌ FAIL [both comparers: stack]', '✅ naive-json', 0, 0,
+    );
+    assert.equal(state.hydrationPassed, false);
+    assert.equal(state.probesRan, false, 'probesRan must be clamped to false when hydration failed');
+    assert.equal(state.endToEndPass, false);
+  });
+
+  it('renders correct hydration-fail output even when contradictory probesRan=true is given', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, false, false, true /* contradictory */, '❌ FAIL [both comparers: stack]', '✅ naive-json', 0, 0,
+    );
+    const [_h, p, _f] = renderFullDetailLines(state);
+    // Probes line must say "not run" — the clamped probesRan=false controls the output
+    assert.equal(p, '  Consumer probes: not run (hydration failed)');
+    assert.ok(!p.includes('✅ naive-json'), 'Probe summary must not appear when hydration failed');
+  });
+});
+
+describe('normalizeFullDetailPhaseState — clamping: no endToEnd when probes did not run', () => {
+  it('clamps endToEndPass=false when probesRan=false, even if caller passes true', () => {
+    const state = normalizeFullDetailPhaseState(
+      true /* hydrationPassed */, false, true /* endToEndPass: contradictory */, false /* probesRan */,
+      '✅ PASS (double-verified)', '', 5, 0.1,
+    );
+    assert.equal(state.hydrationPassed, true);
+    assert.equal(state.probesRan, false);
+    // endToEndPass requires probes to have run — must be false
+    assert.equal(state.endToEndPass, false, 'endToEndPass must be clamped to false when probes did not run');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // renderFullDetailLines — three-line phase contract render wrapper
 // ---------------------------------------------------------------------------
 
@@ -1962,7 +2032,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line();
 
     function passHydLine(timeMs: number, ramMb: number): string {
-      return buildFullRunLine('✅ PASS', timeMs, ramMb);
+      return buildFullRunLine(true, true, '✅ PASS (double-verified)', timeMs, ramMb);
     }
 
     // Case 9: All pass, no omissions — compact stable summary
