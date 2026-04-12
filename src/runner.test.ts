@@ -1962,7 +1962,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line();
 
     function passHydLine(timeMs: number, ramMb: number): string {
-      return `  Full Run:      ✅ PASS | Time: ${timeMs}ms | RAM: ${ramMb.toFixed(1)} MB`;
+      return buildFullRunLine('✅ PASS', timeMs, ramMb);
     }
 
     // Case 9: All pass, no omissions — compact stable summary
