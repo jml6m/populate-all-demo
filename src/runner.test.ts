@@ -22,8 +22,12 @@ import {
   buildDetailHydrationLine,
   buildDetailConsumerProbesLine,
   buildDetailFullRunLine,
+  normalizeFullDetailPhaseState,
+  renderFullDetailLines,
 } from './runner';
 import type { Manifest } from './types';
+
+const LOGS_DIR = path.resolve(__dirname, '..', 'logs');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1500,3 +1504,608 @@ describe('buildLaterDatasetLines — new failure consumer probes explicitness', 
     assert.ok(hasProbesNotRun, 'Should have Consumer probes: not run line');
   });
 });
+
+// ---------------------------------------------------------------------------
+// normalizeFullDetailPhaseState — normalization layer
+// ---------------------------------------------------------------------------
+
+describe('normalizeFullDetailPhaseState — hydration fail', () => {
+  it('returns state with hydrationPassed=false and endToEndPass=false', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, false, false, false,
+      '❌ FAIL [both comparers: Maximum call stack size exceeded]', '',
+      0, 0,
+    );
+    assert.equal(state.hydrationPassed, false);
+    assert.equal(state.comparersConflict, false);
+    assert.equal(state.endToEndPass, false);
+    assert.equal(state.probesRan, false);
+    assert.equal(state.hydrationResultText, '❌ FAIL [both comparers: Maximum call stack size exceeded]');
+  });
+});
+
+describe('normalizeFullDetailPhaseState — conflict', () => {
+  it('returns state with comparersConflict=true', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, true, false, false,
+      '🚨 CONFLICT — comparers disagree', '',
+      0, 0,
+    );
+    assert.equal(state.comparersConflict, true);
+    assert.equal(state.hydrationPassed, false);
+    assert.equal(state.endToEndPass, false);
+  });
+});
+
+describe('normalizeFullDetailPhaseState — full pass', () => {
+  it('returns state with hydrationPassed=true and endToEndPass=true', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, true, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)',
+      2.5, 0.1,
+    );
+    assert.equal(state.hydrationPassed, true);
+    assert.equal(state.endToEndPass, true);
+    assert.equal(state.probesRan, true);
+    assert.equal(state.probeSummaryText, '✅ naive-json  ✅ cycle-flat (output ✅)');
+    assert.equal(state.headlineTimeMs, 2.5);
+    assert.equal(state.headlineRamMb, 0.1);
+  });
+});
+
+describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', () => {
+  it('returns state with hydrationPassed=true but endToEndPass=false', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, false, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat',
+      0, 0,
+    );
+    assert.equal(state.hydrationPassed, true);
+    assert.equal(state.endToEndPass, false);
+    assert.equal(state.probesRan, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderFullDetailLines — three-line phase contract render wrapper
+// ---------------------------------------------------------------------------
+
+describe('renderFullDetailLines — returns exactly three strings', () => {
+  it('always returns a tuple of exactly three strings', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, false, false, false,
+      '❌ FAIL [both comparers: stack]', '',
+      0, 0,
+    );
+    const lines = renderFullDetailLines(state);
+    assert.equal(lines.length, 3);
+    assert.equal(typeof lines[0], 'string');
+    assert.equal(typeof lines[1], 'string');
+    assert.equal(typeof lines[2], 'string');
+  });
+
+  it('line 0 always starts with "  Hydration:"', () => {
+    for (const state of [
+      normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
+    ]) {
+      const lines = renderFullDetailLines(state);
+      assert.ok(lines[0].startsWith('  Hydration:'), `Expected "  Hydration:" prefix, got: ${lines[0]}`);
+    }
+  });
+
+  it('line 1 always starts with "  Consumer probes:"', () => {
+    for (const state of [
+      normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
+    ]) {
+      const lines = renderFullDetailLines(state);
+      assert.ok(lines[1].startsWith('  Consumer probes:'), `Expected "  Consumer probes:" prefix, got: ${lines[1]}`);
+    }
+  });
+
+  it('line 2 always starts with "  Full Run:"', () => {
+    for (const state of [
+      normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
+    ]) {
+      const lines = renderFullDetailLines(state);
+      assert.ok(lines[2].startsWith('  Full Run:'), `Expected "  Full Run:" prefix, got: ${lines[2]}`);
+    }
+  });
+});
+
+describe('renderFullDetailLines — hydration fail state', () => {
+  it('produces expected three lines for hydration fail (stack overflow)', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, false, false, false,
+      '❌ FAIL [both comparers: Maximum call stack size exceeded]', '',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]');
+    assert.equal(p, '  Consumer probes: not run (hydration failed)');
+    assert.equal(f, '  Full Run:      not run (hydration failed)');
+  });
+});
+
+describe('renderFullDetailLines — conflict state', () => {
+  it('produces expected three lines for comparer conflict', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, true, false, false,
+      '🚨 CONFLICT — comparers disagree', '',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     🚨 CONFLICT — comparers disagree');
+    assert.equal(p, '  Consumer probes: not run (comparers conflicted)');
+    assert.equal(f, '  Full Run:      🚨 CONFLICT');
+  });
+});
+
+describe('renderFullDetailLines — full pass state', () => {
+  it('produces expected three lines for full pass (both probes pass)', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, true, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)',
+      2.5, 0.1,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(p, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
+    assert.ok(f.startsWith('  Full Run:      ✅ PASS'));
+    assert.ok(f.includes('Time:'));
+    assert.ok(f.includes('RAM:'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Full state matrix — missing cases from the full probe outcome space
+// ---------------------------------------------------------------------------
+
+describe('full-detail three-line phase contract — hydration pass + naive-json fail + cycle-flat pass', () => {
+  it('produces Full Run PASS even though naive-json failed (cycle-flat is authoritative)', () => {
+    // This is the core semantic: naive-json failure on cyclic graphs is expected
+    // and informational. cycle-flat passing means the experiment is a Full Run pass.
+    const resultLine = '✅ PASS (double-verified)';
+    const probeSummary = '❌ naive-json  ✅ cycle-flat (output ✅)';
+    const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
+    const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
+    // endToEndPass=true because cycle-flat passed (the authoritative probe).
+    const fullRunLine = buildDetailFullRunLine(true, true, false, 3.0, 0.2);
+
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.ok(probesLine.includes('❌ naive-json'), 'naive-json failure must be visible in probe summary');
+    assert.ok(probesLine.includes('✅ cycle-flat'), 'cycle-flat pass must be visible in probe summary');
+    assert.ok(fullRunLine.startsWith('  Full Run:      ✅ PASS'), 'Full Run must be PASS when cycle-flat passes');
+    assert.ok(fullRunLine.includes('Time:'), 'Full Run PASS must include timing');
+    assert.ok(fullRunLine.includes('RAM:'), 'Full Run PASS must include RAM');
+  });
+
+  it('renderFullDetailLines produces the same result via state object', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, true /* endToEndPass: cycle-flat passed */, true,
+      '✅ PASS (double-verified)', '❌ naive-json  ✅ cycle-flat (output ✅)',
+      3.0, 0.2,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.ok(p.includes('❌ naive-json'));
+    assert.ok(p.includes('✅ cycle-flat'));
+    assert.ok(f.startsWith('  Full Run:      ✅ PASS'));
+  });
+});
+
+describe('full-detail three-line phase contract — hydration pass + naive-json pass + cycle-flat fail', () => {
+  it('produces Full Run FAIL when cycle-flat fails (authoritative probe failure)', () => {
+    // This is a rare but important case: naive-json passes but cycle-flat fails.
+    // Since cycle-flat is the authoritative probe, the full run fails.
+    const resultLine = '✅ PASS (double-verified)';
+    const probeSummary = '✅ naive-json  ❌ cycle-flat';
+    const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
+    const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
+    // endToEndPass=false because cycle-flat failed.
+    const fullRunLine = buildDetailFullRunLine(false, true, false, 0, 0);
+
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.ok(probesLine.includes('✅ naive-json'));
+    assert.ok(probesLine.includes('❌ cycle-flat'));
+    assert.equal(fullRunLine, '  Full Run:      ❌ FAIL');
+  });
+
+  it('renderFullDetailLines produces the same result via state object', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, false /* endToEndPass: cycle-flat failed */, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.ok(p.includes('✅ naive-json'));
+    assert.ok(p.includes('❌ cycle-flat'));
+    assert.equal(f, '  Full Run:      ❌ FAIL');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// State matrix validity — no contradictory text across the three lines
+// ---------------------------------------------------------------------------
+
+describe('full-detail state matrix validity — no contradictory text', () => {
+  /**
+   * Tests that for every valid input state, the three-line output does not
+   * contain internally contradictory content (e.g. a line saying "not run"
+   * while another line shows metrics, or a ✅ on a line that also shows ❌).
+   */
+
+  it('hydration fail: no ✅ on any line, no metrics, no "probes ran" content', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, false, false, false,
+      '❌ FAIL [both comparers: Maximum call stack size exceeded]', '',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    // No pass indicators on any line
+    assert.ok(!h.includes('✅'), `Hydration line must not show ✅ on fail: ${h}`);
+    assert.ok(!p.includes('✅'), `Probes line must not show ✅ on hydration fail: ${p}`);
+    assert.ok(!f.includes('✅'), `Full Run line must not show ✅ on hydration fail: ${f}`);
+    // No metrics on fail
+    assert.ok(!f.includes('Time:'), 'Full Run line must not show metrics when hydration failed');
+    assert.ok(!f.includes('RAM:'), 'Full Run line must not show RAM when hydration failed');
+    // Probes line says "not run"
+    assert.ok(p.includes('not run (hydration failed)'));
+    // Full Run line says "not run"
+    assert.ok(f.includes('not run (hydration failed)'));
+  });
+
+  it('conflict: no pass/fail status indicators, no metrics, consistent CONFLICT across all lines', () => {
+    const state = normalizeFullDetailPhaseState(
+      false, true, false, false,
+      '🚨 CONFLICT — comparers disagree', '',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.ok(h.includes('🚨 CONFLICT'), 'Hydration line must show CONFLICT');
+    assert.ok(p.includes('comparers conflicted'), 'Probes line must reference conflict reason');
+    assert.ok(f.includes('🚨 CONFLICT'), 'Full Run line must show CONFLICT');
+    assert.ok(!f.includes('Time:'), 'No metrics on conflict');
+    assert.ok(!h.includes('✅'), 'No pass indicator on conflict hydration line');
+  });
+
+  it('full pass: ✅ on all lines, metrics only on Full Run, no ❌ or "not run"', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, true, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)',
+      2.5, 0.1,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.ok(h.includes('✅'), 'Hydration line must show ✅ on pass');
+    assert.ok(p.includes('✅'), 'Probes line must show ✅ on pass');
+    assert.ok(f.includes('✅ PASS'), 'Full Run line must show ✅ PASS');
+    assert.ok(f.includes('Time:'), 'Full Run line must include timing on pass');
+    assert.ok(f.includes('RAM:'), 'Full Run line must include RAM on pass');
+    assert.ok(!h.includes('not run'), 'Hydration line must not say "not run" on pass');
+    assert.ok(!p.includes('not run'), 'Probes line must not say "not run" on pass');
+    assert.ok(!f.includes('not run'), 'Full Run line must not say "not run" on pass');
+  });
+
+  it('hydration pass + cycle-flat fail: Hydration ✅, Probes shows ❌ cycle-flat, Full Run ❌ FAIL (no metrics)', () => {
+    const state = normalizeFullDetailPhaseState(
+      true, false, false, true,
+      '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat',
+      0, 0,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.ok(h.includes('✅ PASS'), 'Hydration must show pass');
+    assert.ok(p.includes('❌ cycle-flat'), 'Probes must show cycle-flat failure');
+    assert.equal(f, '  Full Run:      ❌ FAIL', 'Full Run must be ❌ FAIL');
+    assert.ok(!f.includes('Time:'), 'No metrics when cycle-flat failed');
+    assert.ok(!f.includes('RAM:'), 'No RAM when cycle-flat failed');
+    assert.ok(!f.includes('not run'), 'Full Run line must not say "not run" when hydration passed');
+  });
+
+  it('hydration pass + naive-json fail + cycle-flat pass: Full Run is ✅ PASS with metrics', () => {
+    // naive-json failure must not prevent Full Run from passing.
+    const state = normalizeFullDetailPhaseState(
+      true, false, true, true,
+      '✅ PASS (double-verified)', '❌ naive-json  ✅ cycle-flat (output ✅)',
+      3.0, 0.2,
+    );
+    const [h, p, f] = renderFullDetailLines(state);
+    assert.ok(h.includes('✅ PASS'), 'Hydration must show pass');
+    assert.ok(p.includes('❌ naive-json'), 'naive-json failure must be visible');
+    assert.ok(p.includes('✅ cycle-flat'), 'cycle-flat pass must be visible');
+    assert.ok(f.startsWith('  Full Run:      ✅ PASS'), 'Full Run must be ✅ PASS when cycle-flat passes');
+    assert.ok(f.includes('Time:'), 'Full Run PASS must include metrics');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dataset output format matrix — audit log generator
+//
+// Generates logs/dataset-output-format-matrix.log covering every possible
+// display state for the full-detail three-line phase contract and the
+// later-tier compact format.  The file is intended for manual human review
+// of formatting consistency; it is gitignored and uploaded as a CI artifact.
+// ---------------------------------------------------------------------------
+
+describe('dataset-output-format-matrix — generate audit log', () => {
+  it('writes logs/dataset-output-format-matrix.log with all display states', () => {
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const lines: string[] = [];
+
+    const line = (s = '') => lines.push(s);
+
+    line('=== Dataset Output Format Matrix ===');
+    line(`Generated by: npm test (src/runner.test.ts)`);
+    line(`Purpose: Canonical audit of all possible display states for dataset run results.`);
+    line(`         Review this file to check formatting consistency across all states.`);
+    line();
+
+    // ── Section 1: Full-detail three-line phase contract ──────────────────
+
+    line('─────────────────────────────────────────────────────────────────────');
+    line('Section 1: Full-detail three-line phase contract');
+    line('Datasets: acyclic-control and basic (first two tiers).');
+    line('Each case shows: Hydration: / Consumer probes: / Full Run:');
+    line('─────────────────────────────────────────────────────────────────────');
+    line();
+
+    // Case 1: Hydration fail — stack overflow
+    line('[Case 1] Hydration fail — stack overflow (both comparers)');
+    {
+      const state = normalizeFullDetailPhaseState(
+        false, false, false, false,
+        '❌ FAIL [both comparers: Maximum call stack size exceeded]', '',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 2: Hydration fail — shared-reference mismatch (clean phrase)
+    line('[Case 2] Hydration fail — shared-reference mismatch (clean classification)');
+    {
+      const state = normalizeFullDetailPhaseState(
+        false, false, false, false,
+        '❌ FAIL — shared references were duplicated', '',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 3: Hydration fail — fallback / other (one comparer each)
+    line('[Case 3] Hydration fail — fallback: two distinct comparer errors');
+    {
+      const state = normalizeFullDetailPhaseState(
+        false, false, false, false,
+        '❌ FAIL [smartCompare: dep target mismatch] [flatCompare: length wrong]', '',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 4: Comparer conflict
+    line('[Case 4] Comparer conflict — comparers disagree');
+    {
+      const state = normalizeFullDetailPhaseState(
+        false, true, false, false,
+        '🚨 CONFLICT — comparers disagree', '',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 5: Full pass — both probes pass
+    line('[Case 5] Full pass — hydration ✅, naive-json ✅, cycle-flat ✅');
+    {
+      const state = normalizeFullDetailPhaseState(
+        true, false, true, true,
+        '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)',
+        2.5, 0.1,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 6: Hydration pass + naive-json fail + cycle-flat pass (expected cyclic failure)
+    line('[Case 6] Hydration pass + naive-json ❌ + cycle-flat ✅ (expected cyclic failure)');
+    line('         naive-json failure is informational; cycle-flat is authoritative → Full Run PASS');
+    {
+      const state = normalizeFullDetailPhaseState(
+        true, false, true, true,
+        '✅ PASS (double-verified)', '❌ naive-json  ✅ cycle-flat (output ✅)',
+        2.5, 0.1,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 7: Hydration pass + naive-json pass + cycle-flat fail
+    line('[Case 7] Hydration pass + naive-json ✅ + cycle-flat ❌ (authoritative probe failure)');
+    line('         cycle-flat fails → Full Run FAIL (despite naive-json passing)');
+    {
+      const state = normalizeFullDetailPhaseState(
+        true, false, false, true,
+        '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // Case 8: Hydration pass + naive-json fail + cycle-flat fail
+    line('[Case 8] Hydration pass + naive-json ❌ + cycle-flat ❌ (both probes fail)');
+    {
+      const state = normalizeFullDetailPhaseState(
+        true, false, false, true,
+        '✅ PASS (double-verified)', '❌ naive-json  ❌ cycle-flat',
+        0, 0,
+      );
+      for (const l of renderFullDetailLines(state)) line(l);
+    }
+    line();
+
+    // ── Section 2: Later-tier compact format ──────────────────────────────
+
+    line('─────────────────────────────────────────────────────────────────────');
+    line('Section 2: Later-tier compact format');
+    line('Datasets: medium, stress, extreme (after the cyclic baseline).');
+    line('Output is deferred and batch-formatted by buildLaterDatasetLines.');
+    line('─────────────────────────────────────────────────────────────────────');
+    line();
+
+    function passHydLine(timeMs: number, ramMb: number): string {
+      return `  Full Run:      ✅ PASS | Time: ${timeMs}ms | RAM: ${ramMb.toFixed(1)} MB`;
+    }
+
+    // Case 9: All pass, no omissions — compact stable summary
+    line('[Case 9] All pass, no omissions — compact "experiment stable" summary');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(1, 0.1), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(2, 0.2), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(3, 0.3), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(4, 0.4), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 10: Stable passes with omissions — individual entries shown
+    line('[Case 10] Stable passes with omissions — individual entries (Naive Recursion skipped)');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 11: New failure (hydration fails for the first time)
+    line('[Case 11] New failure — Map Tracker newly fails (hydration ❌ for first time)');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: true, isConflict: false, probesFailed: false, hydrationLine: '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]', failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 12: Known prior failure omitted
+    line('[Case 12] Known prior failure — Map Tracker already failed at earlier tier (omitted)');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: true, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]', failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 13: Comparer conflict on later tier
+    line('[Case 13] Conflict on later tier — Map Tracker comparers disagree (always surfaced)');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: true, probesFailed: false, hydrationLine: '  Full Run:      🚨 CONFLICT — smartCompare=PASS, flatCompare=FAIL', failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 14: Hydration pass + authoritative probe (cycle-flat) fail — two-line format
+    line('[Case 14] Hydration pass + cycle-flat ❌ (authoritative probe fail) — two-line phase format');
+    line('         probesFailed=true triggers "Hydration: ✅ PASS" + probe detail (no Full Run metrics)');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: true, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: '  Consumer probes: ❌ FAIL — ✅ naive-json  ❌ cycle-flat' },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // Case 15: Probe fingerprint changed (all still pass) — change line
+    line('[Case 15] Probe fingerprint changed from baseline but all probes pass — change warning');
+    {
+      const outcomes: LaterAlgoOutcome[] = [
+        { algoName: 'Naive Recursion', algoCategory: 'Reference Tracking', baselineSkipped: true, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: null, failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Map Tracker', algoCategory: 'Reference Tracking', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(22, 9.1), failureDetailLines: [], probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ naive-json  ✅ cycle-flat (output ✅)' },
+        { algoName: 'Tarjan SCC Layering', algoCategory: 'Topological', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(18, 8.5), failureDetailLines: [], probeChangeLine: null },
+        { algoName: 'Two-Pass Wire', algoCategory: 'Schema-Driven', baselineSkipped: false, knownPriorFailure: false, isNewFailure: false, isConflict: false, probesFailed: false, hydrationLine: passHydLine(20, 8.9), failureDetailLines: [], probeChangeLine: null },
+      ];
+      for (const l of buildLaterDatasetLines(outcomes)) line(l);
+    }
+    line();
+
+    // ── Section 3: Hydration failure display styles ────────────────────────
+
+    line('─────────────────────────────────────────────────────────────────────');
+    line('Section 3: Hydration failure display styles (classifyHydrationFailTag)');
+    line('Shows how different error types are formatted for the Hydration: line.');
+    line('─────────────────────────────────────────────────────────────────────');
+    line();
+
+    line('[Style A] Stack overflow — both comparers same error (bracket-tag consolidated)');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('Maximum call stack size exceeded', 'Maximum call stack size exceeded')}`);
+    line();
+
+    line('[Style B] Stack overflow — only smartCompare (bracket-tag, single comparer)');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('Maximum call stack size exceeded', null)}`);
+    line();
+
+    line('[Style C] Shared-reference mismatch — clean developer-friendly phrase');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('Cycle structure mismatch: expected node "comp_0"', 'Dependency of node "comp_1" is not present in the top-level')}`);
+    line();
+
+    line('[Style D] Shared-reference mismatch — "is paired with more than one" trigger');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('is paired with more than one actual node', null)}`);
+    line();
+
+    line('[Style E] Fallback — both comparers same unrecognised error (consolidated)');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('unexpected id at index 3', 'unexpected id at index 3')}`);
+    line();
+
+    line('[Style F] Fallback — distinct errors from each comparer (both shown)');
+    line(`  ❌ FAIL ${classifyHydrationFailTag('dep length mismatch at node comp_0', 'wrong dep target at index 1')}`);
+    line();
+
+    // Write the file
+    const matrixPath = path.join(LOGS_DIR, 'dataset-output-format-matrix.log');
+    fs.writeFileSync(matrixPath, lines.join('\n') + '\n', 'utf8');
+    console.log(`[test] Dataset output format matrix written to ${matrixPath}`);
+
+    // Sanity assertions on the generated content
+    const content = fs.readFileSync(matrixPath, 'utf8');
+    assert.ok(content.includes('Full-detail three-line phase contract'), 'Matrix must include section 1');
+    assert.ok(content.includes('Later-tier compact format'), 'Matrix must include section 2');
+    assert.ok(content.includes('Hydration failure display styles'), 'Matrix must include section 3');
+    assert.ok(content.includes('[Case 1]'), 'Matrix must include Case 1');
+    assert.ok(content.includes('[Case 8]'), 'Matrix must include Case 8 (both probes fail)');
+    assert.ok(content.includes('[Case 15]'), 'Matrix must include Case 15');
+    assert.ok(content.includes('[Style A]'), 'Matrix must include style A');
+    assert.ok(content.includes('[Style F]'), 'Matrix must include style F');
+    // Verify the "authoritative probe" case is documented
+    assert.ok(content.includes('cycle-flat is authoritative'), 'Matrix must document cycle-flat authority');
+  });
+});
+
