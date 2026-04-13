@@ -1486,6 +1486,14 @@ function runBenchmark() {
     console.log(`=== Consumer Probe Summary ===`);
     console.log('');
 
+    // Helpers for this summary block.
+    // Probe entries: "icon1/icon2" where [0] = naive-json, [1] = cycle-flat.
+    // Sentinel values "—" (probes skipped — hydration failed) and "(skip)"
+    // (algorithm suppressed at this tier) are never split.
+    const stripCategory = (algoName: string) => algoName.replace(/^\[[^\]]+\] /, '');
+    const probeAt = (entry: string, idx: 0 | 1): string => entry.split('/')[idx] ?? '';
+    const isProbeEntry = (v: string) => v !== '—' && v !== '(skip)' && v.includes('/');
+
     // Algorithms where consumer probes never ran on any dataset
     // (hydration failed or algorithm was always suppressed/skipped).
     const alwaysNoProbe = probeSummaryRows.filter((r) =>
@@ -1495,26 +1503,25 @@ function runBenchmark() {
       })
     );
     if (alwaysNoProbe.length > 0) {
-      const shortNames = alwaysNoProbe.map((r) => r.algoName.replace(/^\[[^\]]+\] /, '')).join(', ');
+      const shortNames = alwaysNoProbe.map((r) => stripCategory(r.algoName)).join(', ');
       console.log(`  • ${shortNames}: hydration fails on all datasets — consumer probes never run.`);
     }
 
     // naive-json behavior: passes on acyclic-control (no cycles), fails on cyclic datasets.
-    // Probe icon format is "icon1/icon2" where icon1 = naive-json, icon2 = cycle-flat.
     const acyclicDataset = processedDatasets.find((d) => d === 'acyclic-control');
     const cyclicDatasets = processedDatasets.filter((d) => d !== 'acyclic-control');
     const naiveJsonPassedAcyclic =
       acyclicDataset !== undefined &&
       probeSummaryRows.some((r) => {
-        const v = r.results.get(acyclicDataset);
-        return typeof v === 'string' && v !== '—' && v !== '(skip)' && v.split('/')[0] === '✅';
+        const v = r.results.get(acyclicDataset) ?? '';
+        return isProbeEntry(v) && probeAt(v, 0) === '✅';
       });
     const naiveJsonFailedCyclic =
       cyclicDatasets.length > 0 &&
       probeSummaryRows.some((r) =>
         cyclicDatasets.some((d) => {
-          const v = r.results.get(d);
-          return typeof v === 'string' && v !== '—' && v !== '(skip)' && v.split('/')[0] === '❌';
+          const v = r.results.get(d) ?? '';
+          return isProbeEntry(v) && probeAt(v, 0) === '❌';
         })
       );
     if (naiveJsonPassedAcyclic || naiveJsonFailedCyclic) {
@@ -1527,8 +1534,8 @@ function runBenchmark() {
     // cycle-flat behavior: authoritative — passes wherever hydration succeeds.
     const cycleFlatPassed = probeSummaryRows.some((r) =>
       processedDatasets.some((d) => {
-        const v = r.results.get(d);
-        return typeof v === 'string' && v !== '—' && v !== '(skip)' && v.split('/')[1] === '✅';
+        const v = r.results.get(d) ?? '';
+        return isProbeEntry(v) && probeAt(v, 1) === '✅';
       })
     );
     if (cycleFlatPassed) {

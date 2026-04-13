@@ -48,7 +48,7 @@ where the challenge is well-documented and no general iterative solution is wide
 
 ### Naive Recursion — the control
 
-Recurse into each dependency. No cycle guard, no memoization. On any cyclic graph — even a
+Recurse into each dependency. No cycle guard — no memoization. On any cyclic graph — even a
 trivial 10-node one — the traversal re-enters a visited node and the call stack overflows.
 
 On an acyclic graph with shared references (the `acyclic-control` tier), the algorithm fails
@@ -277,10 +277,11 @@ the complete, correct graph at every scale — not a truncated or partial result
 
 ### Time and memory (historical CI reference)
 
-The figures below are from the historical CI run referenced above. Absolute numbers vary
-materially by hardware, Node version, and system load — observed values on other systems have
-differed by 2–4× even at the same graph scale. The relative ordering (Two-Pass Wire
-consistently faster and lighter than Tarjan SCC) is stable across environments.
+The figures below are from the historical CI run described in the note at the start of §4
+(ubuntu-latest, Node 22, 4 GB heap). Absolute numbers vary materially by hardware, Node
+version, and system load — observed values on other systems have differed by 2–4× even at the
+same graph scale. The relative ordering (Two-Pass Wire consistently faster and lighter than
+Tarjan SCC) is stable across environments.
 
 | Algorithm     | basic (10)      | medium (5K)    | stress (50K)     | extreme (250K)    |
 | ------------- | --------------- | -------------- | ---------------- | ----------------- |
