@@ -306,11 +306,8 @@ describe('smartCompare — mismatch detection', () => {
   });
 
   it('mismatch — swapped 2-cycle targets: reversePaired detects graph topology mismatch', () => {
-    // Actual has two proper 2-node cycles: [p↔q] and [r↔s]
-    // Expected has the first cycle correct [p↔q], but the second cycle's edges
-    // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
-    // The reversePaired map enforces a one-to-one mapping from expected nodes to actual nodes:
-    // when processing r→s vs expected r→q, de=q is already reversePaired with actual q → topology mismatch.
+    // Actual: two cycles [p↔q] and [r↔s]. Expected: first cycle correct, second points to
+    // first cycle's nodes (r→q, s→p) — a different topology, triggering reversePaired mismatch.
     const a0 = makeNode('p'),
       a1 = makeNode('q');
     const a2 = makeNode('r'),
@@ -673,12 +670,8 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       );
     }
 
-    // --- Scenario 3: swapped 2-cycle targets (reversePaired mismatch, fail) ---
-    // Actual graph: two separate 2-node cycles — (p↔q) and (r↔s).
-    // Expected graph: first cycle correct (p↔q), but second cycle's edges point to the
-    // first cycle's nodes (r→q, s→p) — a different graph topology, not a duplicate-node issue.
-    // When smartCompare reaches edge r→s (actual) vs r→q (expected), the expected
-    // destination "q" was already paired with actual "q" in cycle 1 — topology mismatch.
+    // --- Scenario 3: graph topology mismatch (reversePaired) ---
+    // Actual: [p↔q] and [r↔s]. Expected: first cycle correct, second points to first cycle's nodes.
     {
       const a0 = makeNode('p'),
         a1 = makeNode('q'),
@@ -849,10 +842,9 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
     assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
 
-    // In this acyclic dataset, smartCompare's generic "back-edge" label cannot indicate a
-    // cycle, but without DFS discovery/finish tracking we also cannot strictly classify each
-    // such edge as forward vs cross. Rewrite it to the neutral "visited-edge" label for this
-    // trace so smartCompare itself can remain general-purpose.
+    // Post-process "back-edge" → "visited-edge": in this acyclic graph, smartCompare's
+    // generic "back-edge" label cannot imply a cycle; "visited-edge" is the neutral,
+    // graph-theory-accurate term here. smartCompare itself stays general-purpose.
     const acyclicVisitedEdgeLogLines = logLines.map((l) => l.replace(/: back-edge/g, ': visited-edge'));
 
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
