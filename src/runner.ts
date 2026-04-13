@@ -293,21 +293,29 @@ function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[])
 const BLUE = '\x1b[34m';
 const RESET = '\x1b[0m';
 
+function shouldUseAnsiColor(): boolean {
+  return !process.env.NO_COLOR && Boolean(process.stdout?.isTTY);
+}
+
+function colorizeBlue(value: string): string {
+  return shouldUseAnsiColor() ? `${BLUE}${value}${RESET}` : value;
+}
+
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
 function formatTime(ms: number): string {
-  if (ms < 0.1) return `${BLUE}< 0.1ms${RESET}`;
-  if (ms < 10) return `${BLUE}${ms.toFixed(1)}ms${RESET}`;
-  if (ms < 1000) return `${BLUE}${Math.round(ms)}ms${RESET}`;
-  if (ms < 60000) return `${BLUE}${(ms / 1000).toFixed(1)}s${RESET}`;
-  return `${BLUE}> 60s${RESET}`;
+  if (ms < 0.1) return colorizeBlue('< 0.1ms');
+  if (ms < 10) return colorizeBlue(`${ms.toFixed(1)}ms`);
+  if (ms < 1000) return colorizeBlue(`${Math.round(ms)}ms`);
+  if (ms < 60000) return colorizeBlue(`${(ms / 1000).toFixed(1)}s`);
+  return colorizeBlue('> 60s');
 }
 
 // RAM: sub-0.1 MB heap deltas are within measurement noise; scale to GB at 1024 MB.
 function formatRam(mb: number): string {
-  if (mb < 0.1) return `${BLUE}< 0.1 MB${RESET}`;
-  if (mb < 10) return `${BLUE}${mb.toFixed(1)} MB${RESET}`;
-  if (mb < 1000) return `${BLUE}${Math.round(mb)} MB${RESET}`;
-  return `${BLUE}${(mb / 1024).toFixed(1)} GB${RESET}`;
+  if (mb < 0.1) return colorizeBlue('< 0.1 MB');
+  if (mb < 10) return colorizeBlue(`${mb.toFixed(1)} MB`);
+  if (mb < 1000) return colorizeBlue(`${Math.round(mb)} MB`);
+  return colorizeBlue(`${(mb / 1024).toFixed(1)} GB`);
 }
 
 // ---------------------------------------------------------------------------
@@ -715,9 +723,9 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
     // full survivor picture is visible.
 
     // Conflicts: full block (comparers disagreeing is always notable).
-    // The two-line normalized format is emitted directly — hydrationLine from the
-    // outcome is intentionally not used here (conflicts use canonical wording,
-    // not the raw metric-laden line that hydrationLine would carry).
+    // Emit the canonical two-line conflict block directly here — hydrationLine
+    // from the outcome is intentionally not used so this section keeps the
+    // normalized Hydration/Full Run conflict wording.
     for (const c of conflicts) {
       lines.push(`[${c.algoCategory}] ${c.algoName}`);
       lines.push(`  Hydration:     🚨 CONFLICT — comparers disagree`);

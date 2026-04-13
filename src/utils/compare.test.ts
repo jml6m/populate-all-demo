@@ -849,12 +849,11 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
     assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
 
-    // In a DAG traversal, edges to already-visited nodes are cross-edges (not back-edges,
-    // which would imply a cycle). Replace the generic smartCompare "back-edge" label with
-    // the graph-theory-accurate "cross-edge" label for the acyclic-control trace.
-    // Post-processing is used here so smartCompare itself stays general-purpose (it handles
-    // both cyclic and acyclic graphs and cannot distinguish the two at the call-site).
-    const acyclicLogLines = logLines.map((l) => l.replace(/: back-edge/g, ': cross-edge'));
+    // In this acyclic dataset, smartCompare's generic "back-edge" label cannot indicate a
+    // cycle, but without DFS discovery/finish tracking we also cannot strictly classify each
+    // such edge as forward vs cross. Rewrite it to the neutral "visited-edge" label for this
+    // trace so smartCompare itself can remain general-purpose.
+    const acyclicVisitedEdgeLogLines = logLines.map((l) => l.replace(/: back-edge/g, ': visited-edge'));
 
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
     fs.writeFileSync(
@@ -866,12 +865,13 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
         `twoPassWire pass: ${twpResult.pass}`,
         '',
         'Dataset structure: 10-node DAG (lower-index nodes depend on higher-index nodes only).',
-        'comp_0 is the root; comp_9 is the leaf.  Edges are cross-edges in DFS — no back-edges',
-        'exist because the graph is acyclic.  Algorithms with memoization (Map Tracker,',
-        'Two-Pass Wire, Tarjan SCC) pass cleanly.  Naive Recursion fails: it creates a fresh',
-        'object per populate() call, producing a shared-reference mismatch even without cycles.',
+        'comp_0 is the root; comp_9 is the leaf.  Edges to already-visited nodes are labeled',
+        '"visited-edge" here; true back-edges do not exist because the graph is acyclic.',
+        'Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC) pass cleanly.',
+        'Naive Recursion fails: it creates a fresh object per populate() call, producing a',
+        'shared-reference mismatch even without cycles.',
         '',
-        ...acyclicLogLines,
+        ...acyclicVisitedEdgeLogLines,
         '',
       ].join('\n'),
       'utf8'

@@ -58,8 +58,9 @@ function generateDataset(size: number, seedSuffix: string) {
  * requirement from the cycle-detection requirement.  An algorithm failing here
  * lacks memoization, not cycle-handling.
  *
- * comp_0 acts as the root of the DAG: it has the most outward edges and is
- * traversed first, with its dependencies fanning out toward higher-index leaf nodes.
+ * comp_0 is first in topological order and, by construction, has no incoming
+ * edges. Traversal can start from it, with dependencies always pointing toward
+ * higher-index nodes.
  */
 function generateAcyclicDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
