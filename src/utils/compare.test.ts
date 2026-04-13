@@ -305,12 +305,9 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
-  it('mismatch — swapped 2-cycle targets: reversePaired catches expected node claimed by two actuals', () => {
-    // Actual has two proper 2-node cycles: [p↔q] and [r↔s]
-    // Expected has the first cycle correct [p↔q], but the second cycle's back-edges
-    // point to the FIRST cycle's nodes (r→q and s→p) instead of forming r↔s.
-    // The reversePaired map enforces a one-to-one mapping from expected nodes to actual nodes:
-    // when processing a2→a3 vs e2→e1, de=e1 is already reversePaired with a1 → mismatch.
+  it('mismatch — swapped 2-cycle targets: reversePaired detects graph topology mismatch', () => {
+    // Actual: two cycles [p↔q] and [r↔s]. Expected: first cycle correct, second points to
+    // first cycle's nodes (r→q, s→p) — a different topology, triggering reversePaired mismatch.
     const a0 = makeNode('p'),
       a1 = makeNode('q');
     const a2 = makeNode('r'),
@@ -332,7 +329,7 @@ describe('smartCompare — mismatch detection', () => {
     const r = smartCompare([a0, a1, a2, a3], [e0, e1, e2, e3]);
 
     assert.equal(r.pass, false);
-    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
+    assert.ok(r.errorDetail !== null && r.errorDetail.includes('Graph topology mismatch'));
   });
 });
 
@@ -673,7 +670,8 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       );
     }
 
-    // --- Scenario 3: swapped 2-cycle targets (reversePaired mismatch, fail) ---
+    // --- Scenario 3: graph topology mismatch (reversePaired) ---
+    // Actual: [p↔q] and [r↔s]. Expected: first cycle correct, second points to first cycle's nodes.
     {
       const a0 = makeNode('p'),
         a1 = makeNode('q'),
@@ -689,7 +687,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
         e3 = makeNode('s');
       e0.dependencies.push(e1);
       e1.dependencies.push(e0);
-      e2.dependencies.push(e1); // WRONG: r→q
+      e2.dependencies.push(e1); // WRONG: r→q (expected edge points to already-visited node in cycle 1)
       e3.dependencies.push(e0); // WRONG: s→p
 
       const logLines: string[] = [];
@@ -702,11 +700,18 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       t.mock.restoreAll();
 
       assert.equal(r.pass, false);
-      assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
+      assert.ok(r.errorDetail !== null && r.errorDetail.includes('Graph topology mismatch'));
 
       sections.push(
         [
-          '=== smartCompare verbose trace — swapped 2-cycle targets (reversePaired mismatch) ===',
+          '=== smartCompare verbose trace — graph topology mismatch (reversePaired) ===',
+          'Scenario: actual has two separate 2-cycles (p↔q) and (r↔s).',
+          'Expected has the first cycle correct (p↔q), but its second cycle points to',
+          'nodes already visited in the first cycle: r→q and s→p. The expected graph is',
+          'valid but structurally different from actual. When smartCompare reaches the',
+          'edge r→s (actual) vs r→q (expected), the expected destination "q" was already',
+          'paired with actual "q" — the actual edge points to a different node than',
+          'the expected edge does.',
           `pass: ${r.pass}`,
           `errorDetail: ${r.errorDetail}`,
           '',
@@ -837,6 +842,11 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     assert.equal(twpResult.pass, true, `twoPassWire smartCompare failed: ${twpResult.errorDetail ?? ''}`);
     assert.equal(twpResult.nodesProcessed, 10, 'acyclic-control tier must have exactly 10 nodes processed');
 
+    // Post-process "back-edge" → "visited-edge": in this acyclic graph, smartCompare's
+    // generic "back-edge" label cannot imply a cycle; "visited-edge" is the neutral,
+    // graph-theory-accurate term here. smartCompare itself stays general-purpose.
+    const acyclicVisitedEdgeLogLines = logLines.map((l) => l.replace(/: back-edge/g, ': visited-edge'));
+
     const tracePath = path.join(LOGS_DIR, 'acyclic-control-accuracy-trace.log');
     fs.writeFileSync(
       tracePath,
@@ -846,12 +856,14 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
         `edgesTraversed: ${twpResult.edgesTraversed}`,
         `twoPassWire pass: ${twpResult.pass}`,
         '',
-        'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
-        'No cycles exist.  Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC)',
-        'pass cleanly.  Naive Recursion fails: it creates a fresh object per populate() call,',
-        'producing a shared-reference mismatch even without cycles.',
+        'Dataset structure: 10-node DAG (lower-index nodes depend on higher-index nodes only).',
+        'comp_0 is the root; comp_9 is the leaf.  Edges to already-visited nodes are labeled',
+        '"visited-edge" here; true back-edges do not exist because the graph is acyclic.',
+        'Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC) pass cleanly.',
+        'Naive Recursion fails: it creates a fresh object per populate() call, producing a',
+        'shared-reference mismatch even without cycles.',
         '',
-        ...logLines,
+        ...acyclicVisitedEdgeLogLines,
         '',
       ].join('\n'),
       'utf8'
@@ -872,7 +884,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
       '',
       '=== buildPopulatedFromAnswer verbose trace — acyclic-control tier ===',
       '',
-      'Dataset structure: 10-node DAG (higher-index nodes depend on lower-index nodes only).',
+      'Dataset structure: 10-node DAG (lower-index nodes depend on higher-index nodes only).',
       'No cycles exist.  Dependency edges are present; identity-sharing is required for',
       'any node that appears as a dependency of multiple parents.',
       'Algorithms with memoization reconstruct this correctly; Naive Recursion does not.',

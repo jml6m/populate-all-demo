@@ -124,8 +124,8 @@ export function smartCompare(
 
         const reversePairedActual = reversePaired.get(de);
         if (reversePairedActual !== undefined && reversePairedActual !== da) {
-          log(`[smartCompare] ❌ EDGE #${edgesTraversed} ${frame.a.id}→${da.id}: expected "${de.id}" already paired with "${reversePairedActual.id}"`);
-          return `Cycle structure mismatch: expected node "${de.id}" is paired with more than one actual node`;
+          log(`[smartCompare] ❌ EDGE #${edgesTraversed} ${frame.a.id}→${da.id}: topology mismatch. Expected destination "${de.id}" was already paired with "${reversePairedActual.id}"`);
+          return `Graph topology mismatch at edge ${frame.a.id}→${da.id}: expected edge to point to already-visited node "${de.id}", but actual graph points to "${da.id}"`;
         }
 
         // First visit: record before pushing (handles any intra-subtree cycles)

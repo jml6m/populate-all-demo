@@ -8,8 +8,6 @@ import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/ty
 import { ConsumerResult, cycleFlatProbe, naiveJsonProbe } from './consumer';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
-const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs');
-
 // ---------------------------------------------------------------------------
 // Helpers — build small, controlled cyclic / acyclic graphs by hand
 // ---------------------------------------------------------------------------
@@ -239,25 +237,6 @@ describe('consumer probe contrast — hydration success ≠ naive-json viability
     assert.equal(flatResult.pass, true, 'cycleFlatProbe should pass on cyclic graph');
     assert.equal(flatResult.errorDetail, null);
     assert.ok(flatResult.serializedOutput !== null, 'cycleFlatProbe should produce serializedOutput');
-
-    // Write trace log for auditing
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'consumer-probe-trace.log');
-    const logLines = [
-      '=== Consumer probe contrast — 2-node cycle (a → b → a) ===',
-      '',
-      `naive-json  : pass=${naiveResult.pass}, error="${String(naiveResult.errorDetail)}"`,
-      `cycle-flat  : pass=${flatResult.pass}, error="${String(flatResult.errorDetail)}"`,
-      `cycle-flat serializedOutput: ${JSON.stringify(flatResult.serializedOutput)}`,
-      '',
-      'Interpretation:',
-      '  A graph that was correctly hydrated (all object references intact) still',
-      '  crashes a naive JSON.stringify consumer. The cycle-flat probe succeeds on',
-      '  the same graph by using an iterative index-based export — no recursion,',
-      '  no circular reference errors.',
-      '  The cycle-flat output is an AnswerEntry[] that preserves full graph fidelity.',
-    ];
-    fs.writeFileSync(tracePath, logLines.join('\n') + '\n', 'utf8');
   });
 
   it('naiveJsonProbe passes and cycleFlatProbe passes on an acyclic graph — both succeed', () => {
@@ -335,19 +314,5 @@ describe('cycleFlatProbe — basic-tier integration', () => {
       assert.equal(output[i].id, rawAnswerEntries[i].id, `Entry[${i}] id mismatch`);
       assert.deepEqual(output[i].depIndices, rawAnswerEntries[i].depIndices, `Entry[${i}] ("${output[i].id}") depIndices mismatch`);
     }
-
-    // Write trace log for auditing
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const tracePath = path.join(LOGS_DIR, 'cycle-flat-probe-trace.log');
-    const header = [
-      '=== cycleFlatProbe integration trace — basic-tier twoPassWire ===',
-      `nodes: ${output.length}`,
-      `edges: ${output.reduce((sum, e) => sum + e.depIndices.length, 0)}`,
-      `output matches manifest answer: true`,
-      '',
-      'Sample output (first 5 entries):',
-    ];
-    const sample = output.slice(0, 5).map((e) => `  { id: "${e.id}", depIndices: [${e.depIndices.join(', ')}] }`);
-    fs.writeFileSync(tracePath, [...header, ...sample].join('\n') + '\n', 'utf8');
   });
 });
