@@ -293,12 +293,8 @@ function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[])
 const BLUE = '\x1b[34m';
 const RESET = '\x1b[0m';
 
-function shouldUseAnsiColor(): boolean {
-  return !process.env.NO_COLOR && Boolean(process.stdout?.isTTY);
-}
-
 function colorizeBlue(value: string): string {
-  return shouldUseAnsiColor() ? `${BLUE}${value}${RESET}` : value;
+  return `${BLUE}${value}${RESET}`;
 }
 
 // Time: sub-0.1ms is below timing noise floor; scale units at 1s and 60s.
