@@ -1527,7 +1527,7 @@ function runBenchmark() {
     if (naiveJsonPassedAcyclic || naiveJsonFailedCyclic) {
       const parts: string[] = [];
       if (naiveJsonPassedAcyclic) parts.push('passes on acyclic-control (no cycles)');
-      if (naiveJsonFailedCyclic) parts.push('fails on all cyclic datasets where hydration succeeds');
+      if (naiveJsonFailedCyclic) parts.push('fails on cyclic datasets where hydration succeeds');
       console.log(`  • naive-json: ${parts.join('; ')}.`);
     }
 
