@@ -315,3 +315,16 @@ reference figures in §4; actual observed ratios vary by environment.
 Tarjan's auxiliary structures (per-node index/lowlink, SCC sets, condensation DAG) add a
 constant overhead per node that compounds with GC at large heap sizes. Two-Pass Wire
 allocates exactly V+1 objects (the Map plus one shell per node) and nothing else.
+
+---
+
+## §6 — Dataset Scope and Input Validity
+
+The benchmark targets a **root-reachable, single-root** object graph — the exact closure
+materialized from one NodeJS/NoSQL request. Every node in a valid dataset is reachable from
+the designated root by following dependency edges.
+
+A full input-validity taxonomy — defining which graph shapes belong in the core benchmark,
+which are edge-case-only structures, and which are invalid inputs (including orphaned nodes
+and dangling references) — is defined in
+[Ecosystem Research §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).
