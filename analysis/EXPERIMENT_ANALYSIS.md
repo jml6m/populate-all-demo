@@ -324,7 +324,17 @@ The benchmark targets a **root-reachable, single-root** object graph — the exa
 materialized from one NodeJS/NoSQL request. Every node in a valid dataset is reachable from
 the designated root by following dependency edges.
 
+Additional constraints settled for the core benchmark:
+
+- **Explicit declared root.** The root is provided in the dataset manifest; it is not inferred
+  from graph structure (e.g. in-degree). A missing or ambiguous root is a preflight error.
+- **Simple directed graph.** The benchmark assumes at most one directed edge between any
+  ordered pair of nodes. Manifests with duplicate (parallel) edges are rejected at preflight;
+  multigraph-style input is out of scope (see Ecosystem Research §6.3).
+- **Validation is preflight.** All input admissibility checks run before any timed execution
+  and have no effect on measured algorithm complexity, latency, or memory.
+
 A full input-validity taxonomy — defining which graph shapes belong in the core benchmark,
-which are edge-case-only structures, and which are invalid inputs (including orphaned nodes
-and dangling references) — is defined in
+which are edge-case-only structures, and which are invalid inputs (including orphaned nodes,
+duplicate edges, and dangling references) — is defined in
 [Ecosystem Research §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).

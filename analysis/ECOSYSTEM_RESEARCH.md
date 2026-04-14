@@ -590,7 +590,7 @@ and must fully hydrate — populating every referenced dependency as a real in-m
 before passing the result to a downstream consumer (API serializer, cache writer, view
 renderer, etc.).
 
-This model has three defining properties:
+This model has five defining properties:
 
 1. **Root-reachable closure.** Every node in the materialized graph is reachable from the
    selected root by following dependency edges. Nodes that are not reachable from the root
@@ -602,6 +602,15 @@ This model has three defining properties:
    viability (Stage 2) are architecturally distinct. The benchmark measures both; the
    distinction matters for understanding which failures belong to the algorithm and which
    belong to the downstream consumer.
+4. **Explicit declared root.** The root is identified by an explicit declaration in the
+   dataset manifest, not inferred from graph structure (e.g. by computing in-degree-zero
+   nodes). Root inference is brittle in cyclic or richly shared graphs and is not equivalent
+   to the application-level materialization anchor. A missing or ambiguous root declaration
+   is therefore a preflight error, not a resolvable ambiguity.
+5. **Simple directed graph.** The benchmark assumes a simple directed graph — at most one
+   directed edge from any node u to any node v. Parallel (duplicate) edges represent
+   multigraph-style input, which is mathematically well-defined in graph theory but
+   intentionally excluded from this benchmark scope (see §6.3).
 
 ### Input validity taxonomy
 
@@ -616,9 +625,23 @@ benchmark status.
 | **Realistic fan-out / fan-in patterns** | ✅ Core benchmark | Common in NoSQL embedded-reference schemas (one parent, many children; many parents, one shared child) |
 | **Orphaned nodes / disconnected subgraphs** | 🔲 Edge-case suite only | Not part of a root-selected materialization; see §6.1 for full reasoning |
 | **Multi-root forests** (intentional batch materializations) | 🔲 Edge-case suite only | May model a batch hydration request; meaningful only if the experiment extends to multi-document scenarios |
-| **Duplicate edges** | 🔲 Edge-case suite only | Possible in hand-crafted or malformed manifests; worth validating parser/generator, but not a realistic backend output |
+| **Duplicate edges** (parallel edges / multigraph input) | ❌ Invalid — reject | Multigraph semantics are mathematically valid but intentionally out of scope; the benchmark assumes a simple directed graph; manifests with duplicate edges are rejected at preflight (see §6.3) |
 | **Missing-target (dangling) references** | ❌ Invalid — reject | An edge pointing to a node that does not exist is invalid input, not a topology variant; must be rejected before benchmarking |
 | **Corrupt or unparseable manifests** | ❌ Invalid — reject | Infrastructure/tooling concern, not an algorithm topology |
+
+### Validation scope and timing
+
+All validity checks described in this section are **preflight / input admissibility** checks.
+They run before any timed benchmark execution and have no impact on measured algorithm
+complexity, latency, or memory. The timed benchmark section measures only the hydration
+algorithm applied to a valid, pre-admitted input. Rejecting an invalid input at preflight is
+not a benchmark data point; it is a guard that prevents corrupt or out-of-scope inputs from
+polluting the experiment results.
+
+This separation is the same contract applied by well-designed benchmark harnesses in other
+ecosystems (e.g. JMH warm-up phases in Java, criterion setup closures in Rust) where fixture
+preparation and measurement are strictly isolated. Input validation belongs entirely in the
+fixture-preparation phase.
 
 ### §6.1 — Orphaned nodes: why they are excluded from the core benchmark
 
@@ -672,6 +695,31 @@ inputs are therefore not meaningful benchmark data points.
 The experiment runner's manifest validator should still detect missing-target edges earlier
 and abort with a clear, input-focused error. That remains an input-sanitization concern, even
 though the algorithms themselves also reject the invalid graph today.
+
+### §6.3 — Duplicate edges: multigraph semantics are out of scope
+
+A *duplicate edge* (also called a parallel edge) is a second or subsequent directed edge from
+u to v where (u → v) already appears in the edge list. In graph theory, a directed graph that
+permits multiple edges between the same ordered pair of vertices is called a **multidigraph**
+(or directed multigraph). Multidigraphs are mathematically well-defined and useful in many
+contexts — network flow with parallel links, dependency schemas with multiple named
+relationship types, etc.
+
+For this benchmark, however, the motivating model is a **simple directed graph**: each
+logical dependency from one object to another is represented by exactly one edge. In a
+well-formed backend serialization result, the same reference relationship is not listed
+multiple times. Duplicate edges in a manifest therefore indicate a generator defect, a
+hand-crafting error, or a data-merge artifact — none of which are inputs this benchmark is
+designed to measure.
+
+Core benchmark manifests containing duplicate edges are **rejected at preflight**. This is
+consistent with the simple-graph model declared in the motivating model (property 5 above)
+and avoids skewing edge-count metrics (E) that characterize dataset scale.
+
+Note that this is intentionally stricter than the "warn and canonicalize" approach sometimes
+used in resilient parsers. Because benchmark integrity depends on well-defined graph metrics,
+silent normalization would obscure the discrepancy between the declared and actual graph
+structure. Explicit rejection surfaces the problem at the point of input admission, not later.
 
 ---
 
