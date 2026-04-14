@@ -580,17 +580,98 @@ or state management design.
 
 ---
 
-## §6 — Dataset Scope Note
+## §6 — Dataset Scope and Input Validity
 
-The analysis in this document assumes that all graph inputs represent a **root-reachable
-closure** — the exact set of nodes materialized for a single request boundary, where every
-node is reachable from a designated root by following dependency edges.
+### Motivating model
 
-Inputs that deviate from this assumption — orphaned/disconnected nodes, dangling references
-to missing nodes, or multi-root forests that span multiple independent request boundaries —
-fall outside the core benchmark model. See [Experiment Analysis §6](./EXPERIMENT_ANALYSIS.md#6--dataset-scope-and-input-validity)
-for the full input-validity taxonomy, the reasoning on orphaned nodes, and the recommended
-graph shapes for new benchmark tiers.
+The experiment is grounded in the NodeJS/NoSQL hydration scenario: a backend receives a
+request, selects **one root node**, fetches the reachable object graph from the database,
+and must fully hydrate — populating every referenced dependency as a real in-memory object —
+before passing the result to a downstream consumer (API serializer, cache writer, view
+renderer, etc.).
+
+This model has three defining properties:
+
+1. **Root-reachable closure.** Every node in the materialized graph is reachable from the
+   selected root by following dependency edges. Nodes that are not reachable from the root
+   were simply not part of the query result — they are absent, not orphaned.
+2. **Identity preservation.** Nodes shared by multiple parents must be represented as a
+   single in-memory object instance, not independent copies. This is what the Two-Pass Wire
+   strategy guarantees and what Naive Recursion violates.
+3. **Two-stage pipeline.** Hydration correctness (Stage 1) and consumer/serialization
+   viability (Stage 2) are architecturally distinct. The benchmark measures both; the
+   distinction matters for understanding which failures belong to the algorithm and which
+   belong to the downstream consumer.
+
+### Input validity taxonomy
+
+The table below classifies graph types against the motivating model and assigns each a
+benchmark status.
+
+| Graph type | Status | Rationale |
+| --- | --- | --- |
+| **Root-reachable cyclic graphs** (mutual cycles, back-edges, self-loops reachable from root) | ✅ Core benchmark | Directly models the real-world hydration problem; `basic`, `medium`, `stress`, `extreme` tiers |
+| **Root-reachable DAGs with shared references** (`acyclic-control`) | ✅ Core benchmark | Exposes identity-mismatch failures (Naive Recursion) in the absence of cycles; required to separate cycle failures from memoization failures |
+| **SCC-heavy / dense mutual-cycle graphs** | ✅ Core benchmark | Stress-tests the condensation and wiring phases; realistic for deeply inter-referenced domain models |
+| **Realistic fan-out / fan-in patterns** | ✅ Core benchmark | Common in NoSQL embedded-reference schemas (one parent, many children; many parents, one shared child) |
+| **Orphaned nodes / disconnected subgraphs** | 🔲 Edge-case suite only | Not part of a root-selected materialization; see §6.1 for full reasoning |
+| **Multi-root forests** (intentional batch materializations) | 🔲 Edge-case suite only | May model a batch hydration request; meaningful only if the experiment extends to multi-document scenarios |
+| **Duplicate edges** | 🔲 Edge-case suite only | Possible in hand-crafted or malformed manifests; worth validating parser/generator, but not a realistic backend output |
+| **Missing-target (dangling) references** | ❌ Invalid — reject | An edge pointing to a node that does not exist is invalid input, not a topology variant; must be rejected before benchmarking |
+| **Corrupt or unparseable manifests** | ❌ Invalid — reject | Infrastructure/tooling concern, not an algorithm topology |
+
+### §6.1 — Orphaned nodes: why they are excluded from the core benchmark
+
+An *orphaned node* is a node that exists in the input dataset but is not reachable from the
+root via dependency edges — a disconnected component that floats alongside the main graph.
+
+**Why they are not valid core-benchmark inputs:**
+
+In the motivating NodeJS/NoSQL scenario, the input dataset represents exactly one
+materialized request boundary: the set of entities the backend fetched and needs to wire up.
+If a node is present in that set, it was fetched — and therefore it was reachable from the
+root selection. A node that is unreachable from the root would not appear in the fetch result
+in the first place. Orphaned nodes are not a topology that arises naturally from a
+well-functioning backend; they are either a generator artifact or a signal of malformed data.
+
+Including orphaned nodes in the canonical benchmark would:
+
+- mis-represent the algorithm's input domain (real fetch results are root-reachable closures),
+- conflate hydration correctness with parser/loader robustness, and
+- make graph-scale metrics (V, E) misleading because some nodes carry no algorithmic weight.
+
+**Why they remain useful as edge-case tests:**
+
+Even though orphaned nodes are out-of-scope for the canonical benchmark, they are a valid
+and important *validation* target:
+
+- **Parser/loader robustness** — does the input loader correctly handle a manifest that
+  accidentally includes unreferenced nodes?
+- **Consumer/export robustness** — does the export strategy (`cycle-flat`) correctly traverse
+  only the reachable subgraph, or does it inadvertently include orphaned nodes in the output?
+- **Generator validation** — does the dataset generator produce only root-reachable nodes, or
+  can a configuration error produce disconnected components?
+
+These scenarios belong in a **dedicated edge-case test suite**, kept separate from the main
+benchmark tiers, with their own expected outputs and explicit documentation of what is being
+tested.
+
+### §6.2 — Dangling references: invalid input, not a topology
+
+A *dangling reference* is an edge (u → v) where v does not exist in the input dataset. This
+is categorically different from an orphaned node. An orphaned node is a valid graph element
+that happens to be unreachable; a dangling reference points to a node that is absent
+entirely.
+
+Dangling references are **invalid input** and must be rejected. In the current
+implementations, this rejection already happens at algorithm time: `twoPassWire` throws when
+a dependency id is missing, and `tarjanSccLayering` likewise pre-validates dependencies and
+throws rather than silently producing `undefined` or a corrupted condensation DAG. Such
+inputs are therefore not meaningful benchmark data points.
+
+The experiment runner's manifest validator should still detect missing-target edges earlier
+and abort with a clear, input-focused error. That remains an input-sanitization concern, even
+though the algorithms themselves also reject the invalid graph today.
 
 ---
 
