@@ -401,14 +401,15 @@ is categorically different from an orphaned node. An orphaned node is a valid gr
 that happens to be unreachable; a dangling reference points to a node that is absent
 entirely.
 
-Dangling references are **invalid input** and must be caught and rejected before any
-algorithm runs. The Two-Pass Wire strategy would silently produce `undefined` for the missing
-lookup (`visited.get(missingId)` returns `undefined` in JavaScript); the Tarjan SCC
-implementation would similarly produce a corrupted condensation DAG. Neither result is
-meaningful as a benchmark data point.
+Dangling references are **invalid input** and must be rejected. In the current
+implementations, this rejection already happens at algorithm time: `twoPassWire` throws when
+a dependency id is missing, and `tarjanSccLayering` likewise pre-validates dependencies and
+throws rather than silently producing `undefined` or a corrupted condensation DAG. Such
+inputs are therefore not meaningful benchmark data points.
 
-The experiment runner's manifest validator should detect missing-target edges and abort with
-a clear error. This is an input-sanitization concern, not an algorithmic one.
+The experiment runner's manifest validator should still detect missing-target edges earlier
+and abort with a clear, input-focused error. That remains an input-sanitization concern, even
+though the algorithms themselves also reject the invalid graph today.
 
 ### §6.3 — Recommended graph shapes for new benchmark tiers
 

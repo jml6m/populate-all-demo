@@ -588,7 +588,7 @@ node is reachable from a designated root by following dependency edges.
 
 Inputs that deviate from this assumption — orphaned/disconnected nodes, dangling references
 to missing nodes, or multi-root forests that span multiple independent request boundaries —
-fall outside the core benchmark model. See [Experiment Analysis §6](./EXPERIMENT_ANALYSIS.md#6-dataset-scope-and-input-validity)
+fall outside the core benchmark model. See [Experiment Analysis §6](./EXPERIMENT_ANALYSIS.md#6--dataset-scope-and-input-validity)
 for the full input-validity taxonomy, the reasoning on orphaned nodes, and the recommended
 graph shapes for new benchmark tiers.
 
