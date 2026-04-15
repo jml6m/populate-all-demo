@@ -11,9 +11,11 @@ export interface ManifestEntry {
    *   2. every node in the dataset is reachable from the root by following
    *      dependency edges.
    *
-   * Datasets that do not declare a root are validated for structural integrity
-   * only (duplicate IDs, duplicate edges, dangling references) and are
-   * classified as `core-valid` when no hard errors are found.
+   * A declared `root` is required for datasets that are intended to satisfy
+   * the core benchmark contract. Datasets that do not declare a root are
+   * validated for structural integrity only (duplicate IDs, duplicate edges,
+   * dangling references) for backward compatibility, but they do not qualify
+   * as `core-valid`; treat them as `edge-case-only`.
    */
   root?: string;
 }

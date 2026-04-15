@@ -1,4 +1,4 @@
-import { ComponentFlat } from '../algorithms/types';
+import type { ComponentFlat } from '../algorithms/types';
 
 /**
  * Three-tier classification for benchmark dataset inputs.
