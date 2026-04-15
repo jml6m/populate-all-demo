@@ -322,9 +322,13 @@ allocates exactly V+1 objects (the Map plus one shell per node) and nothing else
 
 The benchmark targets a **root-reachable, single-root** object graph — the exact closure
 materialized from one NodeJS/NoSQL request. Every node in a valid dataset is reachable from
-the designated root by following dependency edges.
+the designated root by following dependency edges. The root is identified by **exactly one
+explicit declaration** in the dataset manifest; it is not inferred from graph structure (e.g.
+in-degree), and a missing or ambiguous declaration is a preflight error. The benchmark also
+assumes a **simple directed graph** — at most one directed edge between any ordered pair of
+nodes. All input admissibility checks are **preflight**: they run before any timed execution
+and have no effect on measured algorithm complexity, latency, or memory.
 
 A full input-validity taxonomy — defining which graph shapes belong in the core benchmark,
-which are edge-case-only structures, and which are invalid inputs (including orphaned nodes
-and dangling references) — is defined in
-[Ecosystem Research §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).
+which are edge-case-only structures, and which are invalid inputs — is defined in
+[`ECOSYSTEM_RESEARCH.md` §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).
