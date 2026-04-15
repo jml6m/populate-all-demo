@@ -322,19 +322,13 @@ allocates exactly V+1 objects (the Map plus one shell per node) and nothing else
 
 The benchmark targets a **root-reachable, single-root** object graph — the exact closure
 materialized from one NodeJS/NoSQL request. Every node in a valid dataset is reachable from
-the designated root by following dependency edges.
-
-Additional constraints settled for the core benchmark:
-
-- **Explicitly declared root.** The root is provided in the dataset manifest; it is not inferred
-  from graph structure (e.g. in-degree). A missing or ambiguous root is a preflight error.
-- **Simple directed graph.** The benchmark assumes at most one directed edge between any
-  ordered pair of nodes. Manifests with duplicate (parallel) edges are rejected at preflight;
-  multigraph-style input is out of scope (see Ecosystem Research §6.3).
-- **Validation is preflight.** All input admissibility checks run before any timed execution
-  and have no effect on measured algorithm complexity, latency, or memory.
+the designated root by following dependency edges. The root is identified by **exactly one
+explicit declaration** in the dataset manifest; it is not inferred from graph structure (e.g.
+in-degree), and a missing or ambiguous declaration is a preflight error. The benchmark also
+assumes a **simple directed graph** — at most one directed edge between any ordered pair of
+nodes. All input admissibility checks are **preflight**: they run before any timed execution
+and have no effect on measured algorithm complexity, latency, or memory.
 
 A full input-validity taxonomy — defining which graph shapes belong in the core benchmark,
-which are edge-case-only structures, and which are invalid inputs (including orphaned nodes,
-duplicate edges, and dangling references) — is defined in
-[Ecosystem Research §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).
+which are edge-case-only structures, and which are invalid inputs — is defined in
+[`ECOSYSTEM_RESEARCH.md` §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).

@@ -590,7 +590,7 @@ and must fully hydrate — populating every referenced dependency as a real in-m
 before passing the result to a downstream consumer (API serializer, cache writer, view
 renderer, etc.).
 
-This model has five defining properties:
+This model has the following defining properties:
 
 1. **Root-reachable closure.** Every node in the materialized graph is reachable from the
    selected root by following dependency edges. Nodes that are not reachable from the root
@@ -705,6 +705,15 @@ permits multiple edges between the same ordered pair of vertices is called a **m
 contexts — network flow with parallel links, dependency schemas with multiple named
 relationship types, etc.
 
+A useful contrast: in a Nondeterministic Finite Automaton (NFA), multiple transitions from
+state q1 to state q2 are permitted and each carries a distinct input-symbol label (a1, a2,
+a3, ...). Those edges are distinguishable by label and encode genuinely different transition
+conditions. In the dependency graphs modeled here, edges carry no such label — they represent
+only the existence of a dependency from u to v. A second unlabeled edge (u → v) therefore
+encodes no additional information and cannot be distinguished from the first. This is the
+setting where multigraph multiplicity is semantically meaningless and simple-graph semantics
+are appropriate.
+
 For this benchmark, however, the motivating model is a **simple directed graph**: each
 logical dependency from one object to another is represented by exactly one edge. In a
 well-formed backend serialization result, the same reference relationship is not listed
@@ -717,9 +726,7 @@ consistent with the simple-graph model declared in the motivating model (propert
 and avoids skewing edge-count metrics (E) that characterize dataset scale.
 
 Note that this is intentionally stricter than the "warn and canonicalize" approach sometimes
-used in resilient parsers. Because benchmark integrity depends on well-defined graph metrics,
-silent normalization would obscure the discrepancy between the declared and actual graph
-structure. Explicit rejection surfaces the problem at the point of input admission, not later.
+used in resilient parsers.
 
 ---
 
