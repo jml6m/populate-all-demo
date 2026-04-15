@@ -698,21 +698,19 @@ though the algorithms themselves also reject the invalid graph today.
 ### §6.3 — Duplicate edges: parallel edges are out of scope
 
 A *duplicate edge* (also called a parallel edge) is a second or subsequent directed edge from
-u to v where (u → v) already appears in the edge list. A directed graph that allows multiple
-parallel edges between the same pair of vertices is called a *multigraph* (or *multi-digraph*).
-Multigraphs are a well-studied structure in graph theory and have legitimate uses: in a network
-flow graph each parallel edge (u → v) might represent a separate physical link with its own
-capacity, or in a typed dependency schema each parallel edge might encode a different
-relationship type — making individual edges distinguishable and removable without changing the
-graph's meaning. In this benchmark, however, edges carry no such additional data.
+u to v where (u → v) already appears in the edge list. Parallel edges can be meaningful in
+some graph models — for example, in a network flow graph each parallel edge (u → v) might
+represent a separate physical link with its own capacity, or in a dependency schema each
+parallel edge might encode a different relationship type — making individual edges
+distinguishable and removable without changing the graph's meaning. In this benchmark,
+however, edges carry no such additional data.
 
 **Why this benchmark uses a simple directed graph.** In the hydration model an edge u → v
 means exactly one thing: *u has a dependency on v*. There is no weight, no label, no
 capacity — only the existence of the dependency. A second edge u → v expresses the same
 relationship as the first and is indistinguishable from it. Because the only meaningful
 content of an edge is its source and target, the **simple directed graph** model — at most
-one edge per ordered pair — is the correct abstraction for this domain.  Multigraph semantics
-are explicitly out of scope for this experiment and are not tested.
+one edge per ordered pair — is the correct abstraction for this domain.
 
 **Why reject, not canonicalize.** Core benchmark manifests containing duplicate edges are
 **rejected at preflight**. Note that this is intentionally stricter than the "warn and

@@ -102,6 +102,49 @@ function buildAnswerData(flatComponents: ComponentFlat[]): AnswerEntry[] {
   }));
 }
 
+/**
+ * Ensures every node in `components` is reachable from `rootId` by following
+ * dependency edges.  For any node that is not reachable, a direct edge
+ * root → node is appended to the root's dependency list.
+ *
+ * This is a post-generation guardrail that satisfies the core benchmark
+ * contract (ECOSYSTEM_RESEARCH.md §6): all nodes must be reachable from the
+ * single declared root.  It is called after the random edge-assignment phase
+ * so it does not affect the seeded RNG state for the rest of generation.
+ *
+ * For acyclic datasets (edges only go from lower to higher index), appending
+ * comp_0 → comp_i for any i > 0 preserves acyclicity because index 0 is
+ * strictly lower than every other index.
+ */
+function ensureRootReachable(components: ComponentFlat[], rootId: string): void {
+  // BFS to find all reachable nodes.
+  const adj = new Map<string, readonly string[]>(components.map((c) => [c.id, c.dependencies]));
+  const reachable = new Set<string>([rootId]);
+  const queue: string[] = [rootId];
+  let head = 0;
+  while (head < queue.length) {
+    const current = queue[head++];
+    for (const dep of adj.get(current) ?? []) {
+      if (!reachable.has(dep)) {
+        reachable.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+
+  // Add root → unreachable for any disconnected node.
+  const root = components.find((c) => c.id === rootId);
+  if (root === undefined) {
+    console.error(`ensureRootReachable: root node "${rootId}" not found in component list — skipping reachability fix-up.`);
+    return;
+  }
+  for (const comp of components) {
+    if (!reachable.has(comp.id)) {
+      root.dependencies.push(comp.id);
+    }
+  }
+}
+
 function writeYaml<T>(subDir: string, preset: string, data: T): ManifestEntry {
   const yamlString = YAML.stringify(data);
   const contentHash = crypto.createHash('sha256').update(yamlString).digest('hex').slice(0, 8);
@@ -187,11 +230,23 @@ function run() {
     console.log(`\nGenerating ${dataset.name} Dataset (${dataset.size} nodes)...`);
     const { flatComponents } = dataset.acyclic ? generateAcyclicDataset(dataset.size, dataset.seedSuffix) : generateDataset(dataset.size, dataset.seedSuffix);
 
+    // Guarantee root-reachability from comp_0 (core benchmark contract).
+    // Any nodes disconnected from comp_0 after random edge assignment receive
+    // a direct edge from comp_0 so the preflight validator classifies the
+    // dataset as core-valid.
+    const ROOT_ID = 'comp_0';
+    ensureRootReachable(flatComponents, ROOT_ID);
+
     // Create per-dataset subdirectory.
     const datasetDir = path.join(outputDir, dataset.name);
     fs.mkdirSync(datasetDir, { recursive: true });
 
-    manifestFiles[`${dataset.name}_input`] = writeYaml(dataset.name, `${dataset.name}_input`, flatComponents);
+    // Write input YAML and record root in the manifest entry so the preflight
+    // validator can enforce the single-root, root-reachable closure contract.
+    manifestFiles[`${dataset.name}_input`] = {
+      ...writeYaml(dataset.name, `${dataset.name}_input`, flatComponents),
+      root: ROOT_ID,
+    };
 
     const answerData = buildAnswerData(flatComponents);
     manifestFiles[`${dataset.name}_answer`] = writeYaml(dataset.name, `${dataset.name}_answer`, answerData);

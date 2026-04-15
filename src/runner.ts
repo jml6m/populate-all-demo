@@ -1077,23 +1077,21 @@ function runBenchmark() {
     // -------------------------------------------------------------------------
     // Preflight validation — runs before any timed algorithm execution.
     // validateDataset checks structural integrity (duplicate IDs, duplicate
-    // edges, dangling references) and optionally verifies root-reachability
-    // if the manifest entry declares a root.  This step has zero impact on
-    // measured algorithm latency or memory — it is fixture-preparation only.
+    // edges, dangling references) and verifies that a root is declared and all
+    // nodes are reachable from it.  Only `core-valid` datasets proceed to
+    // algorithm execution.  This step has zero impact on measured algorithm
+    // latency or memory — it is fixture-preparation only.
     // -------------------------------------------------------------------------
     const preflight = validateDataset(inputData, { root: inputEntry.root });
-    if (preflight.classification === 'invalid') {
-      console.error(`\n❌ Skipping dataset "${dataset}" — preflight validation failed:`);
-      for (const err of preflight.errors) {
-        console.error(`   • ${err}`);
+    if (preflight.classification !== 'core-valid') {
+      const isInvalid = preflight.classification === 'invalid';
+      const icon = isInvalid ? '❌' : '⚠️';
+      const reason = isInvalid ? 'preflight validation failed' : 'classified as edge-case-only (not a core benchmark dataset)';
+      console.error(`\n${icon} Skipping dataset "${dataset}" — ${reason}:`);
+      for (const msg of [...preflight.errors, ...preflight.warnings]) {
+        console.error(`   • ${msg}`);
       }
       continue;
-    }
-    if (preflight.classification === 'edge-case-only') {
-      console.warn(`\n⚠️  Dataset "${dataset}" classified as edge-case-only (not a core benchmark dataset):`);
-      for (const warn of preflight.warnings) {
-        console.warn(`   • ${warn}`);
-      }
     }
 
     const datasetResults: BenchmarkReport[] = [];

@@ -16,39 +16,41 @@ function makeLinear(...ids: string[]): ComponentFlat[] {
 }
 
 // ---------------------------------------------------------------------------
-// Core-valid — single root, fully reachable, no structural errors
+// Edge-case-only — no declared root (root-reachability cannot be verified)
 // ---------------------------------------------------------------------------
 
-describe('validateDataset — core-valid: no declared root (structural-only checks pass)', () => {
-  it('classifies an empty dataset as core-valid', () => {
+describe('validateDataset — edge-case-only: no declared root', () => {
+  it('classifies an empty dataset without a root as edge-case-only', () => {
     const result = validateDataset([]);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
     assert.deepEqual(result.errors, []);
-    assert.deepEqual(result.warnings, []);
+    assert.ok(result.warnings.length > 0, 'should produce a no-root warning');
+    assert.ok(result.warnings[0].includes('No root declared'), 'warning should mention missing root');
   });
 
-  it('classifies a single node with no dependencies as core-valid', () => {
+  it('classifies a single node without a root as edge-case-only', () => {
     const result = validateDataset([{ id: 'a', dependencies: [] }]);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
     assert.deepEqual(result.errors, []);
+    assert.ok(result.warnings[0].includes('No root declared'));
   });
 
-  it('classifies a linear chain as core-valid (no root declared)', () => {
+  it('classifies a linear chain without a root as edge-case-only', () => {
     const result = validateDataset(makeLinear('a', 'b', 'c'));
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
     assert.deepEqual(result.errors, []);
   });
 
-  it('classifies a 2-node cycle as core-valid (no root declared)', () => {
+  it('classifies a 2-node cycle without a root as edge-case-only', () => {
     const components: ComponentFlat[] = [
       { id: 'a', dependencies: ['b'] },
       { id: 'b', dependencies: ['a'] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
   });
 
-  it('classifies a diamond (fan-in / fan-out) graph as core-valid (no root declared)', () => {
+  it('classifies a diamond graph without a root as edge-case-only', () => {
     const components: ComponentFlat[] = [
       { id: 'root', dependencies: ['left', 'right'] },
       { id: 'left', dependencies: ['shared'] },
@@ -56,8 +58,13 @@ describe('validateDataset — core-valid: no declared root (structural-only chec
       { id: 'shared', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
     assert.deepEqual(result.errors, []);
+  });
+
+  it('warning message explains how to fix the missing-root issue', () => {
+    const result = validateDataset([{ id: 'x', dependencies: [] }]);
+    assert.ok(result.warnings[0].includes('manifest entry'), 'warning should hint at the fix');
   });
 });
 
@@ -306,13 +313,15 @@ describe('validateDataset — invalid: duplicate edges', () => {
   });
 
   it('does not report duplicate edges when two different nodes each have a single edge to the same target', () => {
-    // a→c and b→c are two distinct edges — not duplicates.
+    // a→c and b→c are two distinct edges from different sources — not duplicates.
+    // A hub node reaches both so the dataset is core-valid.
     const components: ComponentFlat[] = [
+      { id: 'hub', dependencies: ['a', 'b'] },
       { id: 'a', dependencies: ['c'] },
       { id: 'b', dependencies: ['c'] },
       { id: 'c', dependencies: [] },
     ];
-    const result = validateDataset(components);
+    const result = validateDataset(components, { root: 'hub' });
     assert.equal(result.classification, 'core-valid');
     assert.deepEqual(result.errors, []);
   });
@@ -410,9 +419,10 @@ describe('validateDataset — classification semantics', () => {
     assert.deepEqual(result.warnings, []);
   });
 
-  it('dataset without declared root is classified core-valid when no structural errors exist', () => {
-    // Multi-component graph with no single root that can reach everything,
-    // but no declared root either — so classification is core-valid.
+  it('dataset without declared root is classified edge-case-only (root required for core-valid)', () => {
+    // A dataset must declare a root to qualify as core-valid.
+    // Without a root declaration, root-reachability cannot be verified, so
+    // the dataset is edge-case-only regardless of structural soundness.
     const components: ComponentFlat[] = [
       { id: 'tree_a_root', dependencies: ['a1'] },
       { id: 'a1', dependencies: [] },
@@ -420,9 +430,9 @@ describe('validateDataset — classification semantics', () => {
       { id: 'b1', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
     assert.deepEqual(result.errors, []);
-    assert.deepEqual(result.warnings, []);
+    assert.ok(result.warnings.length > 0, 'should produce a no-root warning');
   });
 });
 
@@ -469,9 +479,9 @@ describe('validateDataset — hand-authored fixtures (not generator-produced)', 
     assert.equal(result.errors.length, 3, 'one error per dangling reference');
   });
 
-  it('classifies a multi-root forest (no declared root) as core-valid', () => {
-    // Multi-root forests are structurally valid; classification depends on whether
-    // a root is declared.  Without one, we classify based on structural checks only.
+  it('classifies a multi-root forest (no declared root) as edge-case-only', () => {
+    // Without a declared root, root-reachability cannot be verified:
+    // the dataset is edge-case-only regardless of structural soundness.
     const components: ComponentFlat[] = [
       { id: 'r1', dependencies: ['a', 'b'] },
       { id: 'r2', dependencies: ['c'] },
@@ -480,7 +490,8 @@ describe('validateDataset — hand-authored fixtures (not generator-produced)', 
       { id: 'c', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'core-valid');
+    assert.equal(result.classification, 'edge-case-only');
+    assert.ok(result.warnings[0].includes('No root declared'));
   });
 
   it('classifies a multi-root forest (with declared root) as edge-case-only', () => {

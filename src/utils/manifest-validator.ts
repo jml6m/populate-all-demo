@@ -4,17 +4,17 @@ import type { ComponentFlat } from '../algorithms/types';
  * Three-tier classification for benchmark dataset inputs.
  *
  * - core-valid    — passes all structural integrity checks and satisfies the
- *                   full core benchmark contract: no duplicate node IDs, no
- *                   duplicate edges, no dangling references, and (when a root
- *                   is declared) the declared root exists and every node is
- *                   reachable from it by following dependency edges.
+ *                   full core benchmark contract: a declared root exists,
+ *                   every node is reachable from that root by following
+ *                   dependency edges, and there are no duplicate node IDs,
+ *                   duplicate edges, or dangling references.
  *
  * - edge-case-only — structurally sound (no hard errors) but does not meet
- *                   the full core benchmark contract — e.g. disconnected
- *                   subgraphs, multi-root forest, or a declared root that
- *                   cannot reach every node.  Useful for robustness and
- *                   edge-case test suites; should not be used in canonical
- *                   benchmark measurements.
+ *                   the full core benchmark contract — e.g. no declared root,
+ *                   disconnected subgraphs, or a declared root that cannot
+ *                   reach every node.  Useful for robustness and edge-case
+ *                   test suites; must not be used in canonical benchmark
+ *                   measurements.
  *
  * - invalid       — contains one or more hard structural errors (dangling
  *                   references, duplicate node IDs, duplicate edges, or a
@@ -41,14 +41,15 @@ export interface ValidatorOptions {
   /**
    * Declared root node ID for the dataset.
    *
+   * A root declaration is **required** for `core-valid` classification.
    * When provided, the validator additionally checks that:
    *   1. the root exists in the component list (hard error if missing), and
    *   2. every node is reachable from the root by following dependency edges
-   *      (soft warning — produces edge-case-only classification if any node
-   *      is unreachable).
+   *      (soft warning — produces `edge-case-only` if any node is unreachable).
    *
-   * When absent, the root-reachability check is skipped and the classification
-   * is determined solely by structural integrity checks.
+   * When absent, the dataset is classified `edge-case-only` regardless of
+   * structural soundness, because root-reachability (a core benchmark
+   * contract invariant) cannot be verified without a declared root.
    */
   root?: string;
 }
@@ -65,9 +66,12 @@ export interface ValidatorOptions {
  *   1. Duplicate node IDs                              → invalid
  *   2. Dangling references (edge target not in node set) → invalid
  *   3. Duplicate edges (u → v listed more than once)   → invalid
- *   4. (if root declared) Root existence               → invalid if missing
- *   5. (if root declared) Root-reachability of every node
+ *   4. Root declared?                                  → edge-case-only if absent
+ *   5. (if root declared) Root existence               → invalid if missing
+ *   6. (if root declared) Root-reachability of every node
  *                                                      → edge-case-only if any unreachable
+ *
+ * A declared root is required for `core-valid` classification (ECOSYSTEM_RESEARCH.md §6).
  *
  * @param components - Parsed flat component list (ComponentFlat[]).
  * @param options    - Optional validation options (declared root, etc.).
@@ -110,22 +114,29 @@ export function validateDataset(components: ComponentFlat[], options: ValidatorO
     return { classification: 'invalid', errors, warnings };
   }
 
-  // --- Steps 4 & 5: Root-based checks (only when a root is declared). ---
-  if (options.root !== undefined) {
-    if (!nodeIds.has(options.root)) {
-      errors.push(`Declared root "${options.root}" does not exist in the dataset`);
-      return { classification: 'invalid', errors, warnings };
-    }
+  // --- Step 4: Require a declared root for core-valid classification. ---
+  if (options.root === undefined) {
+    warnings.push(
+      `No root declared: root-reachability cannot be verified. ` +
+        `Add a root declaration to the manifest entry for core benchmark classification.`
+    );
+    return { classification: 'edge-case-only', errors, warnings };
+  }
 
-    const reachable = computeReachableSet(components, options.root);
-    const unreachableIds = [...nodeIds].filter((id) => !reachable.has(id));
-    if (unreachableIds.length > 0) {
-      const sample = unreachableIds.slice(0, 5).join(', ');
-      const suffix = unreachableIds.length > 5 ? ` (and ${unreachableIds.length - 5} more)` : '';
-      warnings.push(
-        `${unreachableIds.length} node(s) not reachable from declared root "${options.root}": ${sample}${suffix}`
-      );
-    }
+  // --- Steps 5 & 6: Root-based checks. ---
+  if (!nodeIds.has(options.root)) {
+    errors.push(`Declared root "${options.root}" does not exist in the dataset`);
+    return { classification: 'invalid', errors, warnings };
+  }
+
+  const reachable = computeReachableSet(components, options.root);
+  const unreachableIds = [...nodeIds].filter((id) => !reachable.has(id));
+  if (unreachableIds.length > 0) {
+    const sample = unreachableIds.slice(0, 5).join(', ');
+    const suffix = unreachableIds.length > 5 ? ` (and ${unreachableIds.length - 5} more)` : '';
+    warnings.push(
+      `${unreachableIds.length} node(s) not reachable from declared root "${options.root}": ${sample}${suffix}`
+    );
   }
 
   if (warnings.length > 0) {
