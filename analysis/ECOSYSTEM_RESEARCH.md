@@ -633,10 +633,10 @@ benchmark status.
 
 All validity checks described in this section are **preflight / input admissibility** checks.
 They run before any timed benchmark execution and have no impact on measured algorithm
-complexity, latency, or memory. The timed benchmark section measures only the hydration
-algorithm applied to a valid, pre-admitted input. Rejecting an invalid input at preflight is
-not a benchmark data point; it is a guard that prevents corrupt or out-of-scope inputs from
-polluting the experiment results.
+complexity, latency, or memory. The timed benchmark measures both stages — hydration
+(Stage 1) and consumer probes (Stage 2) — applied to a valid, pre-admitted input.
+Rejecting an invalid input at preflight is not a benchmark data point; it is a guard that
+prevents corrupt or out-of-scope inputs from polluting the experiment results.
 
 This separation is the same contract applied by well-designed benchmark harnesses in other
 ecosystems (e.g. JMH warm-up phases in Java, criterion setup closures in Rust) where fixture
@@ -699,34 +699,29 @@ though the algorithms themselves also reject the invalid graph today.
 ### §6.3 — Duplicate edges: multigraph semantics are out of scope
 
 A *duplicate edge* (also called a parallel edge) is a second or subsequent directed edge from
-u to v where (u → v) already appears in the edge list. In graph theory, a directed graph that
-permits multiple edges between the same ordered pair of vertices is called a **multidigraph**
-(or directed multigraph). Multidigraphs are mathematically well-defined and useful in many
-contexts — network flow with parallel links, dependency schemas with multiple named
-relationship types, etc.
+u to v where (u → v) already appears in the edge list.
 
-A useful contrast: in a Nondeterministic Finite Automaton (NFA), multiple transitions from
-state q1 to state q2 are permitted and each carries a distinct input-symbol label (a1, a2,
-a3, ...). Those edges are distinguishable by label and encode genuinely different transition
-conditions. In the dependency graphs modeled here, edges carry no such label — they represent
-only the existence of a dependency from u to v. A second unlabeled edge (u → v) therefore
-encodes no additional information and cannot be distinguished from the first. This is the
-setting where multigraph multiplicity is semantically meaningless and simple-graph semantics
-are appropriate.
+**What is a multigraph?** In graph theory, a **multidigraph** (directed multigraph) is a
+directed graph that permits multiple parallel edges between the same ordered pair of vertices.
+Parallel edges are meaningful when they carry distinguishing data — for example, in a network
+flow graph each parallel edge (u → v) might represent a separate physical link with its own
+capacity, or in a weighted dependency schema each parallel edge might encode a different
+relationship type. In those settings, the edges are distinguishable because each one encodes
+something beyond the source and target alone, so removing one would change the graph's
+meaning.
 
-For this benchmark, however, the motivating model is a **simple directed graph**: each
-logical dependency from one object to another is represented by exactly one edge. In a
-well-formed backend serialization result, the same reference relationship is not listed
-multiple times. Duplicate edges in a manifest therefore indicate a generator defect, a
-hand-crafting error, or a data-merge artifact — none of which are inputs this benchmark is
-designed to measure.
+**Why this benchmark uses a simple directed graph.** In the hydration model an edge u → v
+means exactly one thing: *u has a dependency on v*. There is no weight, no label, no
+capacity — only the existence of the dependency. A second edge u → v expresses the same
+relationship as the first and is indistinguishable from it. Because the only meaningful
+content of an edge is its source and target, the **simple directed graph** model — at most
+one edge per ordered pair — is the correct abstraction for this domain.
 
-Core benchmark manifests containing duplicate edges are **rejected at preflight**. This is
-consistent with the simple-graph model declared in the motivating model (property 5 above)
-and avoids skewing edge-count metrics (E) that characterize dataset scale.
-
-Note that this is intentionally stricter than the "warn and canonicalize" approach sometimes
-used in resilient parsers.
+**Why reject, not canonicalize.** Core benchmark manifests containing duplicate edges are
+**rejected at preflight**. Note that this is intentionally stricter than the "warn and
+canonicalize" approach sometimes used in resilient parsers. Silently deduplicating edges
+would obscure the discrepancy between the declared edge count and the actual graph structure,
+skewing the scale metrics (E) that characterize each dataset tier.
 
 ---
 
