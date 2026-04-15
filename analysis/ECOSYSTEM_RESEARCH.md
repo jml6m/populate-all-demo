@@ -608,9 +608,8 @@ This model has the following defining properties:
    to the application-level materialization anchor. A missing or ambiguous root declaration
    is therefore a preflight error, not a resolvable ambiguity.
 5. **Simple directed graph.** The benchmark assumes a simple directed graph — at most one
-   directed edge from any node u to any node v. Parallel (duplicate) edges represent
-   multigraph-style input, which is mathematically well-defined in graph theory but
-   intentionally excluded from this benchmark scope (see §6.3).
+   directed edge from any node u to any node v. Parallel (duplicate) edges are intentionally
+   excluded from this benchmark scope (see §6.3).
 
 ### Input validity taxonomy
 
@@ -625,7 +624,7 @@ benchmark status.
 | **Realistic fan-out / fan-in patterns** | ✅ Core benchmark | Common in NoSQL embedded-reference schemas (one parent, many children; many parents, one shared child) |
 | **Orphaned nodes / disconnected subgraphs** | 🔲 Edge-case suite only | Not part of a root-selected materialization; see §6.1 for full reasoning |
 | **Multi-root forests** (intentional batch materializations) | 🔲 Edge-case suite only | May model a batch hydration request; meaningful only if the experiment extends to multi-document scenarios |
-| **Duplicate edges** (parallel edges / multigraph input) | ❌ Invalid — reject | Multigraph semantics are mathematically valid but intentionally out of scope; the benchmark assumes a simple directed graph; manifests with duplicate edges are rejected at preflight (see §6.3) |
+| **Duplicate edges** (parallel edges) | ❌ Invalid — reject | Parallel edges are out of scope; the benchmark assumes a simple directed graph; manifests with duplicate edges are rejected at preflight (see §6.3) |
 | **Missing-target (dangling) references** | ❌ Invalid — reject | An edge pointing to a node that does not exist is invalid input, not a topology variant; must be rejected before benchmarking |
 | **Corrupt or unparseable manifests** | ❌ Invalid — reject | Infrastructure/tooling concern, not an algorithm topology |
 
@@ -696,19 +695,15 @@ The experiment runner's manifest validator should still detect missing-target ed
 and abort with a clear, input-focused error. That remains an input-sanitization concern, even
 though the algorithms themselves also reject the invalid graph today.
 
-### §6.3 — Duplicate edges: multigraph semantics are out of scope
+### §6.3 — Duplicate edges: parallel edges are out of scope
 
 A *duplicate edge* (also called a parallel edge) is a second or subsequent directed edge from
-u to v where (u → v) already appears in the edge list.
-
-**What is a multigraph?** In graph theory, a **multidigraph** (directed multigraph) is a
-directed graph that permits multiple parallel edges between the same ordered pair of vertices.
-Parallel edges are meaningful when they carry distinguishing data — for example, in a network
-flow graph each parallel edge (u → v) might represent a separate physical link with its own
-capacity, or in a weighted dependency schema each parallel edge might encode a different
-relationship type. In those settings, the edges are distinguishable because each one encodes
-something beyond the source and target alone, so removing one would change the graph's
-meaning.
+u to v where (u → v) already appears in the edge list. Parallel edges can be meaningful in
+some graph models — for example, in a network flow graph each parallel edge (u → v) might
+represent a separate physical link with its own capacity, or in a dependency schema each
+parallel edge might encode a different relationship type — making individual edges
+distinguishable and removable without changing the graph's meaning. In this benchmark,
+however, edges carry no such additional data.
 
 **Why this benchmark uses a simple directed graph.** In the hydration model an edge u → v
 means exactly one thing: *u has a dependency on v*. There is no weight, no label, no
