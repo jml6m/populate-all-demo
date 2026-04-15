@@ -326,7 +326,7 @@ the designated root by following dependency edges.
 
 Additional constraints settled for the core benchmark:
 
-- **Explicit declared root.** The root is provided in the dataset manifest; it is not inferred
+- **Explicitly declared root.** The root is provided in the dataset manifest; it is not inferred
   from graph structure (e.g. in-degree). A missing or ambiguous root is a preflight error.
 - **Simple directed graph.** The benchmark assumes at most one directed edge between any
   ordered pair of nodes. Manifests with duplicate (parallel) edges are rejected at preflight;

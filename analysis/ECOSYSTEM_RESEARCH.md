@@ -602,7 +602,7 @@ This model has five defining properties:
    viability (Stage 2) are architecturally distinct. The benchmark measures both; the
    distinction matters for understanding which failures belong to the algorithm and which
    belong to the downstream consumer.
-4. **Explicit declared root.** The root is identified by an explicit declaration in the
+4. **Explicitly declared root.** The root is identified by an explicit declaration in the
    dataset manifest, not inferred from graph structure (e.g. by computing in-degree-zero
    nodes). Root inference is brittle in cyclic or richly shared graphs and is not equivalent
    to the application-level materialization anchor. A missing or ambiguous root declaration
