@@ -13,6 +13,7 @@ import { smartCompare } from './utils/compare';
 import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
+import { validateDataset } from './utils/manifest-validator';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
@@ -1071,6 +1072,28 @@ function runBenchmark() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n❌ Skipping dataset "${dataset}" — failed to load or validate data: ${msg}`);
       continue;
+    }
+
+    // -------------------------------------------------------------------------
+    // Preflight validation — runs before any timed algorithm execution.
+    // validateDataset checks structural integrity (duplicate IDs, duplicate
+    // edges, dangling references) and optionally verifies root-reachability
+    // if the manifest entry declares a root.  This step has zero impact on
+    // measured algorithm latency or memory — it is fixture-preparation only.
+    // -------------------------------------------------------------------------
+    const preflight = validateDataset(inputData, { root: inputEntry.root });
+    if (preflight.classification === 'invalid') {
+      console.error(`\n❌ Skipping dataset "${dataset}" — preflight validation failed:`);
+      for (const err of preflight.errors) {
+        console.error(`   • ${err}`);
+      }
+      continue;
+    }
+    if (preflight.classification === 'edge-case-only') {
+      console.warn(`\n⚠️  Dataset "${dataset}" classified as edge-case-only (not a core benchmark dataset):`);
+      for (const warn of preflight.warnings) {
+        console.warn(`   • ${warn}`);
+      }
     }
 
     const datasetResults: BenchmarkReport[] = [];
