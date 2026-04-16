@@ -2,6 +2,32 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ComponentFlat } from '../algorithms/types';
 import { validateDataset } from './manifest-validator';
+import type { ValidationResult } from './manifest-validator';
+
+// ---------------------------------------------------------------------------
+// Typed assertion helpers
+//
+// Using `asserts r is X` (TypeScript assertion functions) accomplishes two
+// things simultaneously:
+//   1. Runtime — throws if the classification is wrong (same effect as
+//      assert.equal(r.classification, '...')).
+//   2. Compile-time — narrows the type of `r` for the rest of the block,
+//      so TypeScript can verify that callers only access fields that are
+//      guaranteed non-empty for that tier (e.g. `warnings: string[]` for
+//      edge-case-only, `errors: string[]` for invalid).
+// ---------------------------------------------------------------------------
+
+function assertCoreValid(r: ValidationResult): asserts r is Extract<ValidationResult, { classification: 'core-valid' }> {
+  assert.equal(r.classification, 'core-valid');
+}
+
+function assertEdgeCaseOnly(r: ValidationResult): asserts r is Extract<ValidationResult, { classification: 'edge-case-only' }> {
+  assert.equal(r.classification, 'edge-case-only');
+}
+
+function assertInvalid(r: ValidationResult): asserts r is Extract<ValidationResult, { classification: 'invalid' }> {
+  assert.equal(r.classification, 'invalid');
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,99 +41,66 @@ function makeLinear(...ids: string[]): ComponentFlat[] {
   }));
 }
 
+/** Makes a closed cycle: ids[0] → ids[1] → … → ids[n-1] → ids[0] */
+function makeCycle(...ids: string[]): ComponentFlat[] {
+  return ids.map((id, i) => ({
+    id,
+    dependencies: [ids[(i + 1) % ids.length]],
+  }));
+}
+
 // ---------------------------------------------------------------------------
-// Edge-case-only — no declared root (root-reachability cannot be verified)
+// Core-valid — auto-detected root (unique zero-in-degree node), all reachable
 // ---------------------------------------------------------------------------
 
-describe('validateDataset — edge-case-only: no declared root', () => {
-  it('classifies an empty dataset without a root as edge-case-only', () => {
-    const result = validateDataset([]);
-    assert.equal(result.classification, 'edge-case-only');
-    assert.deepEqual(result.errors, []);
-    assert.ok(result.warnings.length > 0, 'should produce a no-root warning');
-    assert.ok(result.warnings[0].includes('No root declared'), 'warning should mention missing root');
-  });
-
-  it('classifies a single node without a root as edge-case-only', () => {
+describe('validateDataset — core-valid: auto-detected root, all nodes reachable', () => {
+  it('classifies a single node as core-valid (it is the trivial root and reaches itself)', () => {
     const result = validateDataset([{ id: 'a', dependencies: [] }]);
-    assert.equal(result.classification, 'edge-case-only');
-    assert.deepEqual(result.errors, []);
-    assert.ok(result.warnings[0].includes('No root declared'));
-  });
-
-  it('classifies a linear chain without a root as edge-case-only', () => {
-    const result = validateDataset(makeLinear('a', 'b', 'c'));
-    assert.equal(result.classification, 'edge-case-only');
-    assert.deepEqual(result.errors, []);
-  });
-
-  it('classifies a 2-node cycle without a root as edge-case-only', () => {
-    const components: ComponentFlat[] = [
-      { id: 'a', dependencies: ['b'] },
-      { id: 'b', dependencies: ['a'] },
-    ];
-    const result = validateDataset(components);
-    assert.equal(result.classification, 'edge-case-only');
-  });
-
-  it('classifies a diamond graph without a root as edge-case-only', () => {
-    const components: ComponentFlat[] = [
-      { id: 'root', dependencies: ['left', 'right'] },
-      { id: 'left', dependencies: ['shared'] },
-      { id: 'right', dependencies: ['shared'] },
-      { id: 'shared', dependencies: [] },
-    ];
-    const result = validateDataset(components);
-    assert.equal(result.classification, 'edge-case-only');
-    assert.deepEqual(result.errors, []);
-  });
-
-  it('warning message explains how to fix the missing-root issue', () => {
-    const result = validateDataset([{ id: 'x', dependencies: [] }]);
-    assert.ok(result.warnings[0].includes('manifest entry'), 'warning should hint at the fix');
-  });
-});
-
-describe('validateDataset — core-valid: declared root, all nodes reachable', () => {
-  it('classifies a linear chain as core-valid when root is the chain head', () => {
-    const result = validateDataset(makeLinear('a', 'b', 'c'), { root: 'a' });
-    assert.equal(result.classification, 'core-valid');
+    assertCoreValid(result);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.warnings, []);
   });
 
-  it('classifies a diamond graph as core-valid when root is the top node', () => {
+  it('classifies a linear chain as core-valid (head has in-degree 0, reaches all)', () => {
+    // a → b → c; only 'a' has in-degree 0 → auto-detected root
+    const result = validateDataset(makeLinear('a', 'b', 'c'));
+    assertCoreValid(result);
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  it('classifies a diamond graph as core-valid (top node has in-degree 0)', () => {
     const components: ComponentFlat[] = [
       { id: 'top', dependencies: ['left', 'right'] },
       { id: 'left', dependencies: ['bottom'] },
       { id: 'right', dependencies: ['bottom'] },
       { id: 'bottom', dependencies: [] },
     ];
-    const result = validateDataset(components, { root: 'top' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset(components);
+    assertCoreValid(result);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.warnings, []);
   });
 
-  it('classifies a cyclic graph as core-valid when root can reach all nodes via the cycle', () => {
-    // root → a → b → root (cycle), plus b → c (leaf)
+  it('classifies a cyclic graph as core-valid when the unique zero-in-degree root reaches all nodes via cycles', () => {
+    // 'entry' has in-degree 0; a → b → a forms a cycle, but entry can reach both.
     const components: ComponentFlat[] = [
-      { id: 'root', dependencies: ['a'] },
+      { id: 'entry', dependencies: ['a', 'c'] },
       { id: 'a', dependencies: ['b'] },
-      { id: 'b', dependencies: ['root', 'c'] },
+      { id: 'b', dependencies: ['a', 'c'] }, // a↔b cycle
       { id: 'c', dependencies: [] },
     ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset(components);
+    assertCoreValid(result);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.warnings, []);
   });
 
-  it('classifies a hand-authored 10-node graph as core-valid when root reaches all nodes', () => {
-    // Mirrors the real-world "start from the entry-point, hydrate closure" pattern.
+  it('classifies a hand-authored 10-node graph as core-valid when the unique root reaches all nodes', () => {
+    // 'entry' is the only node with no incoming edges.
     const components: ComponentFlat[] = [
       { id: 'entry', dependencies: ['svc_a', 'svc_b'] },
-      { id: 'svc_a', dependencies: ['db_x', 'db_y'] },
+      { id: 'svc_a', dependencies: ['db_x', 'db_y', 'model_4'] },
       { id: 'svc_b', dependencies: ['db_y', 'db_z'] },
       { id: 'db_x', dependencies: ['model_1'] },
       { id: 'db_y', dependencies: ['model_1', 'model_2'] },
@@ -117,92 +110,140 @@ describe('validateDataset — core-valid: declared root, all nodes reachable', (
       { id: 'model_3', dependencies: [] },
       { id: 'model_4', dependencies: ['model_3'] },
     ];
-    // model_4 is added by svc_a's second path
-    // Let's wire svc_a → model_4 as well to make it reachable
-    components[1] = { id: 'svc_a', dependencies: ['db_x', 'db_y', 'model_4'] };
-
-    const result = validateDataset(components, { root: 'entry' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset(components);
+    assertCoreValid(result);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.warnings, []);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Edge-case-only — structurally sound but not fully root-reachable
+// Edge-case-only — no unique root detectable
+// (0 or >1 nodes with in-degree zero)
 // ---------------------------------------------------------------------------
 
-describe('validateDataset — edge-case-only: unreachable nodes with declared root', () => {
-  it('classifies a graph with an orphaned (disconnected) node as edge-case-only', () => {
-    const components: ComponentFlat[] = [
-      { id: 'root', dependencies: ['a'] },
-      { id: 'a', dependencies: [] },
-      { id: 'orphan', dependencies: [] }, // not reachable from root
-    ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'edge-case-only');
+describe('validateDataset — edge-case-only: no unique root detectable', () => {
+  it('classifies an empty dataset as edge-case-only (no nodes, no root)', () => {
+    const result = validateDataset([]);
+    assertEdgeCaseOnly(result);
     assert.deepEqual(result.errors, []);
-    assert.ok(result.warnings.length > 0, 'should produce a warning about unreachable node');
-    assert.ok(result.warnings[0].includes('orphan'), 'warning should name the unreachable node');
+    assert.ok(result.warnings.length > 0, 'should produce a warning');
+    assert.ok(result.warnings[0].includes('No root detected'), 'warning should mention root detection failure');
   });
 
-  it('classifies a multi-root forest as edge-case-only when root is one of the trees', () => {
-    // Two completely disconnected trees: root_a→x and root_b→y
+  it('classifies a 2-node cycle as edge-case-only (every node has an incoming edge)', () => {
+    // a → b → a: both nodes have in-degree 1, so no zero-in-degree root exists.
+    const result = validateDataset(makeCycle('a', 'b'));
+    assertEdgeCaseOnly(result);
+    assert.deepEqual(result.errors, []);
+  });
+
+  it('classifies a 3-node cycle as edge-case-only', () => {
+    const result = validateDataset(makeCycle('x', 'y', 'z'));
+    assertEdgeCaseOnly(result);
+    assert.deepEqual(result.errors, []);
+  });
+
+  it('classifies a 2-tree forest as edge-case-only (two nodes have in-degree 0)', () => {
+    // root_a and root_b each have in-degree 0 — two candidate roots detected.
     const components: ComponentFlat[] = [
       { id: 'root_a', dependencies: ['x'] },
       { id: 'x', dependencies: [] },
       { id: 'root_b', dependencies: ['y'] },
       { id: 'y', dependencies: [] },
     ];
-    const result = validateDataset(components, { root: 'root_a' });
-    assert.equal(result.classification, 'edge-case-only');
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
     assert.deepEqual(result.errors, []);
-    // root_b and y are not reachable from root_a
-    assert.ok(result.warnings.length > 0);
-    const warningText = result.warnings[0];
-    assert.ok(warningText.includes('2'), 'should note 2 unreachable nodes');
+    assert.ok(result.warnings[0].includes('2'), 'warning should report 2 candidate roots');
+    assert.ok(result.warnings[0].includes('candidate root'), 'warning should describe candidate roots');
   });
 
-  it('classifies a graph where root is a sink (no outgoing edges) but other nodes exist as edge-case-only', () => {
-    // root has no dependencies so can only reach itself; b, c are unreachable
+  it('"and N more" suffix appears when more than 5 zero-in-degree nodes exist', () => {
+    // Build a star rooted at a single hub, then add 7 standalone roots (in-degree 0).
     const components: ComponentFlat[] = [
-      { id: 'root', dependencies: [] },
-      { id: 'b', dependencies: ['root'] },
-      { id: 'c', dependencies: ['b'] },
+      { id: 'hub', dependencies: ['leaf'] },
+      { id: 'leaf', dependencies: [] },
+      ...Array.from({ length: 7 }, (_, i) => ({ id: `extra_root_${i}`, dependencies: [] })),
     ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'edge-case-only');
-    assert.ok(result.warnings[0].includes('2'), 'should note 2 unreachable nodes');
-  });
-
-  it('warning lists unreachable node IDs (up to 5 shown by name)', () => {
-    const components: ComponentFlat[] = [
-      { id: 'root', dependencies: ['a'] },
-      { id: 'a', dependencies: [] },
-      { id: 'b', dependencies: [] },
-      { id: 'c', dependencies: [] },
-      { id: 'd', dependencies: [] },
-      { id: 'e', dependencies: [] },
-      { id: 'f', dependencies: [] }, // 5 orphans: b, c, d, e, f
-    ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'edge-case-only');
-    assert.ok(result.warnings[0].includes('5'), 'should report 5 unreachable nodes');
-  });
-
-  it('"and N more" suffix appears when more than 5 nodes are unreachable', () => {
-    const components: ComponentFlat[] = [
-      { id: 'root', dependencies: [] },
-      ...Array.from({ length: 8 }, (_, i) => ({ id: `orphan_${i}`, dependencies: [] })),
-    ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'edge-case-only');
-    assert.ok(result.warnings[0].includes('and 3 more'), 'should mention overflow count');
+    // hub and all extra_root_N have in-degree 0 → 8 candidates total.
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('8'), 'should report 8 candidate roots');
+    assert.ok(result.warnings[0].includes('and 3 more'), 'should note overflow with "and 3 more"');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Invalid — hard structural errors
+// Edge-case-only — auto-detected root present but some nodes unreachable
+// ---------------------------------------------------------------------------
+
+describe('validateDataset — edge-case-only: unique root detected but nodes are unreachable', () => {
+  it('classifies a graph where a disconnected cycle is unreachable from the root', () => {
+    // 'root' has in-degree 0 (auto-detected). b and c form a cycle not reachable from root.
+    const components: ComponentFlat[] = [
+      { id: 'root', dependencies: ['a'] },
+      { id: 'a', dependencies: [] },
+      { id: 'b', dependencies: ['c'] }, // b↔c cycle: both have in-degree 1
+      { id: 'c', dependencies: ['b'] },
+    ];
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
+    assert.deepEqual(result.errors, []);
+    assert.ok(result.warnings.length > 0, 'should produce a warning about unreachable nodes');
+    // b and c are named in the warning
+    assert.ok(result.warnings[0].includes('2'), 'warning should note 2 unreachable nodes');
+  });
+
+  it('classifies a graph where the auto-detected root has no outgoing edges', () => {
+    // 'start' has in-degree 0 (auto-detected) but no deps — can only reach itself.
+    // a and b form a cycle so they have in-degree > 0.
+    const components: ComponentFlat[] = [
+      { id: 'start', dependencies: [] },
+      { id: 'a', dependencies: ['b'] },
+      { id: 'b', dependencies: ['a'] },
+    ];
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('2'), 'a and b are unreachable from start');
+  });
+
+  it('warning lists unreachable node IDs (up to 5 shown by name)', () => {
+    // root is the unique zero-in-degree node; b–f form a disconnected cycle.
+    const components: ComponentFlat[] = [
+      { id: 'root', dependencies: ['a'] },
+      { id: 'a', dependencies: [] },
+      // disconnected cycle of 5 nodes — all have in-degree > 0
+      { id: 'b', dependencies: ['c'] },
+      { id: 'c', dependencies: ['d'] },
+      { id: 'd', dependencies: ['e'] },
+      { id: 'e', dependencies: ['f'] },
+      { id: 'f', dependencies: ['b'] },
+    ];
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('5'), 'should report exactly 5 unreachable nodes');
+  });
+
+  it('"and N more" suffix appears when more than 5 nodes are unreachable', () => {
+    // root is the unique zero-in-degree node; orphan_0–7 form a disconnected cycle.
+    const components: ComponentFlat[] = [
+      { id: 'root', dependencies: ['a'] },
+      { id: 'a', dependencies: [] },
+      // disconnected cycle of 8 nodes — all have in-degree > 0
+      ...Array.from({ length: 8 }, (_, i) => ({
+        id: `orphan_${i}`,
+        dependencies: [`orphan_${(i + 1) % 8}`],
+      })),
+    ];
+    const result = validateDataset(components);
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('and 3 more'), 'should note overflow count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Invalid — duplicate node IDs
 // ---------------------------------------------------------------------------
 
 describe('validateDataset — invalid: duplicate node IDs', () => {
@@ -213,7 +254,7 @@ describe('validateDataset — invalid: duplicate node IDs', () => {
       { id: 'a', dependencies: ['b'] }, // duplicate
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.ok(result.errors.length > 0);
     assert.ok(result.errors[0].includes('"a"'), 'error should identify the duplicate ID');
   });
@@ -226,7 +267,7 @@ describe('validateDataset — invalid: duplicate node IDs', () => {
       { id: 'b', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.equal(result.errors.length, 2, 'should report one error per duplicate occurrence');
     assert.ok(result.errors.some((e) => e.includes('"a"')));
     assert.ok(result.errors.some((e) => e.includes('"b"')));
@@ -239,11 +280,15 @@ describe('validateDataset — invalid: duplicate node IDs', () => {
       { id: 'a', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     // Only duplicate-ID errors; dangling-ref check did not run.
     assert.ok(result.errors.every((e) => e.includes('Duplicate node ID')));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Invalid — dangling references
+// ---------------------------------------------------------------------------
 
 describe('validateDataset — invalid: dangling references', () => {
   it('rejects a dataset where a dependency points to an unknown node', () => {
@@ -252,7 +297,7 @@ describe('validateDataset — invalid: dangling references', () => {
       // 'b' is never declared
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.ok(result.errors.length > 0);
     assert.ok(result.errors[0].includes('"a"'), 'error should name the source node');
     assert.ok(result.errors[0].includes('"b"'), 'error should name the missing target node');
@@ -264,7 +309,7 @@ describe('validateDataset — invalid: dangling references', () => {
       { id: 'b', dependencies: ['ghost_3'] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.equal(result.errors.length, 3, 'one error per missing target');
   });
 
@@ -274,19 +319,22 @@ describe('validateDataset — invalid: dangling references', () => {
       { id: 'a', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.ok(result.errors[0].includes('"missing"'));
   });
 
   it('error message contains both source and target node IDs', () => {
     const components: ComponentFlat[] = [{ id: 'src', dependencies: ['tgt'] }];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
-    const err = result.errors[0];
-    assert.ok(err.includes('"src"'), 'error should include source node ID');
-    assert.ok(err.includes('"tgt"'), 'error should include missing target node ID');
+    assertInvalid(result);
+    assert.ok(result.errors[0].includes('"src"'), 'error should include source node ID');
+    assert.ok(result.errors[0].includes('"tgt"'), 'error should include missing target node ID');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Invalid — duplicate edges
+// ---------------------------------------------------------------------------
 
 describe('validateDataset — invalid: duplicate edges', () => {
   it('rejects a dataset where the same dependency is listed twice for one node', () => {
@@ -295,7 +343,7 @@ describe('validateDataset — invalid: duplicate edges', () => {
       { id: 'b', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.ok(result.errors.length > 0);
     assert.ok(result.errors[0].includes('"a"'), 'error should name the source node');
     assert.ok(result.errors[0].includes('"b"'), 'error should name the repeated dependency');
@@ -308,21 +356,21 @@ describe('validateDataset — invalid: duplicate edges', () => {
       { id: 'c', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.equal(result.errors.length, 2, 'one duplicate-edge error per source node');
   });
 
   it('does not report duplicate edges when two different nodes each have a single edge to the same target', () => {
     // a→c and b→c are two distinct edges from different sources — not duplicates.
-    // A hub node reaches both so the dataset is core-valid.
+    // 'hub' has in-degree 0 → auto-detected root → reaches all → core-valid.
     const components: ComponentFlat[] = [
       { id: 'hub', dependencies: ['a', 'b'] },
       { id: 'a', dependencies: ['c'] },
       { id: 'b', dependencies: ['c'] },
       { id: 'c', dependencies: [] },
     ];
-    const result = validateDataset(components, { root: 'hub' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset(components);
+    assertCoreValid(result);
     assert.deepEqual(result.errors, []);
   });
 
@@ -332,30 +380,11 @@ describe('validateDataset — invalid: duplicate edges', () => {
       { id: 'b', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     // Expect one duplicate-edge error (a→b twice) and one dangling-reference error (ghost).
     assert.equal(result.errors.length, 2);
     assert.ok(result.errors.some((e) => e.includes('Duplicate edge')));
     assert.ok(result.errors.some((e) => e.includes('Dangling reference')));
-  });
-});
-
-describe('validateDataset — invalid: nonexistent declared root', () => {
-  it('rejects when the declared root is not in the dataset', () => {
-    const components: ComponentFlat[] = [
-      { id: 'a', dependencies: [] },
-      { id: 'b', dependencies: [] },
-    ];
-    const result = validateDataset(components, { root: 'missing_root' });
-    assert.equal(result.classification, 'invalid');
-    assert.ok(result.errors.length > 0);
-    assert.ok(result.errors[0].includes('"missing_root"'), 'error should name the missing root');
-  });
-
-  it('reports the root-missing error even when structural checks passed', () => {
-    const result = validateDataset([{ id: 'a', dependencies: [] }], { root: 'not_a' });
-    assert.equal(result.classification, 'invalid');
-    assert.ok(result.errors[0].includes('does not exist'));
   });
 });
 
@@ -364,65 +393,61 @@ describe('validateDataset — invalid: nonexistent declared root', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateDataset — classification semantics', () => {
-  it('errors array is always empty for core-valid and edge-case-only results', () => {
+  it('errors array is always [] for core-valid and edge-case-only results', () => {
+    // core-valid: 'r' has in-degree 0, reaches 'a'.
     const coreComponents: ComponentFlat[] = [
       { id: 'r', dependencies: ['a'] },
       { id: 'a', dependencies: [] },
     ];
+    // edge-case-only: 'r' and 'orphan' both have in-degree 0 → multi-root.
     const edgeCaseComponents: ComponentFlat[] = [
       { id: 'r', dependencies: ['a'] },
       { id: 'a', dependencies: [] },
       { id: 'orphan', dependencies: [] },
     ];
 
-    const coreResult = validateDataset(coreComponents, { root: 'r' });
-    const edgeCaseResult = validateDataset(edgeCaseComponents, { root: 'r' });
+    const coreResult = validateDataset(coreComponents);
+    const edgeCaseResult = validateDataset(edgeCaseComponents);
 
+    assertCoreValid(coreResult);
+    assertEdgeCaseOnly(edgeCaseResult);
     assert.deepEqual(coreResult.errors, []);
     assert.deepEqual(edgeCaseResult.errors, []);
   });
 
-  it('warnings array is always empty for core-valid and invalid results', () => {
+  it('warnings array is always [] for core-valid and invalid results', () => {
     const coreComponents: ComponentFlat[] = [
       { id: 'r', dependencies: ['a'] },
       { id: 'a', dependencies: [] },
     ];
     const invalidComponents: ComponentFlat[] = [{ id: 'x', dependencies: ['ghost'] }];
 
-    const coreResult = validateDataset(coreComponents, { root: 'r' });
+    const coreResult = validateDataset(coreComponents);
     const invalidResult = validateDataset(invalidComponents);
 
+    assertCoreValid(coreResult);
+    assertInvalid(invalidResult);
     assert.deepEqual(coreResult.warnings, []);
     assert.deepEqual(invalidResult.warnings, []);
   });
 
   it('invalid takes precedence over edge-case-only (hard errors are not warnings)', () => {
-    // The graph has both a dangling ref (invalid) and a disconnected node (edge-case).
+    // The graph has a dangling ref (→ invalid) and structural multi-root (→ would be edge-case).
     // The result must be invalid, not edge-case-only.
     const components: ComponentFlat[] = [
       { id: 'root', dependencies: ['a', 'ghost'] }, // ghost is dangling
       { id: 'a', dependencies: [] },
-      { id: 'disconnected', dependencies: [] },
+      { id: 'disconnected', dependencies: [] }, // second zero-in-degree candidate
     ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'invalid');
+    const result = validateDataset(components);
+    assertInvalid(result);
     assert.ok(result.errors.length > 0);
-    // The unreachable-node warning is never generated for invalid datasets.
+    // The multi-root warning is never generated for invalid datasets.
     assert.deepEqual(result.warnings, []);
   });
 
-  it('root-existence failure (invalid) takes precedence over reachability concerns', () => {
-    const components: ComponentFlat[] = [{ id: 'a', dependencies: [] }];
-    const result = validateDataset(components, { root: 'nonexistent' });
-    assert.equal(result.classification, 'invalid');
-    // No warnings — error already terminates classification before the reachability check.
-    assert.deepEqual(result.warnings, []);
-  });
-
-  it('dataset without declared root is classified edge-case-only (root required for core-valid)', () => {
-    // A dataset must declare a root to qualify as core-valid.
-    // Without a root declaration, root-reachability cannot be verified, so
-    // the dataset is edge-case-only regardless of structural soundness.
+  it('multi-root forest is classified edge-case-only when the graph is otherwise sound', () => {
+    // tree_a_root and tree_b_root both have in-degree 0 → 2 candidate roots detected.
     const components: ComponentFlat[] = [
       { id: 'tree_a_root', dependencies: ['a1'] },
       { id: 'a1', dependencies: [] },
@@ -430,9 +455,10 @@ describe('validateDataset — classification semantics', () => {
       { id: 'b1', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'edge-case-only');
+    assertEdgeCaseOnly(result);
     assert.deepEqual(result.errors, []);
-    assert.ok(result.warnings.length > 0, 'should produce a no-root warning');
+    assert.ok(result.warnings.length > 0, 'should produce a multi-root warning');
+    assert.ok(result.warnings[0].includes('2'), 'should report 2 candidate roots');
   });
 });
 
@@ -441,14 +467,14 @@ describe('validateDataset — classification semantics', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateDataset — hand-authored fixtures (not generator-produced)', () => {
-  it('accepts a self-loop (node depends on itself) as core-valid when root reaches it', () => {
-    // Self-loops are valid simple-digraph edges and appear in real schema cycles.
+  it('accepts a self-loop (node depends on itself) as core-valid when the unique root reaches it', () => {
+    // 'root' has in-degree 0 (auto-detected); self_loop has in-degree 2 (from root + itself).
     const components: ComponentFlat[] = [
       { id: 'root', dependencies: ['self_loop'] },
       { id: 'self_loop', dependencies: ['self_loop'] },
     ];
-    const result = validateDataset(components, { root: 'root' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset(components);
+    assertCoreValid(result);
   });
 
   it('rejects a graph with a self-loop that also has a duplicate of that self-loop', () => {
@@ -456,16 +482,16 @@ describe('validateDataset — hand-authored fixtures (not generator-produced)', 
       { id: 'a', dependencies: ['a', 'a'] }, // self-loop listed twice
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.ok(result.errors.some((e) => e.includes('Duplicate edge')));
   });
 
   it('accepts a deeply nested star pattern (fan-out hub) as core-valid', () => {
-    // Hub has many spokes; all reachable from hub.
+    // Hub has many spokes; hub has in-degree 0 → auto-detected root → all reachable.
     const spokes = Array.from({ length: 20 }, (_, i) => ({ id: `spoke_${i}`, dependencies: [] }));
     const hub: ComponentFlat = { id: 'hub', dependencies: spokes.map((s) => s.id) };
-    const result = validateDataset([hub, ...spokes], { root: 'hub' });
-    assert.equal(result.classification, 'core-valid');
+    const result = validateDataset([hub, ...spokes]);
+    assertCoreValid(result);
   });
 
   it('rejects a graph where every node has a dangling reference (completely corrupt manifest)', () => {
@@ -475,13 +501,11 @@ describe('validateDataset — hand-authored fixtures (not generator-produced)', 
       { id: 'c', dependencies: ['x3'] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'invalid');
+    assertInvalid(result);
     assert.equal(result.errors.length, 3, 'one error per dangling reference');
   });
 
-  it('classifies a multi-root forest (no declared root) as edge-case-only', () => {
-    // Without a declared root, root-reachability cannot be verified:
-    // the dataset is edge-case-only regardless of structural soundness.
+  it('classifies a multi-root forest as edge-case-only (r1 and r2 both have in-degree 0)', () => {
     const components: ComponentFlat[] = [
       { id: 'r1', dependencies: ['a', 'b'] },
       { id: 'r2', dependencies: ['c'] },
@@ -490,21 +514,15 @@ describe('validateDataset — hand-authored fixtures (not generator-produced)', 
       { id: 'c', dependencies: [] },
     ];
     const result = validateDataset(components);
-    assert.equal(result.classification, 'edge-case-only');
-    assert.ok(result.warnings[0].includes('No root declared'));
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('candidate root'), 'warning should describe multiple candidate roots');
+    assert.ok(result.warnings[0].includes('2'), 'warning should report 2 candidate roots');
   });
 
-  it('classifies a multi-root forest (with declared root) as edge-case-only', () => {
-    const components: ComponentFlat[] = [
-      { id: 'r1', dependencies: ['a', 'b'] },
-      { id: 'r2', dependencies: ['c'] },
-      { id: 'a', dependencies: [] },
-      { id: 'b', dependencies: [] },
-      { id: 'c', dependencies: [] },
-    ];
-    const result = validateDataset(components, { root: 'r1' });
-    assert.equal(result.classification, 'edge-case-only');
-    // r2 and c are not reachable from r1.
-    assert.ok(result.warnings[0].includes('2'), 'two nodes are unreachable');
+  it('classifies a fully cyclic graph (no zero-in-degree node) as edge-case-only', () => {
+    // Every node participates in the cycle: a → b → c → a
+    const result = validateDataset(makeCycle('a', 'b', 'c'));
+    assertEdgeCaseOnly(result);
+    assert.ok(result.warnings[0].includes('No root detected'), 'warning should explain no root was found');
   });
 });

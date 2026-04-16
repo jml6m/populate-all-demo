@@ -1082,7 +1082,7 @@ function runBenchmark() {
     // algorithm execution.  This step has zero impact on measured algorithm
     // latency or memory — it is fixture-preparation only.
     // -------------------------------------------------------------------------
-    const preflight = validateDataset(inputData, { root: inputEntry.root });
+    const preflight = validateDataset(inputData);
     if (preflight.classification !== 'core-valid') {
       const isInvalid = preflight.classification === 'invalid';
       const icon = isInvalid ? '❌' : '⚠️';
