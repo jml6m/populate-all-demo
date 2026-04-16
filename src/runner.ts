@@ -13,6 +13,7 @@ import { smartCompare } from './utils/compare';
 import { consumerProbes } from './utils/consumer';
 import { assertSafePathSegment, loadManifest, loadYaml } from './utils/data-loader';
 import { flatCompare } from './utils/flat-compare';
+import { validateDataset } from './utils/manifest-validator';
 
 const algorithms: PopulateAlgorithm[] = [naiveRecursion, mapTracker, tarjanSccLayering, twoPassWire];
 
@@ -1070,6 +1071,26 @@ function runBenchmark() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n❌ Skipping dataset "${dataset}" — failed to load or validate data: ${msg}`);
+      continue;
+    }
+
+    // -------------------------------------------------------------------------
+    // Preflight validation — runs before any timed algorithm execution.
+    // validateDataset checks structural integrity (duplicate IDs, duplicate
+    // edges, dangling references) and verifies that a root is declared and all
+    // nodes are reachable from it.  Only `core-valid` datasets proceed to
+    // algorithm execution.  This step has zero impact on measured algorithm
+    // latency or memory — it is fixture-preparation only.
+    // -------------------------------------------------------------------------
+    const preflight = validateDataset(inputData);
+    if (preflight.classification !== 'core-valid') {
+      const isInvalid = preflight.classification === 'invalid';
+      const icon = isInvalid ? '❌' : '⚠️';
+      const reason = isInvalid ? 'preflight validation failed' : 'classified as edge-case-only (not a core benchmark dataset)';
+      console.error(`\n${icon} Skipping dataset "${dataset}" — ${reason}:`);
+      for (const msg of [...preflight.errors, ...preflight.warnings]) {
+        console.error(`   • ${msg}`);
+      }
       continue;
     }
 

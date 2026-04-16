@@ -15,20 +15,28 @@ function generateDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
   const flatComponents: ComponentFlat[] = [];
 
-  // 1. Initialize all nodes
+  // 1. Initialize all nodes.
   for (let i = 0; i < size; i++) {
     flatComponents.push({ id: `comp_${i}`, dependencies: [] });
   }
 
-  // 2. Assign edges (dependencies) to create cyclic graphs
+  // 2. Build a spanning chain comp_0 → comp_1 → … → comp_{n-1}.
+  //    This guarantees every node is reachable from comp_0 by construction
+  //    so the preflight validator always classifies these datasets as core-valid.
+  //    comp_0 is the chain head and has no predecessors, giving it in-degree 0.
+  for (let i = 0; i < size - 1; i++) {
+    flatComponents[i].dependencies.push(`comp_${i + 1}`);
+  }
+
+  // 3. Add random extra edges to create cycles and graph variety.
+  //    Targets are always drawn from {comp_1 … comp_{n-1}} so comp_0's
+  //    in-degree remains 0 — preserving it as the unique auto-detectable root.
   for (let i = 0; i < size; i++) {
-    const numDeps = Math.floor(rng() * 3) + 1; // Each component has 1 to 3 dependencies
-
-    for (let d = 0; d < numDeps; d++) {
-      const targetIdx = Math.floor(rng() * size);
+    const numExtra = Math.floor(rng() * 3); // 0 – 2 extra edges per node
+    for (let d = 0; d < numExtra; d++) {
+      // comp_0 (index 0) is never a target; choose from [1, size-1].
+      const targetIdx = 1 + Math.floor(rng() * (size - 1));
       const targetId = `comp_${targetIdx}`;
-
-      // Prevent immediate self-loop (comp_1 -> comp_1) to ensure deep, complex cycles
       if (targetIdx !== i && !flatComponents[i].dependencies.includes(targetId)) {
         flatComponents[i].dependencies.push(targetId);
       }
@@ -41,10 +49,18 @@ function generateDataset(size: number, seedSuffix: string) {
 /**
  * Generates a genuinely acyclic dataset (DAG).
  *
- * Edges only go from a lower-index node to a higher-index node, which
- * guarantees no cycles exist (topological order is simply ascending index).
- * This contrasts with generateDataset(), which allows arbitrary edges and
- * intentionally produces cyclic graphs.
+ * The generator guarantees two invariants by construction — no post-hoc
+ * patching required:
+ *
+ *   1. Acyclicity — every edge goes from a lower-index node to a higher-index
+ *      node, so the topological order is simply ascending index.
+ *
+ *   2. Single-root connectivity — a random spanning tree rooted at comp_0 is
+ *      laid down first (step 2 below), ensuring every node is reachable from
+ *      comp_0 regardless of what extra edges the RNG adds later.  comp_0 is
+ *      index 0, so it can never be the target of a lower-to-higher-index edge;
+ *      its in-degree is therefore always 0, making it the unique
+ *      auto-detectable root.
  *
  * On this dataset:
  *   - Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC) pass
@@ -57,28 +73,37 @@ function generateDataset(size: number, seedSuffix: string) {
  * This makes acyclic-control a precise control: it isolates the shared-reference
  * requirement from the cycle-detection requirement.  An algorithm failing here
  * lacks memoization, not cycle-handling.
- *
- * comp_0 is first in topological order and, by construction, has no incoming
- * edges. Traversal can start from it, with dependencies always pointing toward
- * higher-index nodes.
  */
 function generateAcyclicDataset(size: number, seedSuffix: string) {
   const rng = seedrandom(`${SEED}-${seedSuffix}`);
   const flatComponents: ComponentFlat[] = [];
 
-  // 1. Initialize all nodes
+  // 1. Initialize all nodes.
   for (let i = 0; i < size; i++) {
     flatComponents.push({ id: `comp_${i}`, dependencies: [] });
   }
 
-  // 2. Assign edges only from lower-index nodes to higher-index nodes.
-  // Node at index (size-1) cannot depend on any higher-index node, because none exist,
-  // so we stop before the last node.
+  // 2. Build a random spanning tree rooted at comp_0.
+  //    For each node i (1 … n-1), pick a random parent j in [0, i-1] and add
+  //    the directed edge j → i.  Because j < i always, the edge goes from a
+  //    lower-index node to a higher-index node, preserving acyclicity.
+  //    Every node except comp_0 receives exactly one spanning-tree parent, so:
+  //      • comp_0 has no incoming spanning-tree edges (in-degree 0 — unique root).
+  //      • Every other node is reachable from comp_0 via some path of tree edges.
+  for (let i = 1; i < size; i++) {
+    const parentIdx = Math.floor(rng() * i); // random j in [0, i-1]
+    flatComponents[parentIdx].dependencies.push(`comp_${i}`);
+  }
+
+  // 3. Add random extra acyclic edges (lower-index → higher-index) to create
+  //    the shared-reference patterns that expose missing memoization in
+  //    Naive Recursion.  comp_0 (index 0) can never be a target of these
+  //    edges (targets are always strictly greater than the source index), so
+  //    comp_0's in-degree remains 0.
   for (let i = 0; i < size - 1; i++) {
-    const remaining = size - 1 - i; // number of higher-index nodes available as targets
-    const numDeps = Math.floor(rng() * 2) + 1; // 1 or 2 dependencies per node (range [1, 2])
-    for (let d = 0; d < numDeps; d++) {
-      // Target is always a higher-index node, guaranteeing acyclicity.
+    const remaining = size - 1 - i;
+    const numExtra = Math.floor(rng() * 2); // 0 or 1 extra edge per node
+    for (let d = 0; d < numExtra; d++) {
       const targetIdx = i + 1 + Math.floor(rng() * remaining);
       const targetId = `comp_${targetIdx}`;
       if (!flatComponents[i].dependencies.includes(targetId)) {
@@ -90,9 +115,11 @@ function generateAcyclicDataset(size: number, seedSuffix: string) {
   return { flatComponents };
 }
 
-// Converts the flat input into an answer: same nodes, but dependency foreign-key strings
-// replaced by array indices. This avoids the deep YAML nesting that cyclic object
-// serialization (aliasDuplicateObjects) would produce for large graphs.
+/**
+ * Converts the flat input into an answer: same nodes, but dependency foreign-key strings
+ * replaced by array indices. This avoids the deep YAML nesting that cyclic object
+ * serialization (aliasDuplicateObjects) would produce for large graphs.
+ */
 function buildAnswerData(flatComponents: ComponentFlat[]): AnswerEntry[] {
   const idToIndex = new Map<string, number>();
   flatComponents.forEach((c, i) => idToIndex.set(c.id, i));
@@ -191,6 +218,9 @@ function run() {
     const datasetDir = path.join(outputDir, dataset.name);
     fs.mkdirSync(datasetDir, { recursive: true });
 
+    // Both generators guarantee by construction that comp_0 is the unique
+    // zero-in-degree root and that every node is reachable from it, so the
+    // preflight validator will always classify these datasets as core-valid.
     manifestFiles[`${dataset.name}_input`] = writeYaml(dataset.name, `${dataset.name}_input`, flatComponents);
 
     const answerData = buildAnswerData(flatComponents);
