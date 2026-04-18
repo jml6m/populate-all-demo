@@ -1,5 +1,9 @@
 # Cycle-Safe Graph Population in O(V+E): A Two-Pass Solution
 
+This project explores how to fully populate partially hydrated object graphs, showing that cycle-aware graph algorithms can reliably materialize self-referential structures without infinite recursion or data loss.
+
+**Setup note (how to read benchmark output):** hydration correctness and downstream output/consumer viability are different checks in this benchmark. Stage 1 answers whether the graph was fully populated correctly; Stage 2 answers whether a consumer can safely process that hydrated graph. Timed benchmark measurements are reported for `core-valid` datasets only, while edge-case-only and invalid inputs are handled as preflight admissibility outcomes. See [ECOSYSTEM_RESEARCH.md](./ECOSYSTEM_RESEARCH.md) for deeper rationale and cross-ecosystem context.
+
 ## §1 — Problem Definition: The Need for Deterministic Pointer-to-Object Replacement in Cyclic Graphs
 
 The transformation of [[flat relational tuples]] into fully populated objects (sometimes referred to as hydration) is a fundamental bridging step between persistence layers and application logic. While this process is straightforward for Directed Acyclic Graphs (DAGs) using simple recursive descent, the algorithm gets more complex when applied to real-world schemas containing bidirectional or self-referential dependencies.
@@ -51,11 +55,11 @@ where the challenge is well-documented and no general iterative solution is wide
 Recurse into each dependency. No cycle guard — no memoization. On any cyclic graph — even a
 trivial 10-node one — the traversal re-enters a visited node and the call stack overflows.
 
-On an acyclic graph with shared references (the `acyclic-control` tier), the algorithm fails
+On an acyclic graph with reused dependencies (the `acyclic-control` tier), the algorithm fails
 for a different reason: without memoization, each `populate()` call creates a fresh object, so
 a node that appears as a dependency of multiple parents is represented by multiple distinct
-objects rather than one shared instance. The comparers detect this identity mismatch and report
-a hydration failure. The failure mode differs from the cyclic case, but the outcome is the
+objects rather than one coherent materialized node. The comparers detect this hydration mismatch
+and report a hydration failure. The failure mode differs from the cyclic case, but the outcome is the
 same: Naive Recursion fails on every dataset in this experiment.
 
 ### Map Tracker — correctness fix, not a scalability fix
@@ -180,8 +184,8 @@ scale.
 | Two-Pass Wire   | ✅ Pass                 | ✅ Pass           | ✅ Pass           | ✅ Pass           | ✅ Pass           |
 
 Naive Recursion fails on `acyclic-control` for a different reason than on cyclic datasets:
-without memoization, shared-reference nodes are duplicated into separate objects instead of
-being wired to the same instance (identity mismatch, not stack overflow). Map Tracker is
+without memoization, reused dependency nodes are duplicated into separate objects instead of
+being materialized as one coherent graph (hydration mismatch, not stack overflow). Map Tracker is
 especially deceptive: it passes at small scale (10–5K nodes), giving false confidence, then
 crashes at production scale (50K+). The call stack depth, not the cycle guard, is the binding
 constraint.
@@ -321,13 +325,15 @@ allocates exactly V+1 objects (the Map plus one shell per node) and nothing else
 ## §6 — Dataset Scope and Input Validity
 
 The benchmark targets a **root-reachable, single-root** object graph — the exact closure
-materialized from one NodeJS/NoSQL request. Every node in a valid dataset is reachable from
-the designated root by following dependency edges. The root is identified by **exactly one
-explicit declaration** in the dataset manifest; it is not inferred from graph structure (e.g.
-in-degree), and a missing or ambiguous declaration is a preflight error. The benchmark also
-assumes a **simple directed graph** — at most one directed edge between any ordered pair of
-nodes. All input admissibility checks are **preflight**: they run before any timed execution
-and have no effect on measured algorithm complexity, latency, or memory.
+materialized from one NodeJS/NoSQL request. Every node in a `core-valid` dataset must be
+reachable from the root by following dependency edges. Under the current benchmark contract,
+that root is **auto-detected from graph structure** as the unique in-degree-zero node (not
+declared in the manifest). Datasets with no unique detected root or unreachable nodes are
+classified as `edge-case-only`; datasets with duplicate IDs, duplicate edges, or dangling
+references are `invalid`. The benchmark also assumes a **simple directed graph** — at most
+one directed edge between any ordered pair of nodes. All input admissibility checks are
+**preflight**: they run before any timed execution and have no effect on measured algorithm
+complexity, latency, or memory.
 
 A full input-validity taxonomy — defining which graph shapes belong in the core benchmark,
 which are edge-case-only structures, and which are invalid inputs — is defined in
