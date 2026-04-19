@@ -191,7 +191,7 @@ noting:
 
 MikroORM is the closest Node.js ORM to the SQLAlchemy/Hibernate model: its identity map means
 cyclic hydration is handled correctly at the ORM layer, but the application developer must still
-handle the serialization boundary separately.
+handle downstream output concerns separately when consumers are not cycle-aware.
 
 ---
 
@@ -280,6 +280,10 @@ after the population algorithm runs, attempt to serialize the result using sever
 (native `JSON.stringify`, `flatted`, index-based, ID substitution) and measure which strategies
 survive at each graph scale. This would quantify the serialization problem independently of the
 population problem, providing a complete picture of the end-to-end pipeline.
+
+For this benchmark's target use case, output strategies that truncate cycles or drop links are
+considered non-viable as canonical downstream outputs, even when they are acceptable in other
+product contexts (for example, display-only payloads).
 
 ---
 
@@ -498,11 +502,11 @@ SvelteKit and Nuxt 3. It supports `undefined`, `BigInt`, `Date`, `Map`, `Set`, a
 types that `JSON.stringify` cannot handle — but it explicitly rejects circular structures by
 design.
 
-The practical consequence is that any ORM that successfully hydrates a cyclic entity graph on
-the server (Hibernate, SQLAlchemy, MikroORM, EF Core) will crash at the SSR serialization step
-unless the developer manually strips or normalizes the data before returning it from a `load`
-function or React Server Component. The ORM's hydration succeeded; the framework's serializer
-did not.
+The practical consequence is that ORMs that successfully hydrate a cyclic entity graph on
+the server (Hibernate, SQLAlchemy, MikroORM, EF Core) can still fail at the SSR serialization
+step unless the developer strips or normalizes the data before returning it from a `load`
+function or React Server Component. The ORM's hydration may succeed while the framework's
+default serializer still rejects the self-referential structure.
 
 This is the same hydration-vs-serialization boundary identified in §3, manifested at the SSR
 layer. The fix is the same: normalize cyclic references to ID pointers before the data crosses
@@ -595,18 +599,17 @@ This model has the following defining properties:
 1. **Root-reachable closure.** Every node in the materialized graph is reachable from the
    selected root by following dependency edges. Nodes that are not reachable from the root
    were simply not part of the query result — they are absent, not orphaned.
-2. **Identity preservation.** Nodes shared by multiple parents must be represented as a
-   single in-memory object instance, not independent copies. This is what the Two-Pass Wire
-   strategy guarantees and what Naive Recursion violates.
+2. **Single-object materialization for reused dependencies.** Dependencies reached from
+   multiple parents must still resolve to one coherent in-memory node in the fully populated
+   graph, not duplicated copies.
 3. **Two-stage pipeline.** Hydration correctness (Stage 1) and consumer/serialization
    viability (Stage 2) are architecturally distinct. The benchmark measures both; the
    distinction matters for understanding which failures belong to the algorithm and which
    belong to the downstream consumer.
-4. **Explicitly declared root.** The root is identified by an explicit declaration in the
-   dataset manifest, not inferred from graph structure (e.g. by computing in-degree-zero
-   nodes). Root inference is brittle in cyclic or richly shared graphs and is not equivalent
-   to the application-level materialization anchor. A missing or ambiguous root declaration
-   is therefore a preflight error, not a resolvable ambiguity.
+4. **Auto-detected root contract.** The benchmark currently infers root semantics from graph
+   structure: exactly one in-degree-zero node must exist, and all nodes must be reachable from
+   it for `core-valid` classification. Inputs without a unique detected root are
+   `edge-case-only`; hard structural faults remain `invalid`.
 5. **Simple directed graph.** The benchmark assumes a simple directed graph — at most one
    directed edge from any node u to any node v. Parallel (duplicate) edges are intentionally
    excluded from this benchmark scope (see §6.3).
@@ -619,7 +622,7 @@ benchmark status.
 | Graph type | Status | Rationale |
 | --- | --- | --- |
 | **Root-reachable cyclic graphs** (mutual cycles, back-edges, self-loops reachable from root) | ✅ Core benchmark | Directly models the real-world hydration problem; `basic`, `medium`, `stress`, `extreme` tiers |
-| **Root-reachable DAGs with shared references** (`acyclic-control`) | ✅ Core benchmark | Exposes identity-mismatch failures (Naive Recursion) in the absence of cycles; required to separate cycle failures from memoization failures |
+| **Root-reachable DAGs with reused dependencies** (`acyclic-control`) | ✅ Core benchmark | Exposes hydration mismatches (Naive Recursion) even without cycles; separates cycle handling from materialization correctness |
 | **SCC-heavy / dense mutual-cycle graphs** | ✅ Core benchmark | Stress-tests the condensation and wiring phases; realistic for deeply inter-referenced domain models |
 | **Realistic fan-out / fan-in patterns** | ✅ Core benchmark | Common in NoSQL embedded-reference schemas (one parent, many children; many parents, one shared child) |
 | **Orphaned nodes / disconnected subgraphs** | 🔲 Edge-case suite only | Not part of a root-selected materialization; see §6.1 for full reasoning |

@@ -1077,10 +1077,10 @@ function runBenchmark() {
     // -------------------------------------------------------------------------
     // Preflight validation — runs before any timed algorithm execution.
     // validateDataset checks structural integrity (duplicate IDs, duplicate
-    // edges, dangling references) and verifies that a root is declared and all
-    // nodes are reachable from it.  Only `core-valid` datasets proceed to
-    // algorithm execution.  This step has zero impact on measured algorithm
-    // latency or memory — it is fixture-preparation only.
+    // edges, dangling references), enforces unique auto-detected root semantics,
+    // and verifies whole-graph reachability from that root. Only `core-valid`
+    // datasets proceed to algorithm execution. This step has zero impact on
+    // measured algorithm latency or memory — it is fixture-preparation only.
     // -------------------------------------------------------------------------
     const preflight = validateDataset(inputData);
     if (preflight.classification !== 'core-valid') {
