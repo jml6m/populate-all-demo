@@ -183,15 +183,16 @@ noting:
 
 | Library | Identity Map? | Cyclic Hydration | Specific Mechanism |
 |---|---|---|---|
-| **Mongoose** | No | ❌ Stack overflow | Recursive populate with no global node registry; each call site independently resolves the same node |
-| **Sequelize** | Partial (within query result) | ❌ Path must be manually pruned | `{ include: { all: true, nested: true } }` generates a recursive include tree; cyclic paths cause infinite query expansion |
-| **TypeORM** | Yes (within Unit of Work) | ❌ `eager: true` on both sides disallowed | EntityManager tracks loaded entities, but the eager-loading code path re-enters the same entity without checking the registry |
-| **Prisma** | No (immutable result objects) | ❌ Manual depth expansion only | Generated client returns plain JS objects; nested `include` must be written explicitly to each depth — no automatic resolution |
-| **MikroORM** | Yes (Identity Map + UoW) | ✅ Hydration safe | Select-in population strategy + identity map; cycles in memory are real JS circular refs — downstream `JSON.stringify` is the failure point |
+| **Mongoose** | No | ⚠️ Manual recursive depth specification required | No built-in schema-driven `populateAll()`; developers explicitly chain `.populate()` and manage depth/path expansion manually |
+| **Sequelize** | Partial (within query result) | ⚠️ First-level self-recursive expansion observed | In refined self-referential testing, `{ include: { all: true, nested: true } }` populated one child level but did not automatically continue through deeper levels without explicit path definition |
+| **TypeORM** | Yes (within Unit of Work) | ❌ `eager: true` on both sides disallowed | Circular eager loading on both sides of a recursive bidirectional relation is explicitly unsupported; a one-sided eager positive control succeeds |
+| **Prisma** | No (immutable result objects) | ⚠️ Manual depth expansion only | Generated client requires each recursive `include` depth to be written explicitly; no automatic full-depth recursive include |
+| **MikroORM** | Yes (Identity Map + UoW) | ✅ Cycle-safe hydration observed | Wildcard population hydrated cyclic relations in testing, and serialization succeeded via MikroORM entity serialization behavior; not a confirmed negative gap case like the others |
 
-MikroORM is the closest Node.js ORM to the SQLAlchemy/Hibernate model: its identity map means
-cyclic hydration is handled correctly at the ORM layer, but the application developer must still
-handle downstream output concerns separately when consumers are not cycle-aware.
+Node.js ORMs do not all fail in the same way: some primarily show manual-depth query limitations
+(Mongoose, Prisma), TypeORM enforces an explicit eager-loading constraint on recursive bidirectional
+relations, and MikroORM acts as a partial counterexample with successful cyclic hydration in this
+test set.
 
 ---
 
