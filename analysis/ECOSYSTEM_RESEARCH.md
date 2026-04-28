@@ -6,6 +6,9 @@ same allocate-then-wire pattern through the full software stack: backend persist
 the serialization boundary, GraphQL schema compilation, client-side caches, data-normalization
 utilities, state management libraries, and SSR serialization pipelines.
 
+The O(V+E) algorithm complexity proofs are in §1.4 of this document. The experiment design,
+results, and scaling summary are in [EXPERIMENT_ANALYSIS.md §§3–5](./EXPERIMENT_ANALYSIS.md).
+
 ---
 
 ## §1 — Completeness as a Global Property
@@ -64,6 +67,32 @@ Total: O(V) + O(E) = **O(V+E)**. No recursion, no cycle detection, no truncation
 The key insight is architectural: by separating _allocation_ from _wiring_, the algorithm
 converts a problem that requires global knowledge into two sequential passes, each of which only
 requires local information.
+
+### 1.4 — Per-algorithm O(V+E) verification
+
+Both algorithms that survive the benchmark are O(V+E) by construction. The following traces can
+be verified directly in the source code.
+
+**Two-Pass Wire** (`src/algorithms/schema-driven/01-two-pass-wire.ts`):
+
+- Pass 1: one loop over all V nodes to allocate shells → O(V)
+- Pass 2: one loop over all V nodes; for each node, iterate over its outgoing edges — each of
+  the E edges is visited exactly once → O(E)
+- Total: **O(V+E)**
+
+**Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
+
+- Iterative Tarjan's SCC: each node and each edge is visited exactly once → O(V+E)
+- Condensation DAG construction: one pass over all V nodes and E edges → O(V+E)
+- Kahn's BFS layer assignment: one pass over condensed nodes and edges → O(V+E)
+- Pre-allocation and wiring: O(V) + O(V+E)
+- Total: **O(V+E)**
+
+The super-linear constants observed at the `extreme` tier (250K nodes) are attributable to V8
+GC pressure on a large live heap, not to a change in algorithmic complexity. Tarjan SCC carries
+per-node auxiliary state (index/lowlink arrays, SCC membership sets, condensation DAG edges)
+that produces a meaningfully larger heap footprint than Two-Pass Wire, which allocates exactly
+V+1 objects (one shell per node plus the Map).
 
 ---
 
