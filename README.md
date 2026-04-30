@@ -4,7 +4,7 @@ This repository demonstrates how to fully populate a partially hydrated object g
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v18 or later
+- [Node.js](https://nodejs.org/) v20 or later
 - npm (included with Node.js)
 
 ## Getting started
@@ -41,5 +41,5 @@ npm run experiment:force
 
 ## Further reading
 
-- [Experiment Analysis](./analysis/EXPERIMENT_ANALYSIS.md) — problem definition, ecosystem context, experiment design, results, and interpretation.
-- [Ecosystem Research](./analysis/ECOSYSTEM_RESEARCH.md) — extended technical detail: O(V+E) complexity proof, ORM deep-dives, serialization boundary taxonomy, and cross-stack pattern unification.
+- [Experiment Analysis](./analysis/EXPERIMENT_ANALYSIS.md) — the primary report: problem definition, how the experiment is structured, what the five dataset tiers test, and the full results comparing all four algorithms across hydration correctness and downstream consumer viability.
+- [Ecosystem Research](./analysis/ECOSYSTEM_RESEARCH.md) — extended supporting material: the formal O(V+E) complexity proof, in-depth analysis of how major ORMs and data frameworks handle cyclic graphs across backend, serialization, and frontend layers, and a detailed input-validity taxonomy.
