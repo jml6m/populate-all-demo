@@ -1,811 +1,164 @@
-# Extended Ecosystem Research: Cyclic Graph Resolution Across the Stack
+# Extended Ecosystem Research: A Comparative Study of Graph Hydration and Serialization
 
-This document is a companion to [Experiment Analysis](./EXPERIMENT_ANALYSIS.md). It extends the
-thesis introduced there — that completeness is a _global_ property of a graph — by tracing the
-same allocate-then-wire pattern through the full software stack: backend persistence frameworks,
-the serialization boundary, GraphQL schema compilation, client-side caches, data-normalization
-utilities, state management libraries, and SSR serialization pipelines.
-
-The O(V+E) algorithm complexity proofs are in §1.4 of this document. The experiment design,
-results, and scaling summary are in [EXPERIMENT_ANALYSIS.md §§3–5](./EXPERIMENT_ANALYSIS.md).
+While our core experiment demonstrates a viable approach to cyclic graph hydration in JavaScript, this extended research takes a deeper dive into how the broader ecosystem handles these challenges. Specifically, we explore two distinct but deeply intertwined problems: the *schema-driven full hydration* problem (querying and reconstructing a complete, cyclic relational graph in memory) and the *serialization* problem (converting that hydrated, cyclic object into an acceptable format for transport). By examining a variety of technology stacks—from backend persistence frameworks to frontend state managers—we aim to understand how different languages and libraries attempt to bridge the gap between relational data stores and memory-safe graph representations.
 
 ---
 
-## §1 — Completeness as a Global Property
+## §1 — The Algorithmic Constraints of Cyclic Data
 
-### 1.1 — Local vs. global resolution
+### 1.1 — Why naive recursion fails on cyclic graphs
 
-Naive depth-first recursion treats graph resolution as a _local_ operation: to resolve node u,
-call `resolve(u)`, which calls `resolve(v)` for each dependency v, and so on. The assumption
-baked into this model is that a node's resolved form depends only on itself and its
-already-resolved neighbors. On a DAG that assumption holds — every call terminates because there
-are no back-edges. On a cyclic graph it does not. When resolution of u requires resolving v, and
-resolving v requires resolving u, neither call can return first, and the recursive call chain
-grows without bound until the runtime raises a stack overflow.
+A naive recursive hydrator assumes dependencies eventually terminate. In a cycle (`u -> v -> u`), that assumption is false: resolving `u` requires `v`, and resolving `v` immediately requires `u` again. Without a global identity map, recursion does not converge and eventually overflows the call stack.
 
-The important observation is that this failure is not incidental — it is a direct consequence
-of asking a local algorithm to solve a globally constrained problem. A node in a cycle cannot be
-fully resolved in isolation because its resolved form legitimately depends on an object that does
-not yet exist.
+### 1.2 — Why `maxDepth` guards also fail
 
-### 1.2 — Completeness as a global invariant
+A depth cap prevents infinite recursion, but it does so by truncating part of the graph. That means the algorithm returns an incomplete object model (missing edges or placeholders) rather than a fully hydrated cyclic graph. For schema-driven *full* hydration, depth caps are a safety stop, not a correctness solution.
 
-Completeness — the guarantee that every node's dependency list contains real, fully-wired
-objects rather than stubs, nulls, or IDs — is a _global_ invariant of the graph. It cannot be
-satisfied node-by-node in a single pass because satisfying it for node u may require that node v
-is already complete, while satisfying it for v may require that u is already complete. The
-invariant can only be established over the entire vertex set simultaneously.
+### 1.3 — Why `O(V+E)` is the right target
 
-A `maxDepth` guard does not solve this: it terminates the traversal but produces a silently
-incomplete graph. The invariant is weakened rather than upheld.
+To safely hydrate a cyclic graph, an algorithm must process every vertex (entity) and every edge (relationship) exactly once—resulting in a time complexity of `O(V+E)`.
 
-### 1.3 — Why the two-pass strategy works
+Pass 1 allocates a shell for each vertex and stores it in an identity map:
 
-The two-pass O(V+E) strategy succeeds precisely because it decouples _existence_ from
-_resolution_. Pass 1 (Allocation) establishes the global invariant that every object exists
-before any edge is wired:
+$$
+M[id(v)] = allocate(v) \quad \forall v \in V
+$$
 
-```
-M = { identity(v) : shell(v) | v ∈ V }    — O(V)
-```
+Pass 2 links relationships using constant-time identity-map lookups:
 
-Every node v is allocated as an empty shell and inserted into the Identity Map M, keyed by its
-stable identity (database ID, slug, etc.). After Pass 1, M is a complete directory of the
-graph. No node is missing. Pass 2 (Wiring) then resolves every edge in E by a constant-time
-lookup in M:
+$$
+M[id(u)].edge = M[id(v)] \quad \forall (u, v) \in E
+$$
 
-```
-∀ e = (u, v) ∈ E : wire(M[identity(u)], M[identity(v)])    — O(E)
-```
-
-Because every object already exists in M, `M[identity(v)]` is always a valid reference —
-regardless of whether u → v → u is a cycle. The reference is captured correctly; the resulting
-in-memory graph has real circular object references, not nulls or IDs.
-
-Total: O(V) + O(E) = **O(V+E)**. No recursion, no cycle detection, no truncation.
-
-The key insight is architectural: by separating _allocation_ from _wiring_, the algorithm
-converts a problem that requires global knowledge into two sequential passes, each of which only
-requires local information.
-
-### 1.4 — Per-algorithm O(V+E) verification
-
-Both algorithms that survive the benchmark are O(V+E) by construction. The following traces can
-be verified directly in the source code.
-
-**Two-Pass Wire** (`src/algorithms/schema-driven/01-two-pass-wire.ts`):
-
-- Pass 1: one loop over all V nodes to allocate shells → O(V)
-- Pass 2: one loop over all V nodes; for each node, iterate over its outgoing edges — each of
-  the E edges is visited exactly once → O(E)
-- Total: **O(V+E)**
-
-**Tarjan SCC Layering** (`src/algorithms/topological/01-tarjan-scc-layering.ts`):
-
-- Iterative Tarjan's SCC: each node and each edge is visited exactly once → O(V+E)
-- Condensation DAG construction: one pass over all V nodes and E edges → O(V+E)
-- Kahn's BFS layer assignment: one pass over condensed nodes and edges → O(V+E)
-- Pre-allocation and wiring: O(V) + O(V+E)
-- Total: **O(V+E)**
-
-The super-linear constants observed at the `extreme` tier (250K nodes) are attributable to V8
-GC pressure on a large live heap, not to a change in algorithmic complexity. Tarjan SCC carries
-per-node auxiliary state (index/lowlink arrays, SCC membership sets, condensation DAG edges)
-that produces a meaningfully larger heap footprint than Two-Pass Wire, which allocates exactly
-V+1 objects (one shell per node plus the Map).
+Using this two-pass structure guarantees that forward references in cycles are resolvable when edges are wired.
 
 ---
 
-## §2 — Backend Persistence Frameworks
+## §2 — The Serialization Boundary
 
-Every major ORM tackles the same cyclic-graph problem the two-pass strategy solves — but at the
-database hydration layer. The mechanisms vary by language and framework; the underlying pattern
-does not.
+### 2.1 — Why standard serializers fail after successful hydration
 
-### 2.1 — SQLAlchemy (Python)
+Hydration and serialization are different stages. A framework can correctly construct a cyclic in-memory graph and still fail when exporting it. Standard `JSON.stringify` performs recursive traversal and throws on circular references (`TypeError: Converting circular structure to JSON`) instead of preserving graph topology.
 
-**Hydration mechanism:** SQLAlchemy's
-[Session](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) maintains a per-session
-identity map: a dictionary from `(class, primary_key)` tuples to Python objects. When SQLAlchemy
-fetches a row, it checks the identity map first. If the object is already present, it returns the
-existing Python object rather than creating a new one. This allows bulk data loads (e.g., `session.execute(select(User)).scalars().all()`) to pull flat rows and let the Identity Map perfectly and instantly wire cyclic Python memory references together.
+### 2.2 — Typical serializer outcomes in cyclic graphs
 
-**Cyclic insert failure:** Writes are a different story. When SQLAlchemy flushes a transaction
-involving mutual foreign key constraints, it must emit two `INSERT` statements. Neither can satisfy its FK constraint until the other row exists. SQLAlchemy detects this and raises `CircularDependencyError`. The [`post_update=True`](https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html) flag on a relationship instructs SQLAlchemy to break the circular dependency by deferring one side of the wiring to a second SQL `UPDATE`. This is literally a two-pass insert strategy.
+When serializers encounter revisited objects, common outcomes are:
 
-**Serialization failure:** While the Identity Map elegantly wires the cyclic graph in RAM, attempting to serialize that graph to send it to a client exposes the secondary boundary gap. Standard Python serialization (`json.dumps`) has no built-in cycle detection and immediately throws a native `RecursionError: maximum recursion depth exceeded` when traversing the fully hydrated identity map.
+- hard failure (exception),
+- branch dropping / omission,
+- replacement with `null` or metadata wrappers,
+- or a reference-aware custom format.
 
-**Documentation links:**
+These outcomes are transport-format decisions, not hydration-correctness decisions.
 
-- [Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
-- [Relationship Persistence / post_update](https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html)
-- [ForeignKeyConstraint](https://docs.sqlalchemy.org/en/21/core/constraints.html#sqlalchemy.schema.ForeignKeyConstraint)
+### 2.3 — Practical mitigation patterns
 
-### 2.2 — Hibernate (Java)
+| Pattern | Cycle handling approach | Typical fidelity profile |
+| --- | --- | --- |
+| Cycle truncation | Drops revisited links (often `null`) | Partial graph / data loss |
+| Back-reference pruning | Omits one side of a bidirectional relation | Partial graph / directional loss |
+| Reference-tracking | Emits IDs or references (`$ref`, `__ref`) | Potentially full topology if consumer reconstructs |
+| Custom non-JSON serializers | Uses specialized output format and parser | Depends on implementation and receiver support |
+| Hypermedia-style links (for example HAL-like) | Sends linkable resource identities instead of full embedded cycles | Trades object fidelity for transport stability |
 
-**Hydration mechanism:** Hibernate's Persistence Context (the first-level cache, or L1 cache)
-functions as an in-memory identity map. Every entity loaded within an active Session is tracked
-by its class and primary key. Subsequent loads of the same entity return the cached Java object
-— no duplicate instances. The
-[fetching strategies](https://docs.hibernate.org/orm/current/userguide/html_single/#fetching)
-documentation covers eager (`JOIN FETCH`, `SELECT` with follow-up queries) and lazy
-(proxy-based) loading.
+In practice, reference-tracking formats, purpose-built serializers (including tools like `devalue`), and link-oriented API representations are the most common viable approaches in real systems; each is a trade-off based on consumer expectations rather than a universal winner.
 
-**Cyclic hydration:** Because the Persistence Context holds every entity in memory before
-relationships are resolved, Hibernate can safely wire bidirectional associations. Eager fetching
-with `JOIN FETCH` loads all associated entities in a single query; the Persistence Context deduplicates
-them and wires the Java object graph correctly even when it contains cycles.
+### 2.4 — Why this experiment chose index-based serialization
 
-**Jackson serialization failure:** Loading a cyclic graph into memory is only half the problem.
-Serializing that graph to JSON — the step most REST APIs perform before sending a response —
-causes `StackOverflowError` with the default Jackson configuration because Jackson's serializer
-follows object references recursively without a cycle guard.
-
-**Mitigations:**
-
-| Annotation                                     | Mechanism                                                                       | Graph Fidelity                                        |
-| ---------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `@JsonIdentityInfo`                            | Replaces revisited objects with their ID on subsequent serialization encounters | ✅ Full fidelity — receiver can reconstruct the cycle |
-| `@JsonManagedReference` / `@JsonBackReference` | Omits the `@JsonBackReference` side of the relationship entirely                | ❌ Data loss — back-reference is dropped              |
-| `@JsonIgnore`                                  | Omits the annotated field entirely                                              | ❌ Data loss                                          |
-
-`@JsonIdentityInfo` is the only option that preserves graph fidelity. The others trade
-correctness for serialization safety — acceptable in some display contexts, but not when the
-receiver needs to reconstruct the full graph.
-
-**Documentation links:**
-
-- [Hibernate Fetching strategies](https://docs.hibernate.org/orm/current/userguide/html_single/#fetching)
-- [Baeldung: Jackson Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
-- [Baeldung: Spring Boot JPA ManyToMany](https://www.baeldung.com/jpa-many-to-many)
-
-### 2.3 — EF Core (.NET)
-
-**Hydration mechanism:** EF Core's `ChangeTracker` acts as the identity map for the current
-`DbContext`. Any entity loaded via a tracked query is registered in the `ChangeTracker` by its
-primary key. `.Include()` and `.ThenInclude()` perform eager loading; EF Core resolves
-navigation properties by matching foreign key values to already-tracked entities. There is no dynamic "include all" function; developers must statically chain the exact depth they wish to retrieve.
-
-**Cyclic hydration:** EF Core handles in-memory cyclic graphs correctly. Circular navigation
-properties (A → B → A) are represented as genuine circular .NET object references inside the `ChangeTracker`.
-
-**`System.Text.Json` serialization failure:** The default .NET JSON serializer throws a `JsonException` (`A possible object cycle was detected`) when it encounters a circular reference. The framework provides workarounds, but they break output fidelity:
-
-1. `ReferenceHandler.IgnoreCycles`: Sets looping references to `null` (cycle truncation / data loss).
-2. `ReferenceHandler.Preserve`: Mutates the JSON payload to include non-standard metadata (e.g., `{"$id": "1", "Friend": {"$ref": "1"}}`). While this prevents the crash, it alters the JSON schema into a format that breaks standard frontend deserializers (like React/TypeScript clients) that expect standard nested structures.
-
-```csharp
-services.AddControllers().AddJsonOptions(options =>
-{
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-});
-```
-
-This sets looping references to `null` rather than throwing — cycle truncation, not full
-fidelity. `Newtonsoft.Json` offers the analogous `ReferenceLoopHandling.Ignore`.
-
-**Documentation links:**
-
-- [EF Core: Related Data and Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/#related-data-and-serialization)
-- [EF Core: Lazy Loading without Proxies](https://learn.microsoft.com/en-us/ef/core/querying/related-data/#lazy-loading-without-proxies)
-
-### 2.4 — Node.js ORMs
-
-The main experiment report covers the Node.js ORM landscape in detail. While standard JavaScript inherently suffers from the serialization gap (`TypeError: Converting circular structure to JSON`), most Node.js ORMs fail at the _hydration_ layer first, masking the serialization crash because they refuse to load the unbounded graph natively.
-
-| Library       | Identity Map?          | Hydration & Cyclic Mechanisms                                                                                                                                                                                                                |
-| ------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Mongoose**  | No                     | **Manual Depth Expansion:** No built-in schema-driven `populateAll()`. Developers must explicitly chain `.populate()` and manually manage depth/path expansion.                                                                              |
-| **Sequelize** | Partial                | **Arbitrary Cut-Off:** The `{ include: { all: true, nested: true } }` feature artificially halts at Depth 1 for self-referential relations to protect against infinite `LEFT OUTER JOIN` SQL loops. Grandchild records are dropped silently. |
-| **TypeORM**   | Yes (Unit of Work)     | **Boot Crash:** TypeORM actively blocks bidirectional recursive cycles. Assigning `eager: true` to both sides of a relationship causes an initialization crash. Developers are forced to make one side lazy.                                 |
-| **Prisma**    | No (Immutable objects) | **Type-Bound Truncation:** Bound by strict TypeScript generation, Prisma explicitly forbids unbounded recursion. Developers must explicitly type out each nested level (`{ include: { children: { include: ... } } }`).                      |
-| **MikroORM**  | Yes                    | **Partial Cut-Off:** Utilizes an Identity Map to cleanly construct references, avoiding crashes. However, its wildcard `populate: ['*']` array strictly stops at Depth 1, requiring hardcoded strings for deeper recursive retrieval.        |
-
-Node.js ORMs do not all fail in the same way: some primarily show manual-depth query limitations
-(Mongoose, Prisma), TypeORM enforces an explicit eager-loading constraint on recursive bidirectional
-relations, and MikroORM acts as a partial counterexample with successful cyclic hydration in this
-test set.
-
-### 2.5 — ActiveRecord (Ruby on Rails)
-
-**Hydration mechanism:** ActiveRecord uses explicit `.includes()` hashes to define eager loading paths. It is designed for strict tree traversal and possesses no built-in recursive hydration mechanism.
-
-**Cyclic Hydration (N+1 Fallback):** If a backend attempts to traverse a fully cyclic graph beyond the depth explicitly defined in the `.includes(friend: :friend)` hash, ActiveRecord silently falls back to lazy-loading. This triggers a barrage of N+1 SQL queries on the fly to fetch the missing references, crippling performance.
-
-**Serialization failure:** Ruby's native `.to_json` and `.as_json` methods lack cycle-detection. If a developer attempts to serialize a circular graph using a built-in deep include hash, it rapidly hits the stack ceiling, resulting in a native `JSON::NestingError` or `SystemStackError`.
+The experiment intentionally avoids raw cyclic object serialization in its comparison path. It uses an index-based `AnswerEntry` representation so verification can evaluate hydration correctness without conflating failures from downstream serializers. This keeps Stage 1 focused on graph construction while still allowing Stage 2 consumer probes to evaluate transport constraints in isolation.
 
 ---
 
-## §3 — The Serialization Boundary
+## §3 — Backend Persistence Frameworks
 
-### 3.1 — Hydration and serialization are distinct problems
+### 3.1 — SQLAlchemy
 
-It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two
-fundamentally different challenges:
+SQLAlchemy's `Session` functions as an identity map keyed by entity identity, which enables coherent in-memory cyclic references once entities are loaded [1]. For self-referential eager loading, SQLAlchemy also documents explicit depth controls such as `join_depth` [2], showing the practical gap between identity-map hydration capability and unbounded schema-driven expansion. On write paths with mutual foreign keys, `post_update=True` is the documented deferred-link workaround [3].
 
-**Hydration** is the process of constructing an in-memory object graph from flat data (database
-rows, JSON payloads, YAML files). The inputs are already-deserialized flat records; the output
-is a linked graph of objects. Hydration succeeds when every node in the graph holds real object
-references — not IDs, not nulls, not stubs — pointing to the correct neighbors. Cyclic graphs
-require that all objects exist before any edge is wired, which is why the identity map / two-pass
-strategy is necessary.
+### 3.2 — Hibernate and EF Core
 
-**Serialization** is the reverse: converting an in-memory object graph into a flat string
-representation (JSON, YAML, Protocol Buffers) for transmission, storage, or verification.
-Serialization fails on cyclic graphs because standard serializers follow object references
-recursively and have no mechanism to detect when they have revisited a node.
+Hibernate's Persistence Context and EF Core's `ChangeTracker` both provide identity-map behavior during entity materialization [4][5]. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: query shape, eager-loading configuration, and N+1 avoidance are still application responsibilities [4][5][6].
 
-These are separate concerns handled at separate layers. An application can successfully hydrate
-a cyclic graph and then crash at the serialization step — the ORM did its job correctly, but the
-HTTP response layer did not. The distinction matters for diagnosing failures: if `JSON.stringify`
-throws on a Hibernate entity, the fix is in the serializer configuration, not in the ORM.
+Likewise, serialization annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are mitigation tools, not complete out-of-the-box guarantees for end-to-end full-fidelity graph transport [6][7].
 
-### 3.2 — How this experiment handles the boundary
+### 3.3 — .NET and other mature stacks (high-level)
 
-This experiment relies on serialization to _verify_ that hydration succeeded. The verification
-pipeline (YAML answer files, `flatCompare`, `smartCompare`) must produce a stable, comparable
-representation of the populated graph. This creates a real risk: if the serializer crashes on a
-correctly-hydrated cyclic graph, the experiment would report a failure that is actually a
-verification artifact rather than an algorithm failure.
+Across .NET, Java, Python, and Ruby ecosystems, a recurring pattern appears: ORM identity maps can stabilize in-memory graph identity, but API serialization layers often apply separate constraints or defaults that require explicit configuration to avoid cycle-related failures [3][6][7][8].
 
-The experiment addresses this by using an index-based `AnswerEntry` format rather than
-serializing the graph object directly:
+### 3.4 — JavaScript ORMs (summary + pointer)
 
-```typescript
-// AnswerEntry — avoids native JSON.stringify on the cyclic graph
-interface AnswerEntry {
-  id: string;
-  depIndices: number[]; // indices into the flat array, not object references
-}
-```
+For the detailed JavaScript ORM comparison matrix (Mongoose, Sequelize, TypeORM, Prisma, MikroORM), see `EXPERIMENT_ANALYSIS.md §2` [9].
 
-By recording the populated graph as an array of entries where each entry references its
-dependencies by _index_ rather than object reference, the format avoids the circular reference
-problem at the verification layer. `flatCompare` and `smartCompare` then compare two such
-index-based representations — not two cyclic object graphs — so the verification step is
-serialization-safe by construction.
-
-This is a deliberate design decision: the experiment tests the population algorithm, not the
-serializer. The `AnswerEntry` format isolates the verification pipeline from any serialization
-bug that would otherwise mask a successful hydration.
-
-### 3.3 — Serialization mitigation taxonomy
-
-When cyclic graphs must be serialized to a string format, four broad strategies exist:
-
-| Strategy                             | Mechanism                                                                       | Graph Fidelity                                        | Examples                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Cycle Truncation**                 | Set circular reference to `null` when the serializer revisits a node            | ❌ Data loss                                          | `ReferenceHandler.IgnoreCycles` (.NET), `ReferenceLoopHandling.Ignore` (Newtonsoft.Json)       |
-| **Back-Reference Pruning**           | Omit the inverse (back-reference) side of a bidirectional relationship          | ❌ Data loss — back-reference unavailable to receiver | `@JsonBackReference` / `@JsonManagedReference` (Jackson)                                       |
-| **ID Substitution**                  | Replace revisited objects with their unique ID; receiver reconstructs the graph | ✅ Full fidelity                                      | `@JsonIdentityInfo` (Jackson), Relay's `__ref` pointers, Apollo `InMemoryCache`                |
-| **Custom Cycle-Aware Serialization** | Serializer tracks visited objects and emits a non-recursive representation      | ✅ Full fidelity                                      | `flatted` npm package, `devalue` (partial — rejects cycles), experiment's `AnswerEntry` format |
-
-The choice of strategy depends on the receiver's needs. If the receiver only needs to display
-the data and the back-reference is not displayed, pruning is acceptable. If the receiver must
-reconstruct a graph with the same topology — for example, to pass it to another algorithm — only
-ID substitution or custom serialization preserves full fidelity.
-
-### 3.4 — Does serialization failure count as experiment failure?
-
-For the purposes of this experiment, no. The experiment measures whether a population algorithm
-correctly constructs a cyclic in-memory graph from flat input. The verification harness is
-designed to test that property without requiring native `JSON.stringify` on the cyclic result.
-A serialization crash in a downstream consumer would not indicate that the algorithm failed.
-
-That said, in a production system, a serialization crash is a crash from the user's perspective,
-regardless of which layer caused it. The ORM did not fail, but the API response did not arrive.
-The distinction matters for root-cause analysis but not for the end user's experience.
-
-A natural extension of this experiment would add a "serialization tier" to the benchmark:
-after the population algorithm runs, attempt to serialize the result using several strategies
-(native `JSON.stringify`, `flatted`, index-based, ID substitution) and measure which strategies
-survive at each graph scale. This would quantify the serialization problem independently of the
-population problem, providing a complete picture of the end-to-end pipeline.
-
-For this benchmark's target use case, output strategies that truncate cycles or drop links are
-considered non-viable as canonical downstream outputs, even when they are acceptable in other
-product contexts (for example, display-only payloads).
+At a high level, the common failure themes are: explicit manual-depth query authoring, wildcard depth ceilings, eager-loading restrictions in recursive relationships, and frequent dependence on application-layer post-processing when full cyclic reconstruction is needed.
 
 ---
 
 ## §4 — Frontend and API Layer
 
-The identity-map / allocate-then-wire pattern is not confined to backend ORMs. It surfaces at
-every layer where cyclic or heavily-referenced data must be processed — including GraphQL schema
-compilation, client-side caches, data normalization libraries, and state management stores.
+Frontend and API research matters here because hydrated data is ultimately *consumed* in clients and app-state stores. Even when backend hydration succeeds, deserialization, cache normalization, and client-state serialization boundaries can still reject or degrade cyclic structures.
 
-### §4.1 — GraphQL Schema Compilation
+### 4.1 — GraphQL client caches (Apollo and Relay)
 
-GraphQL type definitions frequently contain mutual references. A canonical example:
+Apollo `InMemoryCache` normalizes records by `__typename` + entity ID and stores references via `__ref`, flattening nested payloads into a normalized identity map [10]. Relay similarly maintains a normalized record store with global IDs and garbage collection semantics in its runtime store [11].
 
-```javascript
-const AuthorType = new GraphQLObjectType({
-  name: 'Author',
-  fields: {
-    posts: { type: new GraphQLList(PostType) }, // PostType not yet defined
-  },
-});
+Both patterns demonstrate that robust client handling of cyclic/graph-like data typically relies on normalized reference indirection, not naive nested object trees.
 
-const PostType = new GraphQLObjectType({
-  name: 'Post',
-  fields: {
-    author: { type: AuthorType },
-  },
-});
-```
+### 4.2 — normalizr as evidence of the problem
 
-Defining `AuthorType` before `PostType` results in `Output Type but got: undefined` at schema
-build time, because `PostType` does not yet exist when `AuthorType`'s fields are evaluated.
+`normalizr` requires developers to explicitly define entity schemas and replace embedded objects with IDs in normalized output [12]. This is useful evidence that generic nested payloads do not automatically become safe, reusable graph state without deliberate normalization rules.
 
-The standard solution is the **thunk pattern**: wrap the `fields` property in a function
-(a thunk) that is called lazily after all types have been registered:
+### 4.3 — State management comparison (React / Vue / Angular)
 
-```javascript
-const AuthorType = new GraphQLObjectType({
-  name: 'Author',
-  fields: () => ({
-    // ← thunk: deferred until all types exist
-    posts: { type: new GraphQLList(PostType) },
-  }),
-});
-```
+| Framework ecosystem | Typical reactivity model | Cyclic graph support in state | Practical implication |
+| --- | --- | --- | --- |
+| React (Redux Toolkit, MobX, Zustand) | Immutable updates (Redux) and/or proxy/subscription models | Supported in memory, but safest when normalized as ID-linked entities | Normalization patterns are usually required for reliable persistence, devtools, and transport |
+| Vue (Pinia / Vuex) | Proxy-based reactivity over plain objects | Runtime cycles are possible, but toolchain/serialization boundaries still need explicit handling | Teams commonly model relationships by IDs to avoid serializer/tooling surprises |
+| Angular (NgRx, Signals + services) | RxJS/store patterns and signal-driven reactive state | Similar constraints: runtime can hold references, transport/devtools often prefer normalized entities | Entity-style stores reduce risk and improve predictable updates |
 
-GraphQL-JS calls each type's field thunk only after the schema object is fully constructed —
-that is, after all types have been allocated. This is philosophically identical to the two-pass
-strategy: allocate all type objects first, then wire the field references later. The thunk
-function plays the role of Pass 2 (Wiring), and the schema construction loop plays the role of
-Pass 1 (Allocation).
+Across all three ecosystems, cycle tolerance at runtime does not remove the need for deliberate normalization at storage and transport boundaries.
 
-See the
-[GraphQL-JS documentation on circular type references](https://graphql.org/graphql-js/type-system/)
-for the canonical description of this pattern.
+### 4.4 — Full-stack SSR boundaries and `devalue`
 
-### §4.2 — GraphQL Client Caches
+SSR frameworks frequently control their own server-to-client payload protocol, so they are not always limited to plain JSON. Next.js and SvelteKit/Nuxt-style pipelines can use framework-specific serialization contracts; in that sense, the boundary is partially proprietary to the stack's runtime.
 
-#### Apollo Client
-
-Apollo's
-[`InMemoryCache`](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
-normalizes API responses by storing each entity exactly once, keyed by a cache ID (default:
-`TypeName:id`). Instead of embedding nested objects directly, the cache stores pointer records:
-
-```json
-{
-  "Author:1": { "__typename": "Author", "id": "1", "posts": [{ "__ref": "Post:10" }] },
-  "Post:10": { "__typename": "Post", "id": "10", "author": { "__ref": "Author:1" } }
-}
-```
-
-The `{ "__ref": "..." }` pointer structurally breaks cycles at the representation layer. The
-in-memory store is a flat identity map — every entity appears exactly once — and references
-between entities are expressed as ID pointers rather than embedded objects. Reading from the
-cache traverses these pointers while tracking visited `__ref` keys to avoid infinite loops.
-
-This means Apollo's cache is internally an identity map in exactly the same sense as SQLAlchemy's
-Session or the two-pass strategy's `Map<string, Shell>`. The difference is that Apollo encodes
-the references as JSON-serializable `__ref` pointers rather than direct JavaScript object
-references, making the cache snapshot naturally serializable.
-
-Unbounded recursive _queries_ (e.g., `person { spouse { spouse { spouse { ... } } } }`) are
-not handled automatically — the developer must apply `@skip` directives or limit query depth,
-because the normalized cache stores data but does not limit what the query requests.
-
-#### Relay
-
-Relay's [`RecordSource`](https://relay.dev/docs/guides/global-object-identification/) implements
-a similar normalized cache built around the **Global Object Identification** pattern. Every
-queryable entity implements a `Node` interface with a globally unique opaque `id`. Relay's
-runtime flattens incoming nested payloads during normalization: each entity at any nesting depth
-is written to the `RecordSource` keyed by its global ID. If the same entity appears at two
-different paths in the response (a common case in cyclic graphs), both paths resolve to the same
-`RecordSource` entry — there is a single source of truth, and all views of that entity are
-automatically consistent.
-
-This normalization-on-write approach means Relay's store is always a flat identity map, and
-cyclic data is deduplicated by construction.
-
-#### urql
-
-urql provides two caching modes:
-
-1. **Document cache (default):** Stores raw query responses keyed by the query document and
-   variables. No normalization is performed. If the response contains cyclic or duplicated
-   entities, they are stored as-is, which may produce inconsistent views and does not handle
-   cycles in any structured way.
-
-2. **`@urql/exchange-graphcache` (normalized cache):** Implements entity normalization similar
-   to Apollo's `InMemoryCache`. Entities are deduplicated by key, and references are stored as
-   pointers. Cycles are handled at the same structural level as Apollo.
-
-urql's two modes make it a useful contrast case: normalization is opt-in, and the cycle problem
-exists by default in the document cache mode. Developers who do not explicitly enable the
-normalized exchange inherit all the problems of an unnormalized store.
-
-### §4.3 — Data Normalization Utilities
-
-#### normalizr
-
-[normalizr](https://github.com/paularmstrong/normalizr) is a standalone library for flattening
-nested JSON API responses into normalized entity tables. Given a nested response like:
-
-```json
-{
-  "id": "1",
-  "author": { "id": "10", "name": "Alice" },
-  "comments": [{ "id": "100", "author": { "id": "10", "name": "Alice" } }]
-}
-```
-
-normalizr produces:
-
-```json
-{
-  "entities": {
-    "users": { "10": { "id": "10", "name": "Alice" } },
-    "articles": { "1": { "id": "1", "author": "10", "comments": ["100"] } },
-    "comments": { "100": { "id": "100", "author": "10" } }
-  },
-  "result": "1"
-}
-```
-
-The user entity with id `"10"` is stored once, and all references to it are replaced with its
-ID. Cycles are handled by defining schemas using `.define()` for deferred schema resolution —
-the library calls the function after all schemas are declared, mirroring the thunk pattern:
-
-```javascript
-const user = new schema.Entity('users');
-const comment = new schema.Entity('comments', { author: user });
-user.define({ friends: [user] }); // ← deferred self-referential definition
-```
-
-normalizr directly implements the allocate-then-wire concept for API response processing: the
-entity tables are the identity map, and the `.define()` deferral is the mechanism that allows
-cyclic schemas to be registered without an initialization-order error.
-
-### §4.4 — State Management Libraries
-
-State management libraries vary significantly in their approach to normalized data, with direct
-consequences for cyclic reference handling:
-
-| Library                                 | Framework    | Built-in Normalization?                        | Circular Ref Handling                                         | Serialization Safe?                                       |
-| --------------------------------------- | ------------ | ---------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------- |
-| **Redux / RTK** (`createEntityAdapter`) | React        | Yes — `{ ids: [], entities: {} }` identity map | Relationships stored as IDs, not object refs                  | ✅ Yes (ID-based, JSON-serializable)                      |
-| **MobX**                                | React        | No (proxy-based reactivity)                    | Can hold circular object refs at runtime (observable proxies) | ❌ Serialization crashes without custom `toJS()` handling |
-| **Zustand**                             | React        | No (unopinionated flat store)                  | Manual — must store ID references to avoid object-ref cycles  | ❌ Without manual normalization                           |
-| **Pinia**                               | Vue          | No                                             | Manual — same as Zustand                                      | ❌ Without manual normalization                           |
-| **Vuex**                                | Vue (legacy) | No                                             | Manual                                                        | ❌ Without manual normalization                           |
-
-**Redux / RTK's `createEntityAdapter`** ([docs](https://redux-toolkit.js.org/api/createEntityAdapter))
-is worth highlighting because it implements the identity map pattern explicitly, in a form that
-every frontend developer already knows. The adapter's state shape:
-
-```typescript
-{
-  ids: ["1", "2", "3"],          // ordered array of entity IDs
-  entities: {                    // dictionary keyed by ID
-    "1": { id: "1", ... },
-    "2": { id: "2", ... },
-    "3": { id: "3", ... },
-  }
-}
-```
-
-is structurally identical to SQLAlchemy's Session, Hibernate's Persistence Context, Apollo's
-`InMemoryCache`, and the two-pass strategy's `Map<string, Shell>`. Relationships between
-entities are stored as ID references (`authorId: "10"`) rather than embedded objects, so the
-store is always serialization-safe and never contains circular object references.
-
-**MobX** is an interesting contrast: its observable proxy model allows a JavaScript object graph
-to contain genuine circular references at runtime (because MobX wraps objects in proxies that
-track access, not values). Cyclic graphs are handled correctly in memory. However, serializing
-a MobX store that contains circular references — for devtools, persistence, or SSR hydration —
-requires either `toJS()` with cycle-aware options or manual normalization before serialization.
-
-**Zustand, Pinia, and Vuex** provide no normalization infrastructure. Developers who store
-object-reference cycles in these stores will encounter crashes in Redux DevTools, `localStorage`
-persistence, or SSR hydration pipelines that attempt to serialize state.
-
-### §4.5 — SSR Serialization Boundaries
-
-Modern SSR frameworks introduce a serialization boundary between the server (where data is
-fetched and hydrated) and the client (where it is rehydrated). Data must cross this boundary as
-a string, which means cyclic graphs fetched from an ORM on the server will crash the SSR
-pipeline if not normalized before serialization.
-
-| Framework       | Server→Client Serializer                                    | Handles Cycles?            | Error on Circular Data                                      |
-| --------------- | ----------------------------------------------------------- | -------------------------- | ----------------------------------------------------------- |
-| **Next.js RSC** | React's internal RSC flight protocol                        | ❌ No                      | `TypeError: Converting circular structure to JSON`          |
-| **SvelteKit**   | [`devalue`](https://github.com/Rich-Harris/devalue) library | ❌ No (rejects explicitly) | `Cannot stringify object with circular structure`           |
-| **Nuxt 3**      | [`devalue`](https://github.com/Rich-Harris/devalue) library | ❌ No                      | Same as SvelteKit; `superjson` is not a drop-in replacement |
-
-The [`devalue`](https://github.com/Rich-Harris/devalue) library (by Rich Harris) is used by both
-SvelteKit and Nuxt 3. It supports `undefined`, `BigInt`, `Date`, `Map`, `Set`, and `RegExp` —
-types that `JSON.stringify` cannot handle — but it explicitly rejects circular structures by
-design.
-
-The practical consequence is that ORMs that successfully hydrate a cyclic entity graph on
-the server (Hibernate, SQLAlchemy, MikroORM, EF Core) can still fail at the SSR serialization
-step unless the developer strips or normalizes the data before returning it from a `load`
-function or React Server Component. The ORM's hydration may succeed while the framework's
-default serializer still rejects the self-referential structure.
-
-This is the same hydration-vs-serialization boundary identified in §3, manifested at the SSR
-layer. The fix is the same: normalize cyclic references to ID pointers before the data crosses
-the serialization boundary.
+`devalue` is a key example: it supports several non-JSON-native types but intentionally rejects circular object graphs [13]. That design illustrates the core boundary clearly: even with framework-controlled serialization, cyclic hydrated objects still require normalization or reference-safe transformations before crossing SSR handoff boundaries.
 
 ---
 
-## §5 — A Unified Pattern
+## §5 — Algorithmic Theory: The Two-Pass Necessity
 
-### 5.1 — The identity map at every layer
+Can full hydration be done in one pass? Sometimes:
 
-The same structural pattern — allocate all objects first, then wire references — appears at
-every layer of the stack:
+- **Yes for DAGs:** a topological order can guarantee dependencies are created before dependents.
+- **No for arbitrary cyclic graphs:** forward references are unavoidable when `u` and `v` depend on each other.
 
-- **Database layer:** SQLAlchemy Session, Hibernate Persistence Context, EF Core ChangeTracker.
-  All act as identity maps that ensure one object per entity identity before relationships are
-  resolved.
-- **ORM population:** Two-Pass Wire. `Map<string, Shell>` is the identity map; Pass 1 fills it,
-  Pass 2 wires edges.
-- **API schema compilation:** GraphQL-JS thunks defer field wiring until all type objects are
-  allocated in the schema registry.
-- **Client cache:** Apollo `InMemoryCache`, Relay `RecordSource`. Normalized flat stores keyed
-  by entity ID; references expressed as `__ref` pointers rather than embedded objects.
-- **Client state:** Redux `createEntityAdapter`. `{ ids, entities }` is the identity map;
-  relationships stored as ID strings.
-- **Normalization utilities:** normalizr. Entity tables are the identity map; `.define()`
-  defers self-referential schema wiring.
-
-The implementations differ in language, API, and context, but the invariant they enforce is
-identical: at the point where edges are wired, every target object already exists in the map.
-
-### 5.2 — Cyclic data cannot be processed locally at any layer
-
-The common failure mode — naive DFS recursion — appears in some form at every layer:
-
-- Naive ORM `populate()` (Mongoose)
-- Recursive Jackson serialization without `@JsonIdentityInfo`
-- `JSON.stringify` without a seen-set
-- GraphQL type definition without field thunks
-- unnormalized urql document cache
-- MobX or Zustand stores with object-ref cycles hitting devtools serialization
-
-In every case, the failure is caused by a local algorithm attempting to resolve a reference to
-an object that has not yet been allocated, or attempting to serialize a structure whose
-serialization depends recursively on itself. The two-pass strategy is the general resolution to
-this class of failure, not an ORM-specific fix.
-
-### 5.3 — The pattern across layers
-
-| Layer                | Technology        | Identity Map Implementation        | Cycle Resolution                                                                   |
-| -------------------- | ----------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
-| Database ORM         | SQLAlchemy        | Session                            | Automatic via identity map + `post_update=True` for inserts                        |
-| Database ORM         | Hibernate         | Persistence Context (L1 cache)     | Automatic via L1 cache; serialization requires `@JsonIdentityInfo`                 |
-| Database ORM         | EF Core           | ChangeTracker                      | Automatic via identity map; serialization requires `ReferenceHandler.IgnoreCycles` |
-| Database ORM         | MikroORM          | Identity Map + Unit of Work        | Hydration automatic; serialization is the failure point                            |
-| Population Algorithm | Two-Pass Wire     | `Map<string, Shell>`               | Allocate-then-wire — O(V+E), zero truncation                                       |
-| GraphQL Schema       | GraphQL-JS        | Schema type registry + thunks      | Allocate types first, wire fields via deferred thunk                               |
-| GraphQL Client       | Apollo Client     | `InMemoryCache` (`__ref` pointers) | Normalized by cache ID; pointers break object-ref cycles                           |
-| GraphQL Client       | Relay             | `RecordSource`                     | Global Object Identification — flatten to ID-keyed store                           |
-| GraphQL Client       | urql (normalized) | `@urql/exchange-graphcache`        | Normalized cache, same model as Apollo                                             |
-| State Management     | Redux / RTK       | `createEntityAdapter`              | `{ ids, entities }` identity map; relationships as ID strings                      |
-| Normalization        | normalizr         | Entity tables                      | Flatten nested JSON + ID-substitute; `.define()` for deferred wiring               |
-
-### 5.4 — Conclusion
-
-Cyclic data is not a pathological edge case. It is the natural state of any domain with
-bidirectional relationships — entity graphs, org charts, component systems, social graphs.
-The two-pass strategy is not a clever trick specific to ORM population; it is a general
-graph resolution primitive that every layer of the modern web stack independently rediscovers.
-
-Understanding the pattern at a structural level — identity map + deferred wiring — allows
-developers to recognize the same problem and apply the same solution regardless of the layer
-where the cycle appears: ORM hydration, GraphQL schema construction, client cache normalization,
-or state management design.
+Without two passes (or an equivalent mechanism like pointers/thunks/placeholders that are later resolved), a single-pass algorithm cannot guarantee full cyclic reconstruction with correct object identity for all inputs. Two-pass allocation-then-linking is therefore a general solution pattern, not just an implementation preference.
 
 ---
 
-## §6 — Dataset Scope and Input Validity
+## Appendix A — Methodological Boundaries
 
-### Motivating model
+This extended report is scoped to cross-ecosystem comparison of two concerns: full cyclic hydration and post-hydration serialization.
 
-The experiment is grounded in the NodeJS/NoSQL hydration scenario: a backend receives a
-request, selects **one root node**, fetches the reachable object graph from the database,
-and must fully hydrate — populating every referenced dependency as a real in-memory object —
-before passing the result to a downstream consumer (API serializer, cache writer, view
-renderer, etc.).
-
-This model has the following defining properties:
-
-1. **Root-reachable closure.** Every node in the materialized graph is reachable from the
-   selected root by following dependency edges. Nodes that are not reachable from the root
-   were simply not part of the query result — they are absent, not orphaned.
-2. **Single-object materialization for reused dependencies.** Dependencies reached from
-   multiple parents must still resolve to one coherent in-memory node in the fully populated
-   graph, not duplicated copies.
-3. **Two-stage pipeline.** Hydration correctness (Stage 1) and consumer/serialization
-   viability (Stage 2) are architecturally distinct. The benchmark measures both; the
-   distinction matters for understanding which failures belong to the algorithm and which
-   belong to the downstream consumer.
-4. **Auto-detected root contract.** The benchmark currently infers root semantics from graph
-   structure: exactly one in-degree-zero node must exist, and all nodes must be reachable from
-   it for `core-valid` classification. Inputs without a unique detected root are
-   `edge-case-only`; hard structural faults remain `invalid`.
-5. **Simple directed graph.** The benchmark assumes a simple directed graph — at most one
-   directed edge from any node u to any node v. Parallel (duplicate) edges are intentionally
-   excluded from this benchmark scope (see §6.3).
-
-### Input validity taxonomy
-
-The table below classifies graph types against the motivating model and assigns each a
-benchmark status.
-
-| Graph type                                                                                   | Status                  | Rationale                                                                                                                                           |
-| -------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Root-reachable cyclic graphs** (mutual cycles, back-edges, self-loops reachable from root) | ✅ Core benchmark       | Directly models the real-world hydration problem; `basic`, `medium`, `stress`, `extreme` tiers                                                      |
-| **Root-reachable DAGs with reused dependencies** (`acyclic-control`)                         | ✅ Core benchmark       | Exposes hydration mismatches (Naive Recursion) even without cycles; separates cycle handling from materialization correctness                       |
-| **SCC-heavy / dense mutual-cycle graphs**                                                    | ✅ Core benchmark       | Stress-tests the condensation and wiring phases; realistic for deeply inter-referenced domain models                                                |
-| **Realistic fan-out / fan-in patterns**                                                      | ✅ Core benchmark       | Common in NoSQL embedded-reference schemas (one parent, many children; many parents, one shared child)                                              |
-| **Orphaned nodes / disconnected subgraphs**                                                  | 🔲 Edge-case suite only | Not part of a root-selected materialization; see §6.1 for full reasoning                                                                            |
-| **Multi-root forests** (intentional batch materializations)                                  | 🔲 Edge-case suite only | May model a batch hydration request; meaningful only if the experiment extends to multi-document scenarios                                          |
-| **Duplicate edges** (parallel edges)                                                         | ❌ Invalid — reject     | Parallel edges are out of scope; the benchmark assumes a simple directed graph; manifests with duplicate edges are rejected at preflight (see §6.3) |
-| **Missing-target (dangling) references**                                                     | ❌ Invalid — reject     | An edge pointing to a node that does not exist is invalid input, not a topology variant; must be rejected before benchmarking                       |
-| **Corrupt or unparseable manifests**                                                         | ❌ Invalid — reject     | Infrastructure/tooling concern, not an algorithm topology                                                                                           |
-
-### Validation scope and timing
-
-All validity checks described in this section are **preflight / input admissibility** checks.
-They run before any timed benchmark execution and have no impact on measured algorithm
-complexity, latency, or memory. The timed benchmark measures both stages — hydration
-(Stage 1) and consumer probes (Stage 2) — applied to a valid, pre-admitted input.
-Rejecting an invalid input at preflight is not a benchmark data point; it is a guard that
-prevents corrupt or out-of-scope inputs from polluting the experiment results.
-
-This separation is the same contract applied by well-designed benchmark harnesses in other
-ecosystems (e.g. JMH warm-up phases in Java, criterion setup closures in Rust) where fixture
-preparation and measurement are strictly isolated. Input validation belongs entirely in the
-fixture-preparation phase.
-
-### §6.1 — Orphaned nodes: why they are excluded from the core benchmark
-
-An _orphaned node_ is a node that exists in the input dataset but is not reachable from the
-root via dependency edges — a disconnected component that floats alongside the main graph.
-
-**Why they are not valid core-benchmark inputs:**
-
-In the motivating NodeJS/NoSQL scenario, the input dataset represents exactly one
-materialized request boundary: the set of entities the backend fetched and needs to wire up.
-If a node is present in that set, it was fetched — and therefore it was reachable from the
-root selection. A node that is unreachable from the root would not appear in the fetch result
-in the first place. Orphaned nodes are not a topology that arises naturally from a
-well-functioning backend; they are either a generator artifact or a signal of malformed data.
-
-Including orphaned nodes in the canonical benchmark would:
-
-- mis-represent the algorithm's input domain (real fetch results are root-reachable closures),
-- conflate hydration correctness with parser/loader robustness, and
-- make graph-scale metrics (V, E) misleading because some nodes carry no algorithmic weight.
-
-**Why they remain useful as edge-case tests:**
-
-Even though orphaned nodes are out-of-scope for the canonical benchmark, they are a valid
-and important _validation_ target:
-
-- **Parser/loader robustness** — does the input loader correctly handle a manifest that
-  accidentally includes unreferenced nodes?
-- **Consumer/export robustness** — does the export strategy (`cycle-flat`) correctly traverse
-  only the reachable subgraph, or does it inadvertently include orphaned nodes in the output?
-- **Generator validation** — does the dataset generator produce only root-reachable nodes, or
-  can a configuration error produce disconnected components?
-
-These scenarios belong in a **dedicated edge-case test suite**, kept separate from the main
-benchmark tiers, with their own expected outputs and explicit documentation of what is being
-tested.
-
-### §6.2 — Dangling references: invalid input, not a topology
-
-A _dangling reference_ is an edge (u → v) where v does not exist in the input dataset. This
-is categorically different from an orphaned node. An orphaned node is a valid graph element
-that happens to be unreachable; a dangling reference points to a node that is absent
-entirely.
-
-Dangling references are **invalid input** and must be rejected. In the current
-implementations, this rejection already happens at algorithm time: `twoPassWire` throws when
-a dependency id is missing, and `tarjanSccLayering` likewise pre-validates dependencies and
-throws rather than silently producing `undefined` or a corrupted condensation DAG. Such
-inputs are therefore not meaningful benchmark data points.
-
-The experiment runner's manifest validator should still detect missing-target edges earlier
-and abort with a clear, input-focused error. That remains an input-sanitization concern, even
-though the algorithms themselves also reject the invalid graph today.
-
-### §6.3 — Duplicate edges: parallel edges are out of scope
-
-A _duplicate edge_ (also called a parallel edge) is a second or subsequent directed edge from
-u to v where (u → v) already appears in the edge list. Parallel edges can be meaningful in
-some graph models — for example, in a network flow graph each parallel edge (u → v) might
-represent a separate physical link with its own capacity, or in a dependency schema each
-parallel edge might encode a different relationship type — making individual edges
-distinguishable and removable without changing the graph's meaning. In this benchmark,
-however, edges carry no such additional data.
-
-**Why this benchmark uses a simple directed graph.** In the hydration model an edge u → v
-means exactly one thing: _u has a dependency on v_. There is no weight, no label, no
-capacity — only the existence of the dependency. A second edge u → v expresses the same
-relationship as the first and is indistinguishable from it. Because the only meaningful
-content of an edge is its source and target, the **simple directed graph** model — at most
-one edge per ordered pair — is the correct abstraction for this domain.
-
-**Why reject, not canonicalize.** Core benchmark manifests containing duplicate edges are
-**rejected at preflight**. Note that this is intentionally stricter than the "warn and
-canonicalize" approach sometimes used in resilient parsers. Silently deduplicating edges
-would obscure the discrepancy between the declared edge count and the actual graph structure,
-skewing the scale metrics (E) that characterize each dataset tier.
+- It assumes valid graph inputs for comparative analysis (well-formed identities and link targets).
+- It focuses on architectural behavior patterns, not exhaustive vendor feature catalogs.
+- Detailed benchmark-tier mechanics and dataset-specific validation policies remain in `EXPERIMENT_ANALYSIS.md` and project runner documentation [9][14].
 
 ---
 
 ## References
 
-1. **SQLAlchemy — Session Basics**
-   https://docs.sqlalchemy.org/en/20/orm/session_basics.html
-
-2. **SQLAlchemy — Relationship Persistence / `post_update`**
-   https://docs.sqlalchemy.org/en/21/orm/relationship_persistence.html
-
-3. **SQLAlchemy — ForeignKeyConstraint**
-   https://docs.sqlalchemy.org/en/21/core/constraints.html#sqlalchemy.schema.ForeignKeyConstraint
-
-4. **SQLAlchemy — MetaData / `create_all`**
-   https://docs.sqlalchemy.org/en/20/core/metadata.html
-
-5. **Hibernate — Fetching Strategies**
-   https://docs.hibernate.org/orm/current/userguide/html_single/#fetching
-
-6. **Baeldung — Jackson: Bidirectional Relationships and Infinite Recursion**
-   https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion
-
-7. **Baeldung — Spring Boot: JPA ManyToMany**
-   https://www.baeldung.com/jpa-many-to-many
-
-8. **EF Core — Related Data and Serialization**
-   https://learn.microsoft.com/en-us/ef/core/querying/related-data/#related-data-and-serialization
-
-9. **EF Core — Lazy Loading without Proxies**
-   https://learn.microsoft.com/en-us/ef/core/querying/related-data/#lazy-loading-without-proxies
-
-10. **Apollo Client — Cache Configuration / Normalization**
-    https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization
-
-11. **Relay — Global Object Identification**
-    https://relay.dev/docs/guides/global-object-identification/
-
-12. **urql — `@urql/exchange-graphcache`**
-    https://urql.dev/goto/docs/graphcache/
-
-13. **normalizr — GitHub Repository**
-    https://github.com/paularmstrong/normalizr
-
-14. **Redux Toolkit — `createEntityAdapter`**
-    https://redux-toolkit.js.org/api/createEntityAdapter
-
-15. **devalue — GitHub Repository**
-    https://github.com/Rich-Harris/devalue
-
-16. **GraphQL-JS — Type System (circular type references / thunk pattern)**
-    https://graphql.org/graphql-js/type-system/
-
-17. **Mongoose — Issue #16074 (circular reference / populate stack overflow)**
-    https://github.com/Automattic/mongoose/issues/16074
-
-18. **Sequelize — Constraints and Circularities**
-    https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/
-
-19. **TypeORM — Issue #3663 (eager: true on recursive relation causes infinite loop)**
-    https://github.com/typeorm/typeorm/issues/3663
-
-20. **MikroORM — Populating Relations**
-    https://mikro-orm.io/docs/populating-relations
-
-21. **Prisma — Self-relations**
-    https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/self-relations
+[1]: https://docs.sqlalchemy.org/en/20/orm/session_basics.html
+[2]: https://docs.sqlalchemy.org/en/20/orm/self_referential.html
+[3]: https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html
+[4]: https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations
+[5]: https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager
+[6]: https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion
+[7]: https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization
+[8]: https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html
+[9]: ./EXPERIMENT_ANALYSIS.md#2--a-recognized-challenge-in-the-data-layer-ecosystem
+[10]: https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization
+[11]: https://relay.dev/docs/guided-tour/reusing-cached-data/fetch-policies/
+[12]: https://github.com/paularmstrong/normalizr
+[13]: https://github.com/sveltejs/devalue
+[14]: ../README.md
