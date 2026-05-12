@@ -40,7 +40,7 @@ not investigated here. This experiment focuses specifically on the ORM/ODM popul
 > viability are architecturally distinct concerns. This experiment measures both as separate stages:
 > **Stage 1 — Hydration** (does the algorithm produce a correct in-memory graph?) and **Stage 2 —
 > Consumer Probes** (can a downstream consumer process that graph?). See §3 and §4 for how these
-> stages are tested, and [Ecosystem Research §3](./ECOSYSTEM_RESEARCH.md#3--the-serialization-boundary) for extended analysis of the
+> stages are tested, and [Ecosystem Research §2](./ECOSYSTEM_RESEARCH.md#2--the-serialization-boundary) for extended analysis of the
 > serialization boundary.
 
 ---
@@ -92,7 +92,7 @@ Two probes are run against each passing hydration result:
 
 - **`naive-json`** — calls `JSON.stringify` on the raw graph. Succeeds on the `acyclic-control` dataset (no circular references). Fails on all cyclic datasets with a circular reference error. Its purpose is to demonstrate that hydration success does not guarantee consumer viability, mirroring the same serialization gap documented across the ecosystem in [§2](#2--a-recognized-challenge-in-the-data-layer-ecosystem).
 
-- **`cycle-flat`** — converts the graph to an index-based flat representation (the `AnswerEntry` format) using an iterative O(V+E) traversal with no recursion. This mirrors the ID-Substitution / Custom Cycle-Aware Serialization strategies described in [Ecosystem Research §3](./ECOSYSTEM_RESEARCH.md#3--the-serialization-boundary). It passes at every graph scale where hydration succeeds.
+- **`cycle-flat`** — converts the graph to an index-based flat representation (the `AnswerEntry` format) using an iterative O(V+E) traversal with no recursion. This mirrors the ID-Substitution / Custom Cycle-Aware Serialization strategies described in [Ecosystem Research §2](./ECOSYSTEM_RESEARCH.md#2--the-serialization-boundary). It passes at every graph scale where hydration succeeds.
 
 ### Output scope policy
 
