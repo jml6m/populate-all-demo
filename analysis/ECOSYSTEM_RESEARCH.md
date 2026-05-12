@@ -61,7 +61,7 @@ These outcomes are transport-format decisions, not hydration-correctness decisio
 | Custom non-JSON serializers | Uses specialized output format and parser | Depends on implementation and receiver support |
 | Hypermedia-style links (for example HAL-like) | Sends linkable resource identities instead of full embedded cycles | Trades object fidelity for transport stability |
 
-In practice, reference-tracking formats, purpose-built serializers (including tools like `devalue`), and link-oriented API representations are the most common viable approaches in real systems; each is a trade-off based on consumer expectations rather than a universal winner.
+In practice, reference-tracking formats and link-oriented API representations are the most common viable approaches in real systems for transporting cyclic data. Some purpose-built serializers, including tools like `devalue`, instead enforce a stricter serialization boundary by rejecting circular object graphs rather than preserving them; each choice reflects a trade-off based on consumer expectations rather than a universal winner.
 
 ### 2.4 — Why this experiment chose index-based serialization
 
@@ -77,7 +77,7 @@ SQLAlchemy's `Session` functions as an identity map keyed by entity identity, wh
 
 ### 3.2 — Hibernate and EF Core
 
-Hibernate's Persistence Context and EF Core's `ChangeTracker` both provide identity-map behavior during entity materialization [4][5]. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: query shape, eager-loading configuration, and N+1 avoidance are still application responsibilities [4][5][6].
+Hibernate's Persistence Context and EF Core's `ChangeTracker` both provide identity-map behavior during entity materialization [4][5]. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: query shape, eager-loading configuration, and N+1 avoidance are still application responsibilities [4][5].
 
 Likewise, serialization annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are mitigation tools, not complete out-of-the-box guarantees for end-to-end full-fidelity graph transport [6][7].
 
