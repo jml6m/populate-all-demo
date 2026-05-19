@@ -1,6 +1,6 @@
 # Extended Ecosystem Research: A Comparative Study of Graph Hydration and Serialization
 
-While our core experiment demonstrates a viable approach to cyclic graph hydration in JavaScript, this extended research takes a deeper dive into how the broader ecosystem handles these challenges. Specifically, we explore two distinct but deeply intertwined problems: the *schema-driven full hydration* problem (querying and reconstructing a complete, cyclic relational graph in memory) and the *serialization* problem (converting that hydrated, cyclic object into an acceptable format for transport). By examining a variety of technology stacks—from backend persistence frameworks to frontend state managers—we aim to understand how different languages and libraries attempt to bridge the gap between relational data stores and memory-safe graph representations.
+While our core experiment demonstrates a viable approach to cyclic graph hydration in JavaScript, this extended research takes a deeper dive into how the broader ecosystem handles these challenges. Specifically, we explore two distinct but deeply intertwined problems: the _schema-driven full hydration_ problem (fully populating an object with circular references) and the _serialization_ problem (converting that hydrated object into an acceptable format). By examining a variety of technology stacks, we aim to understand how different libraries attempt to bridge the gap between relational data stores and properly constructed object representations.
 
 ---
 
@@ -8,157 +8,192 @@ While our core experiment demonstrates a viable approach to cyclic graph hydrati
 
 ### 1.1 — Why naive recursion fails on cyclic graphs
 
-A naive recursive hydrator assumes dependencies eventually terminate. In a cycle (`u -> v -> u`), that assumption is false: resolving `u` requires `v`, and resolving `v` immediately requires `u` again. Without a global identity map, recursion does not converge and eventually overflows the call stack.
+A naive recursive hydrator assumes dependencies eventually terminate. In a cycle (`u -> v -> u`), that assumption is false: resolving `u` requires `v`, and resolving `v` immediately requires `u` again. Without a global identity map, recursion does not converge and eventually overflows the call stack. Completeness—the guarantee that every node's dependency list contains real, fully-wired objects rather than stubs, nulls, or IDs—cannot be satisfied in a single pass.
 
-### 1.2 — Why `maxDepth` guards also fail
+### 1.2 — The two-pass necessity in linear time
 
-A depth cap prevents infinite recursion, but it does so by truncating part of the graph. That means the algorithm returns an incomplete object model (missing edges or placeholders) rather than a fully hydrated cyclic graph. For schema-driven *full* hydration, depth caps are a safety stop, not a correctness solution.
+To safely hydrate a cyclic graph, an algorithm must process every vertex and every edge exactly once, resulting in a time complexity of `O(V+E)`.
 
-### 1.3 — Why `O(V+E)` is the right target
-
-To safely hydrate a cyclic graph, an algorithm must process every vertex (entity) and every edge (relationship) exactly once—resulting in a time complexity of `O(V+E)`.
-
-Pass 1 allocates a shell for each vertex and stores it in an identity map:
+Pass 1 (Allocation) establishes the global invariant that every object exists before any edge is wired. Every node is allocated as an empty shell and inserted into an Identity Map `M`:
 
 $$
-M[id(v)] = allocate(v) \quad \forall v \in V
+M = \{ \text{id}(v) \mapsto \text{alloc}(v) \mid v \in V \}
 $$
 
-Pass 2 links relationships using constant-time identity-map lookups:
+After Pass 1, `M` is a complete directory of the graph. Pass 2 (Wiring) then resolves every edge by a constant-time lookup:
 
 $$
-M[id(u)].edge = M[id(v)] \quad \forall (u, v) \in E
+\forall (u, v) \in E: M[u].\text{edge} = M[v]
 $$
 
-Using this two-pass structure guarantees that forward references in cycles are resolvable when edges are wired.
+Because every object already exists in `M`, the target is always a valid reference—regardless of whether `u -> v -> u` is a cycle.
 
 ---
 
-## §2 — The Serialization Boundary
+## §2 — Backend Persistence Frameworks
 
-### 2.1 — Why standard serializers fail after successful hydration
+It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two fundamentally different challenges. An application can successfully _hydrate_ a cyclic graph in memory, and then crash at the _serialization_ step when standard functions like `JSON.stringify` encounter the circular reference. The ORM did its job correctly, but converting it into a standard industry format for shared use requires additional effort.
 
-Hydration and serialization are different stages. A framework can correctly construct a cyclic in-memory graph and still fail when exporting it. Standard `JSON.stringify` performs recursive traversal and throws on circular references (`TypeError: Converting circular structure to JSON`) instead of preserving graph topology.
+For example, when serializers encounter revisited objects, common practice is hard failure or data omission. Some libraries go with their own reference-aware custom format, which is not ideal for sharing data outside of that ecosystem. Most popular backend ORMs tackle the cyclic-graph problem via the two-pass identity map strategy—but usually not in a fully best practice way, leaving the serialization gap unsolved.
 
-### 2.2 — Typical serializer outcomes in cyclic graphs
+### 2.1 — SQLAlchemy (Python)
 
-When serializers encounter revisited objects, common outcomes are:
+SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects to ensure each database row is represented by only one object instance.[^1] However, for self-referential relationships, the library requires explicit controls like `join_depth` to prevent infinite recursion during eager loading, as SQL joins do not fully support unbounded tree structures.[^2] While `join_depth` manages these read-path complexities, the write-path uses `post_update=True` to resolve circular foreign key dependencies. This is a two-pass strategy that allows the session to insert rows before their mutually dependent links are available.[^3]
 
-- hard failure (exception),
-- branch dropping / omission,
-- replacement with `null` or metadata wrappers,
-- or a reference-aware custom format.
+### 2.2 — Hibernate (Java) and EF Core (.NET)
 
-These outcomes are transport-format decisions, not hydration-correctness decisions.
+Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as an identity-map during object construction. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: explicit eager loading, such as EF Core's `Include` or Hibernate's `join fetch`, is required for complete data retrieval.[^4] [^5] Native serialization fails on these objects, so annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are available for mitigation, but as mentioned above, the resulting format is not guaranteed to work end-to-end in transport.[^6] [^7]
 
-### 2.3 — Practical mitigation patterns
+### 2.4 — ActiveRecord (Ruby on Rails)
 
-| Pattern | Cycle handling approach | Typical fidelity profile |
-| --- | --- | --- |
-| Cycle truncation | Drops revisited links (often `null`) | Partial graph / data loss |
-| Back-reference pruning | Omits one side of a bidirectional relation | Partial graph / directional loss |
-| Reference-tracking | Emits IDs or references (`$ref`, `__ref`) | Potentially full topology if consumer reconstructs |
-| Custom non-JSON serializers | Uses specialized output format and parser | Depends on implementation and receiver support |
-| Hypermedia-style links (for example HAL-like) | Sends linkable resource identities instead of full embedded cycles | Trades object fidelity for transport stability |
+ActiveRecord uses the `.includes()` method for strict tree traversal. If a backend attempts to traverse a fully cyclic graph beyond the explicitly defined depth, ActiveRecord silently falls back to lazy-loading. This triggers a barrage of N+1 SQL queries to fetch the missing references, often crippling performance.[^8] Ruby's native `.to_json` lacks cycle-detection, resulting in a `JSON::NestingError` or stack overflow when encountering circular references.[^9]
 
-In practice, reference-tracking formats and link-oriented API representations are the most common viable approaches in real systems for transporting cyclic data. Some purpose-built serializers, including tools like `devalue`, instead enforce a stricter serialization boundary by rejecting circular object graphs rather than preserving them; each choice reflects a trade-off based on consumer expectations rather than a universal winner.
+### 2.5 — JavaScript ORMs
 
-### 2.4 — Why this experiment chose index-based serialization
-
-The experiment intentionally avoids raw cyclic object serialization in its comparison path. It uses an index-based `AnswerEntry` representation so verification can evaluate hydration correctness without conflating failures from downstream serializers. This keeps Stage 1 focused on graph construction while still allowing Stage 2 consumer probes to evaluate transport constraints in isolation.
+For the detailed JavaScript ORM comparison matrix (Mongoose, Sequelize, TypeORM, Prisma, MikroORM), see `EXPERIMENT_ANALYSIS.md`.[^10] At a high level, JavaScript ORMs consistently fail at _schema-driven_ full hydration.
 
 ---
 
-## §3 — Backend Persistence Frameworks
+## §3 — Frontend Layer
 
-### 3.1 — SQLAlchemy
+Unlike the more synchronous nature of backend ORMs, frontend technologies can "get away" with using a different set of hydration strategies because it is a more **event driven** and **declarative** part of the technology stack. Frontend clients (and their caches) can clip a circular graph into a flat, finite tree, and if more data deeper into the cycle is required, the frontend simply triggers a new asynchronous request to the backend. Standard architecture relegates complex calculations and other database interactions to the backend, where issues like data integrity (backend processes often require one single transaction) and database performance ("just-in-time" hydration requires too many small database queries) require the fully hydrated object to be present in memory.
 
-SQLAlchemy's `Session` functions as an identity map keyed by entity identity, which enables coherent in-memory cyclic references once entities are loaded [1]. For self-referential eager loading, SQLAlchemy also documents explicit depth controls such as `join_depth` [2], showing the practical gap between identity-map hydration capability and unbounded schema-driven expansion. On write paths with mutual foreign keys, `post_update=True` is the documented deferred-link workaround [3].
+### 3.1 — GraphQL
 
-### 3.2 — Hibernate and EF Core
+GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^11] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^12] [^13]
 
-Hibernate's Persistence Context and EF Core's `ChangeTracker` both provide identity-map behavior during entity materialization [4][5]. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: query shape, eager-loading configuration, and N+1 avoidance are still application responsibilities [4][5].
+### 3.2 — Traditional Frontend JavaScript Ecosystems
 
-Likewise, serialization annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are mitigation tools, not complete out-of-the-box guarantees for end-to-end full-fidelity graph transport [6][7].
+In a traditional decoupled architecture (e.g., a JavaScript-rooted Single Page Application communicating with a REST API), the server is forced to serialize data into generic JSON before transport. Because standard JSON enforces a strict Directed Acyclic Graph (DAG) and crashes on cyclical data, any circular references present on the server are either completely stripped out or manually flattened before reaching the browser.
 
-### 3.3 — .NET and other mature stacks (high-level)
+Once the data arrives on the client, the frontend ecosystem must decide how to reconstruct and manage these data relationships. Broadly, they fall into two paradigms:
 
-Across .NET, Java, Python, and Ruby ecosystems, a recurring pattern appears: ORM identity maps can stabilize in-memory graph identity, but API serialization layers often apply separate constraints or defaults that require explicit configuration to avoid cycle-related failures [3][6][7][8].
+### The Normalized Identity Map Paradigm (The "Flat" State)
 
-### 3.4 — JavaScript ORMs (summary + pointer)
+> Examples: Redux, Vuex, NgRx.
 
-For the detailed JavaScript ORM comparison matrix (Mongoose, Sequelize, TypeORM, Prisma, MikroORM), see `EXPERIMENT_ANALYSIS.md §2` [9].
+**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^14]<br />
+**Trade-off:** Because the state remains completely flat, serialization is trivially solved (no cycles exist). However, the burden of achieving "full population" is pushed to the developer. To render an `Author` and their `Posts`, developers must write explicit selectors to dynamically join these separate dictionary records at runtime.
 
-At a high level, the common failure themes are: explicit manual-depth query authoring, wildcard depth ceilings, eager-loading restrictions in recursive relationships, and frequent dependence on application-layer post-processing when full cyclic reconstruction is needed.
+### The Referential Graph Paradigm (The "Wired" State)
 
----
+> Examples: MobX, RxJS, Vue (Reactive).
 
-## §4 — Frontend and API Layer
+**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory (e.g. it is possible to set `post.author = author`). Allows for more complex frontend JavaScript functionality like Observables and Signals.[^15]<br />
+**Trade-off:** Components can safely dot-chain through the hydrated graph `author.posts[0].author.name`. However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
 
-Frontend and API research matters here because hydrated data is ultimately *consumed* in clients and app-state stores. Even when backend hydration succeeds, deserialization, cache normalization, and client-state serialization boundaries can still reject or degrade cyclic structures.
+### 3.3 — Full-stack SSR Boundaries and E2E Integrated Transport
 
-### 4.1 — GraphQL client caches (Apollo and Relay)
+Modern full-stack SSR frameworks fundamentally flip this dynamic by explicitly leveraging their **end-to-end framework ownership**. In an ecosystem like the Next.js App Router, the framework authors both the server payload generation and the client hydration cycle. Because of this, they don't have to play by generic JSON's rulebook. When a backend query retrieves a "fully populated" object with a schema containing circular references, the developer can use proprietary wire protocols to send the data to the client component (Headers like `RSC: 1`, `Content-Type: text/x-component`, `Transfer-Encoding: chunked`, etc.)
 
-Apollo `InMemoryCache` normalizes records by `__typename` + entity ID and stores references via `__ref`, flattening nested payloads into a normalized identity map [10]. Relay similarly maintains a normalized record store with global IDs and garbage collection semantics in its runtime store [11].
+For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^16] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
 
-Both patterns demonstrate that robust client handling of cyclic/graph-like data typically relies on normalized reference indirection, not naive nested object trees.
-
-### 4.2 — normalizr as evidence of the problem
-
-`normalizr` requires developers to explicitly define entity schemas and replace embedded objects with IDs in normalized output [12]. This is useful evidence that generic nested payloads do not automatically become safe, reusable graph state without deliberate normalization rules.
-
-### 4.3 — State management comparison (React / Vue / Angular)
-
-| Framework ecosystem | Typical reactivity model | Cyclic graph support in state | Practical implication |
-| --- | --- | --- | --- |
-| React (Redux Toolkit, MobX, Zustand) | Immutable updates (Redux) and/or proxy/subscription models | Supported in memory, but safest when normalized as ID-linked entities | Normalization patterns are usually required for reliable persistence, devtools, and transport |
-| Vue (Pinia / Vuex) | Proxy-based reactivity over plain objects | Runtime cycles are possible, but toolchain/serialization boundaries still need explicit handling | Teams commonly model relationships by IDs to avoid serializer/tooling surprises |
-| Angular (NgRx, Signals + services) | RxJS/store patterns and signal-driven reactive state | Similar constraints: runtime can hold references, transport/devtools often prefer normalized entities | Entity-style stores reduce risk and improve predictable updates |
-
-Across all three ecosystems, cycle tolerance at runtime does not remove the need for deliberate normalization at storage and transport boundaries.
-
-### 4.4 — Full-stack SSR boundaries and `devalue`
-
-SSR frameworks frequently control their own server-to-client payload protocol, so they are not always limited to plain JSON. Next.js and SvelteKit/Nuxt-style pipelines can use framework-specific serialization contracts; in that sense, the boundary is partially proprietary to the stack's runtime.
-
-`devalue` is a key example: it supports several non-JSON-native types but intentionally rejects circular object graphs [13]. That design illustrates the core boundary clearly: even with framework-controlled serialization, cyclic hydrated objects still require normalization or reference-safe transformations before crossing SSR handoff boundaries.
+There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^17]
 
 ---
 
-## §5 — Algorithmic Theory: The Two-Pass Necessity
+## §4 — Algorithmic Theory: The Two-Pass Necessity
 
-Can full hydration be done in one pass? Sometimes:
+### The Scenario: The Simplest Circular Graph
 
-- **Yes for DAGs:** a topological order can guarantee dependencies are created before dependents.
-- **No for arbitrary cyclic graphs:** forward references are unavoidable when `u` and `v` depend on each other.
+Imagine the simplest possible circular graph containing two objects: **Object A** and **Object B**.
 
-Without two passes (or an equivalent mechanism like pointers/thunks/placeholders that are later resolved), a single-pass algorithm cannot guarantee full cyclic reconstruction with correct object identity for all inputs. Two-pass allocation-then-linking is therefore a general solution pattern, not just an implementation preference.
+- `A` has a property that points to `B`.
+- `B` has a property that points to `A`.
+
+> IMPORTANT: To completely construct and hydrate an object in memory, any dependency it points to **must already exist**. You cannot create a hard reference to an object that has not yet been allocated by the system.
+
+### 1. The Mathematical Proof (Chronological Paradox)
+
+Let’s assign a mathematical variable to the exact moment in time an object is fully created and hydrated.
+
+- Let `T(A)` = The time Object A is fully hydrated.
+- Let `T(B)` = The time Object B is fully hydrated.
+
+Because Object A requires Object B to be hydrated before A can be fully hydrated, A's hydration time must be strictly greater (later in time) than B's:
+
+> `T(A) > T(B)`
+
+Because Object B requires Object A to be hydrated before B can be fully hydrated, B's hydration time must be strictly greater than A's:
+
+> `T(B) > T(A)`
+
+By applying the transitive property of inequality (if A > B and B > C, then A > C) to combine these two rules, we arrive at a chronological paradox:
+
+> `T(A) > T(A)`
+
+**The Contradiction:** A number cannot be strictly greater than itself. Therefore, a single-pass hydration of a circular dependency is mathematically impossible. From a hardware (physical) perspective, you are asking the compiler to reference something before it has been created.
+
+### 2. How a Two-Pass Solution Solves the Math
+
+A two-pass solution resolves the paradox by splitting the single time variable `T` into two distinct phases:
+
+1. `T_allocate` (allocating the empty object in memory)
+2. `T_link` (attaching the references)
+
+### Pass 1 (Allocation)
+
+`T_allocate(A)` and `T_allocate(B)` occur. Both empty objects now exist in memory. They have addresses, but no linked properties.
+
+### Pass 2 (Hydration)
+
+`T_link(A)` and `T_link(B)` occur. Because Pass 1 entirely completed before Pass 2 began, we establish a new mathematical truth:
+
+- `T_allocate(B) < T_link(A)` _(B's memory exists before A points to it)_
+- `T_allocate(A) < T_link(B)` _(A's memory exists before B points to it)_
+
+### Conclusion
+
+By separating memory allocation from reference assignment, the chronological paradox is broken. Both references point to memory addresses that were safely established in the past.
 
 ---
 
 ## Appendix A — Methodological Boundaries
 
-This extended report is scoped to cross-ecosystem comparison of two concerns: full cyclic hydration and post-hydration serialization.
+This extended report is scoped to cross-ecosystem comparison of full cyclic hydration and post-hydration serialization. It relies on the motivating model defined in the core experiment. To maintain clear boundaries, this analysis assumes:
 
-- It assumes valid graph inputs for comparative analysis (well-formed identities and link targets).
-- It focuses on architectural behavior patterns, not exhaustive vendor feature catalogs.
-- Detailed benchmark-tier mechanics and dataset-specific validation policies remain in `EXPERIMENT_ANALYSIS.md` and project runner documentation [9][14].
+1. **Root-reachable closure:** Every node in the materialized graph is reachable from a selected root. Orphaned (disconnected) nodes are out-of-scope for the core algorithm comparison, as they do not naturally arise in a schema-driven relational fetch.
+2. **Single-object materialization:** Dependencies reached from multiple parents must resolve to one coherent in-memory node in the fully populated graph, not duplicated copies.
+3. **Valid edges:** "Dangling" references (edges pointing to nodes that do not exist) are invalid input, not a topology variant, and are rejected at preflight.
+
+Detailed benchmark mechanics and dataset-specific validation policies remain in `EXPERIMENT_ANALYSIS.md` and project runner documentation.[^10] [^18]
 
 ---
 
 ## References
 
-[1]: https://docs.sqlalchemy.org/en/20/orm/session_basics.html
-[2]: https://docs.sqlalchemy.org/en/20/orm/self_referential.html
-[3]: https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html
-[4]: https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations
-[5]: https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager
-[6]: https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion
-[7]: https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization
-[8]: https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html
-[9]: ./EXPERIMENT_ANALYSIS.md#2--a-recognized-challenge-in-the-data-layer-ecosystem
-[10]: https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization
-[11]: https://relay.dev/docs/guided-tour/reusing-cached-data/fetch-policies/
-[12]: https://github.com/paularmstrong/normalizr
-[13]: https://github.com/sveltejs/devalue
-[14]: ../README.md
+[^1]: [SQLAlchemy — Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
+
+[^2]: [SQL Alchemy - Self-Referential Strategies](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)
+
+[^3]: [SQLAlchemy — Relationship Persistence / `post_update`](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html)
+
+[^4]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
+
+[^5]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
+
+[^6]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
+
+[^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
+
+[^8]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
+
+[^9]: [JavaScript Object Notation (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
+
+[^10]: [EXPERIMENT_ANALYSIS §2](./EXPERIMENT_ANALYSIS.md#2--a-recognized-challenge-in-the-data-layer-ecosystem)
+
+[^11]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
+
+[^12]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
+
+[^13]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
+
+[^14]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
+
+[^15]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
+
+[^16]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+
+[^17]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
+
+[^18]: [README ](../README.md)
