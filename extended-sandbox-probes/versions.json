@@ -1,0 +1,15 @@
+{
+  "description": "Pinned versions used by supporting sandbox probes. Update when rerunning probes externally.",
+  "updatedAt": "2026-05-20",
+  "probes": {
+    "mikroorm": { "runtime": "node@22", "framework": "@mikro-orm/core@6.2.x", "driver": "@mikro-orm/sqlite@6.2.x" },
+    "mongoose": { "runtime": "node@22", "framework": "mongoose@8.15.x", "driver": "mongodb@6.x" },
+    "prisma": { "runtime": "node@22", "framework": "prisma@5.16.x", "client": "@prisma/client@5.16.x" },
+    "sequelize": { "runtime": "node@22", "framework": "sequelize@6.37.x", "driver": "sqlite3@5.1.x" },
+    "typeorm": { "runtime": "node@22", "framework": "typeorm@0.3.20", "driver": "sqlite3@5.1.x" },
+    "sqlalchemy": { "runtime": "python@3.12", "framework": "sqlalchemy@2.0.x" },
+    "active_record": { "runtime": "ruby@3.3", "framework": "activerecord@7.1.x", "driver": "sqlite3@1.7.x" },
+    "ef_core": { "runtime": ".NET@8", "framework": "Microsoft.EntityFrameworkCore@8.0.x" },
+    "hibernate_jackson": { "runtime": "JDK@21", "framework": "hibernate-core@6.5.x", "serializer": "jackson-databind@2.17.x" }
+  }
+}
