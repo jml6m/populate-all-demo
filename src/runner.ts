@@ -138,6 +138,13 @@ interface BenchmarkReport {
       pass: boolean;
       errorDetail: string | null;
     };
+    runtimeInvariant: {
+      pass: boolean;
+      errorDetail: string | null;
+      uniqueIds: number;
+      uniqueInstances: number;
+      edgesTraversed: number;
+    };
     doubleVerified: boolean;
   };
   /**
@@ -288,6 +295,140 @@ function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[])
     }
   }
   return { pass: true, errorDetail: null };
+}
+
+export interface RuntimeHydrationInvariantResult {
+  pass: boolean;
+  errorDetail: string | null;
+  uniqueIds: number;
+  uniqueInstances: number;
+  edgesTraversed: number;
+}
+
+/**
+ * Runtime hydration invariant (computed on live object references, not serialization).
+ *
+ * Definition of "fully hydrated" for this experiment:
+ *  1) Exactly one live object instance exists per logical id.
+ *  2) All expected ids and edges from the answer closure are present as live pointers.
+ *  3) Traversed nodes are plain objects with array dependencies (no lazy/proxy wrappers).
+ */
+export function runtimeHydrationInvariant(actual: ComponentPopulated[], expected: AnswerEntry[]): RuntimeHydrationInvariantResult {
+  if (!Array.isArray(actual) || !Array.isArray(expected)) {
+    return { pass: false, errorDetail: 'Invariant: actual and expected must be arrays', uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
+  }
+
+  const expectedById = new Map<string, Set<string>>();
+  for (const entry of expected) {
+    if (expectedById.has(entry.id)) {
+      return { pass: false, errorDetail: `Invariant: duplicate expected id "${entry.id}"`, uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
+    }
+    const depIds = new Set<string>();
+    for (const depIdx of entry.depIndices) {
+      depIds.add(expected[depIdx].id);
+    }
+    expectedById.set(entry.id, depIds);
+  }
+
+  const stack: ComponentPopulated[] = [...actual];
+  const visited = new Set<ComponentPopulated>();
+  const idToObject = new Map<string, ComponentPopulated>();
+  let edgesTraversed = 0;
+
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (visited.has(node)) continue;
+    visited.add(node);
+
+    if (Object.getPrototypeOf(node) !== Object.prototype) {
+      return { pass: false, errorDetail: `Invariant: node "${node.id}" is not a plain object`, uniqueIds: idToObject.size, uniqueInstances: visited.size, edgesTraversed };
+    }
+
+    if (typeof node.id !== 'string') {
+      return { pass: false, errorDetail: `Invariant: encountered node with non-string id`, uniqueIds: idToObject.size, uniqueInstances: visited.size, edgesTraversed };
+    }
+
+    if (!Array.isArray(node.dependencies)) {
+      return { pass: false, errorDetail: `Invariant: node "${node.id}" has non-array dependencies`, uniqueIds: idToObject.size, uniqueInstances: visited.size, edgesTraversed };
+    }
+
+    const existing = idToObject.get(node.id);
+    if (existing !== undefined && existing !== node) {
+      return {
+        pass: false,
+        errorDetail: `Invariant: id "${node.id}" maps to multiple object instances`,
+        uniqueIds: idToObject.size,
+        uniqueInstances: visited.size,
+        edgesTraversed,
+      };
+    }
+    idToObject.set(node.id, node);
+
+    const expectedDepIds = expectedById.get(node.id);
+    if (expectedDepIds === undefined) {
+      return {
+        pass: false,
+        errorDetail: `Invariant: unexpected reachable id "${node.id}"`,
+        uniqueIds: idToObject.size,
+        uniqueInstances: visited.size,
+        edgesTraversed,
+      };
+    }
+
+    const actualDepIds = new Set<string>();
+    for (const dep of node.dependencies) {
+      edgesTraversed++;
+      if (typeof dep.id !== 'string') {
+        return {
+          pass: false,
+          errorDetail: `Invariant: node "${node.id}" has invalid dependency shape`,
+          uniqueIds: idToObject.size,
+          uniqueInstances: visited.size,
+          edgesTraversed,
+        };
+      }
+      actualDepIds.add(dep.id);
+      stack.push(dep);
+    }
+
+    if (actualDepIds.size !== expectedDepIds.size || [...actualDepIds].some((id) => !expectedDepIds.has(id))) {
+      return {
+        pass: false,
+        errorDetail: `Invariant: dependency closure mismatch at id "${node.id}"`,
+        uniqueIds: idToObject.size,
+        uniqueInstances: visited.size,
+        edgesTraversed,
+      };
+    }
+  }
+
+  const expectedEdgeCount = expected.reduce((sum, entry) => sum + entry.depIndices.length, 0);
+  if (idToObject.size !== expected.length) {
+    return {
+      pass: false,
+      errorDetail: `Invariant: reachable ids ${idToObject.size}/${expected.length}`,
+      uniqueIds: idToObject.size,
+      uniqueInstances: visited.size,
+      edgesTraversed,
+    };
+  }
+  if (edgesTraversed !== expectedEdgeCount) {
+    return {
+      pass: false,
+      errorDetail: `Invariant: reachable edges ${edgesTraversed}/${expectedEdgeCount}`,
+      uniqueIds: idToObject.size,
+      uniqueInstances: visited.size,
+      edgesTraversed,
+    };
+  }
+
+  return {
+    pass: true,
+    errorDetail: null,
+    uniqueIds: idToObject.size,
+    uniqueInstances: visited.size,
+    edgesTraversed,
+  };
 }
 
 // ANSI blue: wraps the entire formatted value so the numeric portion is consistently blue.
@@ -998,7 +1139,7 @@ function runBenchmark() {
     if (laterCyclicDatasets.length > 0) {
       console.log(`      Later datasets report only full experiment timing and meaningful outcome changes.`);
     }
-    console.log(`      "(double-verified)" means both smartCompare and flatCompare passed.`);
+    console.log(`      "Hydration: ✅ PASS" requires smartCompare + flatCompare + runtime invariant.`);
     console.log('');
   }
 
@@ -1152,6 +1293,13 @@ function runBenchmark() {
 
       let smartResult = { pass: false, errorDetail: null as string | null, nodesProcessed: 0, edgesTraversed: 0 };
       let flatResult = { pass: false, errorDetail: null as string | null };
+      let invariantResult: RuntimeHydrationInvariantResult = {
+        pass: false,
+        errorDetail: 'Invariant not evaluated',
+        uniqueIds: 0,
+        uniqueInstances: 0,
+        edgesTraversed: 0,
+      };
       let executionResult: ComponentPopulated[] | null = null;
 
       // Start timing before algorithm execution.
@@ -1166,9 +1314,11 @@ function runBenchmark() {
         }
         const rawSmart = smartCompare(executionResult, answerData, traceCompare);
         const rawFlat = flatCompare(executionResult, rawAnswerEntries);
+        const rawInvariant = runtimeHydrationInvariant(executionResult, rawAnswerEntries);
         // Cap error messages at MAX_ERROR_DETAIL_CHARS so display helpers never truncate.
         smartResult = { ...rawSmart, errorDetail: capErrorDetail(rawSmart.errorDetail) };
         flatResult = { ...rawFlat, errorDetail: capErrorDetail(rawFlat.errorDetail) };
+        invariantResult = { ...rawInvariant, errorDetail: capErrorDetail(rawInvariant.errorDetail) };
       } catch (error: unknown) {
         const errorMessage = capErrorDetail(error instanceof Error ? error.message : String(error));
         const capped = errorMessage !== null && errorMessage !== '' ? errorMessage : 'Fatal Execution Error';
@@ -1182,20 +1332,29 @@ function runBenchmark() {
           pass: false,
           errorDetail: capped,
         };
+        invariantResult = {
+          pass: false,
+          errorDetail: capped,
+          uniqueIds: 0,
+          uniqueInstances: 0,
+          edgesTraversed: 0,
+        };
       }
 
       // Capture hydration-only time immediately after comparers complete.
       const hydrationEndTime = performance.now();
       const hydrationTimeMs = hydrationEndTime - startTime;
 
-      const bothPass = smartResult.pass && flatResult.pass;
+      const comparersPass = smartResult.pass && flatResult.pass;
+      const bothPass = comparersPass && invariantResult.pass;
       const disagree = smartResult.pass !== flatResult.pass;
 
       const hydration: BenchmarkReport['hydration'] = {
         pass: bothPass,
         smartCompare: smartResult,
         flatCompare: flatResult,
-        doubleVerified: bothPass,
+        runtimeInvariant: invariantResult,
+        doubleVerified: comparersPass,
       };
 
       // Stage 2 — Consumer probes: run only when hydration passed.
@@ -1314,7 +1473,9 @@ function runBenchmark() {
       if (disagree) {
         resultLine = `🚨 CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
       } else if (bothPass) {
-        resultLine = `✅ PASS (double-verified)`;
+        resultLine = `✅ PASS (double-verified + invariant)`;
+      } else if (comparersPass && !invariantResult.pass) {
+        resultLine = `❌ FAIL [runtime invariant: ${invariantResult.errorDetail ?? 'failed'}]`;
       } else {
         resultLine = `❌ FAIL ${classifyHydrationFailTag(smartErr, flatErr)}`;
       }
