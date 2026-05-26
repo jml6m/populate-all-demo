@@ -612,7 +612,7 @@ export interface FullDetailPhaseState {
   endToEndPass: boolean;
   /**
    * Pre-classified hydration result text produced by the normalization step.
-   * Examples: "✅ PASS (double-verified)" or "❌ FAIL [both comparers: …]".
+   * Examples: "✅ PASS" or "❌ FAIL [both comparers: …]".
    * Ignored when comparersConflict is true (the conflict label overrides it).
    */
   hydrationResultText: string;
@@ -694,7 +694,7 @@ export function normalizeFullDetailPhaseState(
  *
  * @param bothPass    - Whether both hydration comparers passed.
  * @param disagree    - Whether the two comparers disagree (one pass, one fail).
- * @param resultLine  - Pre-formatted result text (e.g. "✅ PASS (double-verified)" or "❌ FAIL [...]").
+ * @param resultLine  - Pre-formatted result text (e.g. "✅ PASS" or "❌ FAIL [...]").
  */
 export function buildDetailHydrationLine(bothPass: boolean, disagree: boolean, resultLine: string): string {
   if (disagree) return `  Hydration:     🚨 CONFLICT — comparers disagree`;
@@ -796,7 +796,7 @@ export interface LaterAlgoOutcome {
   probesFailed: boolean;
   /**
    * Full formatted hydration line ready for console output.
-   * - Pass (endToEndPass):  "  Full Run:      ✅ PASS (double-verified) | Time: 22ms | RAM: 9.1 MB"
+   * - Pass (endToEndPass):  "  Full Run:      ✅ PASS | Time: 22ms | RAM: 9.1 MB"
    *                         (Time is hydration + fastest authoritative passing probe.)
    * - Fail:                 "  Hydration:     ❌ FAIL [both comparers: ...]"  (no metrics)
    * null only when baselineSkipped is true.
@@ -920,7 +920,7 @@ export function buildLaterDatasetLines(outcomes: LaterAlgoOutcome[]): string[] {
  *
  * @param bothPass       - Whether both hydration comparers passed.
  * @param endToEndPass   - Whether hydration AND the authoritative probe (cycle-flat) passed.
- * @param resultLine     - Pre-formatted result text (e.g. "✅ PASS (double-verified)" or "❌ FAIL [...]").
+ * @param resultLine     - Pre-formatted result text (e.g. "✅ PASS" or "❌ FAIL [...]").
  * @param headlineTimeMs - Headline timing in ms (hydration + fastest passing probe).
  * @param headlineRamMb  - Peak heap delta over the full experiment window (MB).
  */
@@ -1139,7 +1139,6 @@ function runBenchmark() {
     if (laterCyclicDatasets.length > 0) {
       console.log(`      Later datasets report only full experiment timing and meaningful outcome changes.`);
     }
-    console.log(`      "Hydration: ✅ PASS" requires smartCompare + flatCompare + runtime invariant.`);
     console.log('');
   }
 
@@ -1473,7 +1472,9 @@ function runBenchmark() {
       if (disagree) {
         resultLine = `🚨 CONFLICT — smartCompare=${smartResult.pass ? 'PASS' : 'FAIL'}, flatCompare=${flatResult.pass ? 'PASS' : 'FAIL'}`;
       } else if (bothPass) {
-        resultLine = `✅ PASS (double-verified + invariant)`;
+        // HYDRATION PASS intentionally remains a single label in runtime output.
+        // Internally this still requires smartCompare + flatCompare + runtime invariant.
+        resultLine = `✅ PASS`;
       } else if (comparersPass && !invariantResult.pass) {
         resultLine = `❌ FAIL [runtime invariant: ${invariantResult.errorDetail ?? 'failed'}]`;
       } else {
