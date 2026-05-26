@@ -305,6 +305,29 @@ export interface RuntimeHydrationInvariantResult {
   edgesTraversed: number;
 }
 
+interface RuntimeHydrationExpectedIndex {
+  byId: Map<string, Set<string>>;
+  edgeCount: number;
+  nodeCount: number;
+}
+
+function buildRuntimeHydrationExpectedIndex(expected: AnswerEntry[]): RuntimeHydrationInvariantResult | RuntimeHydrationExpectedIndex {
+  const byId = new Map<string, Set<string>>();
+  let edgeCount = 0;
+  for (const entry of expected) {
+    if (byId.has(entry.id)) {
+      return { pass: false, errorDetail: `Invariant: duplicate expected id "${entry.id}"`, uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
+    }
+    const depIds = new Set<string>();
+    for (const depIdx of entry.depIndices) {
+      depIds.add(expected[depIdx].id);
+      edgeCount++;
+    }
+    byId.set(entry.id, depIds);
+  }
+  return { byId, edgeCount, nodeCount: expected.length };
+}
+
 /**
  * Runtime hydration invariant (computed on live object references, not serialization).
  *
@@ -313,21 +336,18 @@ export interface RuntimeHydrationInvariantResult {
  *  2) All expected ids and edges from the answer closure are present as live pointers.
  *  3) Traversed nodes are plain objects with array dependencies (no lazy/proxy wrappers).
  */
-export function runtimeHydrationInvariant(actual: ComponentPopulated[], expected: AnswerEntry[]): RuntimeHydrationInvariantResult {
+export function runtimeHydrationInvariant(
+  actual: ComponentPopulated[],
+  expected: AnswerEntry[],
+  precomputed?: RuntimeHydrationExpectedIndex
+): RuntimeHydrationInvariantResult {
   if (!Array.isArray(actual) || !Array.isArray(expected)) {
     return { pass: false, errorDetail: 'Invariant: actual and expected must be arrays', uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
   }
 
-  const expectedById = new Map<string, Set<string>>();
-  for (const entry of expected) {
-    if (expectedById.has(entry.id)) {
-      return { pass: false, errorDetail: `Invariant: duplicate expected id "${entry.id}"`, uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
-    }
-    const depIds = new Set<string>();
-    for (const depIdx of entry.depIndices) {
-      depIds.add(expected[depIdx].id);
-    }
-    expectedById.set(entry.id, depIds);
+  const expectedIndex = precomputed ?? buildRuntimeHydrationExpectedIndex(expected);
+  if ('pass' in expectedIndex) {
+    return expectedIndex;
   }
 
   const stack: ComponentPopulated[] = [...actual];
@@ -364,7 +384,7 @@ export function runtimeHydrationInvariant(actual: ComponentPopulated[], expected
     }
     idToObject.set(node.id, node);
 
-    const expectedDepIds = expectedById.get(node.id);
+    const expectedDepIds = expectedIndex.byId.get(node.id);
     if (expectedDepIds === undefined) {
       return {
         pass: false,
@@ -402,11 +422,11 @@ export function runtimeHydrationInvariant(actual: ComponentPopulated[], expected
     }
   }
 
-  const expectedEdgeCount = expected.reduce((sum, entry) => sum + entry.depIndices.length, 0);
-  if (idToObject.size !== expected.length) {
+  const expectedEdgeCount = expectedIndex.edgeCount;
+  if (idToObject.size !== expectedIndex.nodeCount) {
     return {
       pass: false,
-      errorDetail: `Invariant: reachable ids ${idToObject.size}/${expected.length}`,
+      errorDetail: `Invariant: reachable ids ${idToObject.size}/${expectedIndex.nodeCount}`,
       uniqueIds: idToObject.size,
       uniqueInstances: visited.size,
       edgesTraversed,
@@ -1300,6 +1320,7 @@ function runBenchmark() {
         edgesTraversed: 0,
       };
       let executionResult: ComponentPopulated[] | null = null;
+      const expectedInvariantIndex = buildRuntimeHydrationExpectedIndex(rawAnswerEntries);
 
       // Start timing before algorithm execution.
       const startMem = process.memoryUsage().heapUsed;
@@ -1313,7 +1334,9 @@ function runBenchmark() {
         }
         const rawSmart = smartCompare(executionResult, answerData, traceCompare);
         const rawFlat = flatCompare(executionResult, rawAnswerEntries);
-        const rawInvariant = runtimeHydrationInvariant(executionResult, rawAnswerEntries);
+        const rawInvariant = rawSmart.pass && rawFlat.pass
+          ? runtimeHydrationInvariant(executionResult, rawAnswerEntries, expectedInvariantIndex)
+          : { ...invariantResult, errorDetail: 'Invariant skipped (structural compare failed)' };
         // Cap error messages at MAX_ERROR_DETAIL_CHARS so display helpers never truncate.
         smartResult = { ...rawSmart, errorDetail: capErrorDetail(rawSmart.errorDetail) };
         flatResult = { ...rawFlat, errorDetail: capErrorDetail(rawFlat.errorDetail) };
