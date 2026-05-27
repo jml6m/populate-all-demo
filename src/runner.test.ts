@@ -23,6 +23,7 @@ import {
   MAX_ERROR_DETAIL_CHARS,
   normalizeFullDetailPhaseState,
   renderFullDetailLines,
+  runtimeHydrationInvariant,
   RunMetadata,
 } from './runner';
 import type { Manifest } from './types';
@@ -503,6 +504,57 @@ describe('buildFailureDetailLines — de-duplication', () => {
 });
 
 // ---------------------------------------------------------------------------
+// runtimeHydrationInvariant
+// ---------------------------------------------------------------------------
+
+describe('runtimeHydrationInvariant — explicit hydration stability check', () => {
+  it('passes for a stable fully hydrated 2-node cycle', () => {
+    const a = { id: 'a', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    const b = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    a.dependencies = [b];
+    b.dependencies = [a];
+    const expected = [
+      { id: 'a', depIndices: [1] },
+      { id: 'b', depIndices: [0] },
+    ];
+
+    const r = runtimeHydrationInvariant([a, b], expected);
+    assert.equal(r.pass, true, r.errorDetail ?? 'Invariant should pass');
+    assert.equal(r.uniqueIds, 2);
+    assert.equal(r.uniqueInstances, 2);
+    assert.equal(r.edgesTraversed, 2);
+  });
+
+  it('fails when one logical id maps to multiple live object instances', () => {
+    const b1 = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    const b2 = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    const a = { id: 'a', dependencies: [b1, b2] };
+    const expected = [
+      { id: 'a', depIndices: [1] },
+      { id: 'b', depIndices: [] },
+    ];
+
+    const r = runtimeHydrationInvariant([a, b1], expected);
+    assert.equal(r.pass, false);
+    assert.equal(r.errorDetail?.includes('maps to multiple object instances') ?? false, true);
+  });
+
+  it('fails when dependency closure is incomplete', () => {
+    const a = { id: 'a', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    const b = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+    a.dependencies = [b];
+    const expected = [
+      { id: 'a', depIndices: [1] },
+      { id: 'b', depIndices: [0] },
+    ];
+
+    const r = runtimeHydrationInvariant([a, b], expected);
+    assert.equal(r.pass, false);
+    assert.equal(r.errorDetail?.includes('dependency closure mismatch') ?? false, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildLaterDatasetLines
 // ---------------------------------------------------------------------------
 
@@ -515,7 +567,7 @@ function makePassOutcome(name: string, category: string, time = '10ms', ram = '1
     isNewFailure: false,
     isConflict: false,
     probesFailed: false,
-    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    hydrationLine: `  Full Run:      ✅ PASS | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine: null,
   };
@@ -593,7 +645,7 @@ function makeProbesFailedOutcome(name: string, category: string, time = '10ms', 
     isNewFailure: false,
     isConflict: false,
     probesFailed: true,
-    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    hydrationLine: `  Full Run:      ✅ PASS | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine,
   };
@@ -609,7 +661,7 @@ function makeProbesChangedOutcome(name: string, category: string, time = '10ms',
     isNewFailure: false,
     isConflict: false,
     probesFailed: false,
-    hydrationLine: `  Full Run:      ✅ PASS (double-verified) | Time: ${time} | RAM: ${ram}`,
+    hydrationLine: `  Full Run:      ✅ PASS | Time: ${time} | RAM: ${ram}`,
     failureDetailLines: [],
     probeChangeLine,
   };
@@ -895,19 +947,19 @@ describe('buildFullRunLine — full-run pass uses Full Run: label with headline 
     const line = buildFullRunLine(
       true, // bothPass
       true, // endToEndPass
-      '✅ PASS (double-verified)',
+      '✅ PASS',
       1.8,
       0.05
     );
     assert.ok(line.startsWith('  Full Run:'), `Expected "Full Run:" prefix, got: ${line}`);
-    assert.ok(line.includes('✅ PASS (double-verified)'));
+    assert.ok(line.includes('✅ PASS'));
     assert.ok(line.includes('Time:'));
     assert.ok(line.includes('RAM:'));
     assert.ok(!line.includes('Hydration:'));
   });
 
   it('includes formatted headline time in the Full Run line', () => {
-    const line = buildFullRunLine(true, true, '✅ PASS (double-verified)', 22.5, 9.1);
+    const line = buildFullRunLine(true, true, '✅ PASS', 22.5, 9.1);
     assert.ok(line.includes('23ms'), `Expected "23ms" (rounded), got: ${line}`);
   });
 });
@@ -918,7 +970,7 @@ describe('buildFullRunLine — hydration pass + authoritative probe fail uses Hy
     const line = buildFullRunLine(
       true, // bothPass — hydration passed
       false, // endToEndPass — cycle-flat failed
-      '✅ PASS (double-verified)',
+      '✅ PASS',
       5.0,
       2.0
     );
@@ -1077,9 +1129,9 @@ describe('classifyHydrationFailTag — other / fallback', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildDetailHydrationLine — pass', () => {
-  it('returns the "✅ PASS (double-verified)" hydration line', () => {
-    const line = buildDetailHydrationLine(true, false, '✅ PASS (double-verified)');
-    assert.equal(line, '  Hydration:     ✅ PASS (double-verified)');
+  it('returns the "✅ PASS" hydration line', () => {
+    const line = buildDetailHydrationLine(true, false, '✅ PASS');
+    assert.equal(line, '  Hydration:     ✅ PASS');
   });
 });
 
@@ -1206,13 +1258,13 @@ describe('full-detail three-line phase contract — hydration fail scenario', ()
 
 describe('full-detail three-line phase contract — full pass scenario', () => {
   it('produces Hydration PASS → Consumer probes → Full Run PASS with metrics', () => {
-    const resultLine = '✅ PASS (double-verified)';
+    const resultLine = '✅ PASS';
     const probeSummary = '✅ naive-json  ✅ cycle-flat (output ✅)';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
     const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
     const fullRunLine = buildDetailFullRunLine(true, true, false, 2.5, 0.1);
 
-    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS');
     assert.equal(probesLine, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
     assert.ok(fullRunLine.startsWith('  Full Run:      ✅ PASS'));
     assert.ok(fullRunLine.includes('Time:'));
@@ -1222,13 +1274,13 @@ describe('full-detail three-line phase contract — full pass scenario', () => {
 
 describe('full-detail three-line phase contract — hydration pass, probe fail scenario', () => {
   it('produces Hydration PASS → Consumer probes FAIL → Full Run FAIL', () => {
-    const resultLine = '✅ PASS (double-verified)';
+    const resultLine = '✅ PASS';
     const probeSummary = '❌ naive-json  ❌ cycle-flat';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
     const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
     const fullRunLine = buildDetailFullRunLine(false, true, false, 0, 0);
 
-    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS');
     assert.ok(probesLine.includes('❌ naive-json'));
     assert.equal(fullRunLine, '  Full Run:      ❌ FAIL');
   });
@@ -1299,7 +1351,7 @@ describe('normalizeFullDetailPhaseState — conflict', () => {
 
 describe('normalizeFullDetailPhaseState — full pass', () => {
   it('returns state with hydrationPassed=true and endToEndPass=true', () => {
-    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
+    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     assert.equal(state.hydrationPassed, true);
     assert.equal(state.endToEndPass, true);
     assert.equal(state.probesRan, true);
@@ -1311,7 +1363,7 @@ describe('normalizeFullDetailPhaseState — full pass', () => {
 
 describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', () => {
   it('returns state with hydrationPassed=true but endToEndPass=false', () => {
-    const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat', 0, 0);
+    const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '✅ naive-json  ❌ cycle-flat', 0, 0);
     assert.equal(state.hydrationPassed, true);
     assert.equal(state.endToEndPass, false);
     assert.equal(state.probesRan, true);
@@ -1390,7 +1442,7 @@ describe('normalizeFullDetailPhaseState — clamping: no endToEnd when probes di
       false,
       true /* endToEndPass: contradictory */,
       false /* probesRan */,
-      '✅ PASS (double-verified)',
+      '✅ PASS',
       '',
       5,
       0.1
@@ -1419,7 +1471,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
   it('line 0 always starts with "  Hydration:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
-      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
       normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
     ]) {
       const lines = renderFullDetailLines(state);
@@ -1430,7 +1482,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
   it('line 1 always starts with "  Consumer probes:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
-      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
       normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
     ]) {
       const lines = renderFullDetailLines(state);
@@ -1441,7 +1493,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
   it('line 2 always starts with "  Full Run:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
-      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json', 1, 0.1),
+      normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
       normalizeFullDetailPhaseState(false, true, false, false, '🚨 any', '', 0, 0),
     ]) {
       const lines = renderFullDetailLines(state);
@@ -1472,9 +1524,9 @@ describe('renderFullDetailLines — conflict state', () => {
 
 describe('renderFullDetailLines — full pass state', () => {
   it('produces expected three lines for full pass (both probes pass)', () => {
-    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
+    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     const [h, p, f] = renderFullDetailLines(state);
-    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(h, '  Hydration:     ✅ PASS');
     assert.equal(p, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
     assert.ok(f.startsWith('  Full Run:      ✅ PASS'));
     assert.ok(f.includes('Time:'));
@@ -1490,14 +1542,14 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
   it('produces Full Run PASS even though naive-json failed (cycle-flat is authoritative)', () => {
     // This is the core semantic: naive-json failure on cyclic graphs is expected
     // and informational. cycle-flat passing means the experiment is a Full Run pass.
-    const resultLine = '✅ PASS (double-verified)';
+    const resultLine = '✅ PASS';
     const probeSummary = '❌ naive-json  ✅ cycle-flat (output ✅)';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
     const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
     // endToEndPass=true because cycle-flat passed (the authoritative probe).
     const fullRunLine = buildDetailFullRunLine(true, true, false, 3.0, 0.2);
 
-    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS');
     assert.ok(probesLine.includes('❌ naive-json'), 'naive-json failure must be visible in probe summary');
     assert.ok(probesLine.includes('✅ cycle-flat'), 'cycle-flat pass must be visible in probe summary');
     assert.ok(fullRunLine.startsWith('  Full Run:      ✅ PASS'), 'Full Run must be PASS when cycle-flat passes');
@@ -1511,13 +1563,13 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
       false,
       true /* endToEndPass: cycle-flat passed */,
       true,
-      '✅ PASS (double-verified)',
+      '✅ PASS',
       '❌ naive-json  ✅ cycle-flat (output ✅)',
       3.0,
       0.2
     );
     const [h, p, f] = renderFullDetailLines(state);
-    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(h, '  Hydration:     ✅ PASS');
     assert.ok(p.includes('❌ naive-json'));
     assert.ok(p.includes('✅ cycle-flat'));
     assert.ok(f.startsWith('  Full Run:      ✅ PASS'));
@@ -1528,14 +1580,14 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
   it('produces Full Run FAIL when cycle-flat fails (authoritative probe failure)', () => {
     // This is a rare but important case: naive-json passes but cycle-flat fails.
     // Since cycle-flat is the authoritative probe, the full run fails.
-    const resultLine = '✅ PASS (double-verified)';
+    const resultLine = '✅ PASS';
     const probeSummary = '✅ naive-json  ❌ cycle-flat';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
     const probesLine = buildDetailConsumerProbesLine(true, probeSummary);
     // endToEndPass=false because cycle-flat failed.
     const fullRunLine = buildDetailFullRunLine(false, true, false, 0, 0);
 
-    assert.equal(hydrationLine, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(hydrationLine, '  Hydration:     ✅ PASS');
     assert.ok(probesLine.includes('✅ naive-json'));
     assert.ok(probesLine.includes('❌ cycle-flat'));
     assert.equal(fullRunLine, '  Full Run:      ❌ FAIL');
@@ -1547,13 +1599,13 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
       false,
       false /* endToEndPass: cycle-flat failed */,
       true,
-      '✅ PASS (double-verified)',
+      '✅ PASS',
       '✅ naive-json  ❌ cycle-flat',
       0,
       0
     );
     const [h, p, f] = renderFullDetailLines(state);
-    assert.equal(h, '  Hydration:     ✅ PASS (double-verified)');
+    assert.equal(h, '  Hydration:     ✅ PASS');
     assert.ok(p.includes('✅ naive-json'));
     assert.ok(p.includes('❌ cycle-flat'));
     assert.equal(f, '  Full Run:      ❌ FAIL');
@@ -1598,7 +1650,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
   });
 
   it('full pass: ✅ on all lines, metrics only on Full Run, no ❌ or "not run"', () => {
-    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
+    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('✅'), 'Hydration line must show ✅ on pass');
     assert.ok(p.includes('✅'), 'Probes line must show ✅ on pass');
@@ -1611,7 +1663,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
   });
 
   it('hydration pass + cycle-flat fail: Hydration ✅, Probes shows ❌ cycle-flat, Full Run ❌ FAIL (no metrics)', () => {
-    const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat', 0, 0);
+    const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '✅ naive-json  ❌ cycle-flat', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('✅ PASS'), 'Hydration must show pass');
     assert.ok(p.includes('❌ cycle-flat'), 'Probes must show cycle-flat failure');
@@ -1623,7 +1675,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
 
   it('hydration pass + naive-json fail + cycle-flat pass: Full Run is ✅ PASS with metrics', () => {
     // naive-json failure must not prevent Full Run from passing.
-    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '❌ naive-json  ✅ cycle-flat (output ✅)', 3.0, 0.2);
+    const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '❌ naive-json  ✅ cycle-flat (output ✅)', 3.0, 0.2);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('✅ PASS'), 'Hydration must show pass');
     assert.ok(p.includes('❌ naive-json'), 'naive-json failure must be visible');
@@ -1707,7 +1759,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     // Case 5: Full pass — both probes pass
     line('[Case 5] Full pass — hydration ✅, naive-json ✅, cycle-flat ✅');
     {
-      const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
+      const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
       for (const l of renderFullDetailLines(state)) line(l);
     }
     line();
@@ -1716,7 +1768,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 6] Hydration pass + naive-json ❌ + cycle-flat ✅ (expected cyclic failure)');
     line('         naive-json failure is informational; cycle-flat is authoritative → Full Run PASS');
     {
-      const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS (double-verified)', '❌ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
+      const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '❌ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
       for (const l of renderFullDetailLines(state)) line(l);
     }
     line();
@@ -1725,7 +1777,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     line('[Case 7] Hydration pass + naive-json ✅ + cycle-flat ❌ (authoritative probe failure)');
     line('         cycle-flat fails → Full Run FAIL (despite naive-json passing)');
     {
-      const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS (double-verified)', '✅ naive-json  ❌ cycle-flat', 0, 0);
+      const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '✅ naive-json  ❌ cycle-flat', 0, 0);
       for (const l of renderFullDetailLines(state)) line(l);
     }
     line();
@@ -1733,7 +1785,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     // Case 8: Hydration pass + naive-json fail + cycle-flat fail
     line('[Case 8] Hydration pass + naive-json ❌ + cycle-flat ❌ (both probes fail)');
     {
-      const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS (double-verified)', '❌ naive-json  ❌ cycle-flat', 0, 0);
+      const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '❌ naive-json  ❌ cycle-flat', 0, 0);
       for (const l of renderFullDetailLines(state)) line(l);
     }
     line();
