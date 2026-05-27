@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { DataSource, EntitySchema, Logger, QueryRunner } from 'typeorm';
+import { DataSource, EntitySchema, Logger } from 'typeorm';
 import { assertNoExtraQueries, finalizeSerialization, smartCheck } from './js/shared';
 
 type Node = {

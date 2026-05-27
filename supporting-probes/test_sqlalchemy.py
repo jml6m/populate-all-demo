@@ -122,11 +122,15 @@ def run():
 
         hydration = 'HYDRATION PASS' if query_gate['pass'] and graph_check['pass'] else 'HYDRATION FAIL'
 
+        def _default(obj):
+            if isinstance(obj, Node):
+                # Keep dependency recursion so cycles surface as recursion/cycle failures.
+                return {'name': obj.name, 'dependencies': obj.dependencies}
+            raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
         serialization_error = None
         try:
-            payload = {}
-            payload['self'] = payload
-            json.dumps(payload)
+            json.dumps(roots, default=_default)
         except Exception as error:
             serialization_error = error
 

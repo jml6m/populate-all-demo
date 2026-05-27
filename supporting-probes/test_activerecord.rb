@@ -105,16 +105,18 @@ def run
 
     hydration = query_gate[:pass] && graph_check[:pass] ? 'HYDRATION PASS' : 'HYDRATION FAIL'
 
-    serialization_error = nil
+    serialization = 'SERIALIZE_PASS'
     begin
-      payload = {}
-      payload['self'] = payload
-      JSON.generate(payload)
+      project = nil
+      project = lambda do |node|
+        { name: node.name, dependencies: node.dependencies.map { |d| project.call(d) } }
+      end
+      JSON.generate(roots.map { |r| project.call(r) })
+    rescue SystemStackError
+      serialization = 'SERIALIZE_FAIL_CYCLE'
     rescue StandardError => e
-      serialization_error = e
+      serialization = classify_serialization(e)
     end
-
-    serialization = classify_serialization(serialization_error)
 
     puts 'test_activerecord'
     puts "hydration: #{hydration}"

@@ -6,7 +6,7 @@ type PrismaNode = {
   dependencies: PrismaNode[];
 };
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ log: [{ emit: 'event', level: 'query' }] });
 
 async function run() {
   const expectedAdj = { a: ['b'], b: ['a'] };
