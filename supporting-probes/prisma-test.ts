@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { assertNoExtraQueries, finalizeSerialization, smartCheck } from './js/shared';
+import { finalizeSerialization, smartCheck } from './ts/shared';
 
 type PrismaNode = {
   name: string;
@@ -37,7 +37,10 @@ async function run() {
     }
   }
 
-  const queryGate = assertNoExtraQueries(queriesAfterHydration, queryCount);
+  const queryGate =
+    queryCount === queriesAfterHydration
+      ? { pass: true, reason: null }
+      : { pass: false, reason: `expected no additional queries during traversal, saw +${queryCount - queriesAfterHydration}` };
   const graphCheck = smartCheck(roots, expectedAdj, {
     getId: (node) => node.name,
     getDeps: (node) => node.dependencies,

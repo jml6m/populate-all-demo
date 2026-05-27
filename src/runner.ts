@@ -311,15 +311,28 @@ interface RuntimeHydrationExpectedIndex {
   nodeCount: number;
 }
 
-function buildRuntimeHydrationExpectedIndex(expected: AnswerEntry[]): RuntimeHydrationInvariantResult | RuntimeHydrationExpectedIndex {
+interface RuntimeHydrationExpectedIndexError {
+  errorDetail: string;
+  uniqueIds: number;
+  edgesTraversed: number;
+}
+
+function buildRuntimeHydrationExpectedIndex(expected: AnswerEntry[]): RuntimeHydrationExpectedIndex | RuntimeHydrationExpectedIndexError {
   const byId = new Map<string, Set<string>>();
   let edgeCount = 0;
   for (const entry of expected) {
     if (byId.has(entry.id)) {
-      return { pass: false, errorDetail: `Invariant: duplicate expected id "${entry.id}"`, uniqueIds: 0, uniqueInstances: 0, edgesTraversed: 0 };
+      return { errorDetail: `Invariant: duplicate expected id "${entry.id}"`, uniqueIds: byId.size, edgesTraversed: edgeCount };
     }
     const depIds = new Set<string>();
     for (const depIdx of entry.depIndices) {
+      if (!Number.isInteger(depIdx) || depIdx < 0 || depIdx >= expected.length) {
+        return {
+          errorDetail: `Invariant: invalid dependency index ${depIdx} for id "${entry.id}"`,
+          uniqueIds: byId.size,
+          edgesTraversed: edgeCount,
+        };
+      }
       depIds.add(expected[depIdx].id);
       edgeCount++;
     }
@@ -335,6 +348,9 @@ function buildRuntimeHydrationExpectedIndex(expected: AnswerEntry[]): RuntimeHyd
  *  1) Exactly one live object instance exists per logical id.
  *  2) All expected ids and edges from the answer closure are present as live pointers.
  *  3) Traversed nodes are plain objects with array dependencies (no lazy/proxy wrappers).
+ *
+ * Note: this remains a runtime guard (instead of a constructor/type-level guarantee)
+ * because algorithm outputs come from dynamic implementations at execution time.
  */
 export function runtimeHydrationInvariant(
   actual: ComponentPopulated[],
@@ -346,8 +362,14 @@ export function runtimeHydrationInvariant(
   }
 
   const expectedIndex = precomputed ?? buildRuntimeHydrationExpectedIndex(expected);
-  if ('pass' in expectedIndex) {
-    return expectedIndex;
+  if ('errorDetail' in expectedIndex) {
+    return {
+      pass: false,
+      errorDetail: expectedIndex.errorDetail,
+      uniqueIds: expectedIndex.uniqueIds,
+      uniqueInstances: 0,
+      edgesTraversed: expectedIndex.edgesTraversed,
+    };
   }
 
   const stack: ComponentPopulated[] = [...actual];
@@ -1335,7 +1357,15 @@ function runBenchmark() {
         const rawSmart = smartCompare(executionResult, answerData, traceCompare);
         const rawFlat = flatCompare(executionResult, rawAnswerEntries);
         const rawInvariant = rawSmart.pass && rawFlat.pass
-          ? runtimeHydrationInvariant(executionResult, rawAnswerEntries, expectedInvariantIndex)
+          ? ('errorDetail' in expectedInvariantIndex
+            ? {
+                pass: false,
+                errorDetail: expectedInvariantIndex.errorDetail,
+                uniqueIds: expectedInvariantIndex.uniqueIds,
+                uniqueInstances: 0,
+                edgesTraversed: expectedInvariantIndex.edgesTraversed,
+              }
+            : runtimeHydrationInvariant(executionResult, rawAnswerEntries, expectedInvariantIndex))
           : { ...invariantResult, errorDetail: 'Invariant skipped (structural compare failed)' };
         // Cap error messages at MAX_ERROR_DETAIL_CHARS so display helpers never truncate.
         smartResult = { ...rawSmart, errorDetail: capErrorDetail(rawSmart.errorDetail) };

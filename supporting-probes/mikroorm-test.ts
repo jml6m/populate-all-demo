@@ -1,6 +1,6 @@
 import { Collection, EntitySchema, MikroORM } from '@mikro-orm/core';
 import { SqliteDriver } from '@mikro-orm/sqlite';
-import { assertNoExtraQueries, finalizeSerialization, smartCheck } from './js/shared';
+import { finalizeSerialization, smartCheck } from './ts/shared';
 
 class Node {
   id!: string;
@@ -66,7 +66,10 @@ async function run() {
     }
   }
 
-  const queryGate = assertNoExtraQueries(queriesAfterHydration, queryCount);
+  const queryGate =
+    queryCount === queriesAfterHydration
+      ? { pass: true, reason: null }
+      : { pass: false, reason: `expected no additional queries during traversal, saw +${queryCount - queriesAfterHydration}` };
   const graphCheck = smartCheck(roots, expectedAdj, {
     getId: (node) => node.id,
     getDeps: (node) => node.dependencies.getItems(),

@@ -1,5 +1,5 @@
 import { DataTypes, Model, Sequelize } from 'sequelize';
-import { assertNoExtraQueries, finalizeSerialization, smartCheck } from './js/shared';
+import { finalizeSerialization, smartCheck } from './ts/shared';
 
 class Node extends Model {
   declare id: number;
@@ -49,7 +49,10 @@ async function run() {
     }
   }
 
-  const queryGate = assertNoExtraQueries(queriesAfterHydration, queryCount);
+  const queryGate =
+    queryCount === queriesAfterHydration
+      ? { pass: true, reason: null }
+      : { pass: false, reason: `expected no additional queries during traversal, saw +${queryCount - queriesAfterHydration}` };
   const graphCheck = smartCheck(roots as Node[], expectedAdj, {
     getId: (node) => node.name,
     getDeps: (node) => node.dependencies,

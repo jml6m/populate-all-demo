@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, EntitySchema, Logger } from 'typeorm';
-import { assertNoExtraQueries, finalizeSerialization, smartCheck } from './js/shared';
+import { finalizeSerialization, smartCheck } from './ts/shared';
 
 type Node = {
   id: number;
@@ -84,7 +84,10 @@ async function run() {
     }
   }
 
-  const queryGate = assertNoExtraQueries(queriesAfterHydration, logger.queryCount);
+  const queryGate =
+    logger.queryCount === queriesAfterHydration
+      ? { pass: true, reason: null }
+      : { pass: false, reason: `expected no additional queries during traversal, saw +${logger.queryCount - queriesAfterHydration}` };
   const graphCheck = smartCheck(roots, expectedAdj, {
     getId: (node) => node.name,
     getDeps: (node) => node.dependencies,

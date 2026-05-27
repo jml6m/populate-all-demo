@@ -8,20 +8,37 @@ export interface SmartCheckResult {
   edgesTraversed: number;
 }
 
+function isCycleSerializationError(error: unknown): boolean {
+  const queue: unknown[] = [error];
+  const seen = new Set<unknown>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || current === null || seen.has(current)) continue;
+    seen.add(current);
+    if (current instanceof Error) {
+      const normalized = current.message.toLowerCase();
+      if (current.name === 'TypeError' && (normalized.includes('circular') || normalized.includes('cyclic') || normalized.includes('cycle'))) {
+        return true;
+      }
+      queue.push((current as Error & { cause?: unknown }).cause);
+    }
+  }
+  return false;
+}
+
 export function classifySerializationError(error: unknown): SerializationResult {
-  const msg = error instanceof Error ? error.message : String(error ?? '');
-  const normalized = msg.toLowerCase();
-  if (normalized.includes('cycle') || normalized.includes('circular') || normalized.includes('converting circular structure')) {
+  if (isCycleSerializationError(error)) {
     return 'SERIALIZE_FAIL_CYCLE';
   }
   return 'SERIALIZE_FAIL_OTHER';
 }
 
-export function assertNoExtraQueries(beforeTraversal: number, afterTraversal: number): { pass: boolean; reason: string | null } {
-  if (afterTraversal === beforeTraversal) return { pass: true, reason: null };
-  return { pass: false, reason: `expected no additional queries during traversal, saw +${afterTraversal - beforeTraversal}` };
-}
-
+/**
+ * Smart hydration validation for supporting probes.
+ *
+ * Verifies runtime identity and dependency closure against an expected adjacency
+ * map while traversing only reachable nodes from roots.
+ */
 export function smartCheck<T>(
   roots: T[],
   expectedAdj: Record<string, string[]>,
