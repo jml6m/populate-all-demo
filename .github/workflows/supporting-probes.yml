@@ -1,14 +1,6 @@
 name: Supporting Probes
 
 on:
-  push:
-    paths:
-      - 'supporting-probes/**'
-      - '.github/workflows/supporting-probes.yml'
-  pull_request:
-    paths:
-      - 'supporting-probes/**'
-      - '.github/workflows/supporting-probes.yml'
   workflow_dispatch:
 
 defaults:
