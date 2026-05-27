@@ -32,8 +32,8 @@ async function run() {
 
   const a = await Node.create({ name: 'a' });
   const b = await Node.create({ name: 'b' });
-  await a.$set('dependencies', [b]);
-  await b.$set('dependencies', [a]);
+  await (a as Node & { setDependencies(dependencies: Node[]): Promise<void> }).setDependencies([b]);
+  await (b as Node & { setDependencies(dependencies: Node[]): Promise<void> }).setDependencies([a]);
 
   const roots = await Node.findAll({
     where: { name: ['a', 'b'] },
