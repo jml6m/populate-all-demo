@@ -3,7 +3,8 @@ import { finalizeSerialization, smartCheck } from './ts/shared';
 
 type NodeDoc = {
   name: string;
-  dependencies: NodeDoc[];
+  // During setup this can be ObjectIds; after populate it becomes NodeDoc objects.
+  dependencies: Array<NodeDoc | mongoose.Types.ObjectId>;
 };
 
 const NodeSchema = new Schema({
@@ -40,8 +41,8 @@ async function run() {
   const queriesAfterHydration = queryCount;
 
   for (const root of roots) {
-    for (const dep of root.dependencies) {
-      void dep.dependencies.length;
+    for (const dep of root.dependencies as NodeDoc[]) {
+      void (dep.dependencies as NodeDoc[]).length;
     }
   }
 
@@ -51,7 +52,7 @@ async function run() {
       : { pass: false, reason: `expected no additional queries during traversal, saw +${queryCount - queriesAfterHydration}` };
   const graphCheck = smartCheck(roots, expectedAdj, {
     getId: (node) => node.name,
-    getDeps: (node) => node.dependencies,
+    getDeps: (node) => node.dependencies as NodeDoc[],
   });
   const hydration = queryGate.pass && graphCheck.pass ? 'HYDRATION PASS' : 'HYDRATION FAIL';
 
