@@ -264,7 +264,7 @@ jobs:
         run: mvn -q dependency:resolve
 
       - name: Run Hibernate probe
-        run: mvn -q compile exec:java -Dexec.mainClass=Main
+        run: mvn -q dependency:build-classpath -Dmdep.outputFile=.hibernate-classpath && javac -cp "$(cat .hibernate-classpath)" Main.java && java -cp ".:$(cat .hibernate-classpath)" Main
 
   efcore:
     name: EF Core probe
