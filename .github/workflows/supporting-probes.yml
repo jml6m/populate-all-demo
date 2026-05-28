@@ -2,6 +2,8 @@ name: Supporting Probes
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 defaults:
   run:
