@@ -204,3 +204,84 @@ jobs:
         run: npm run probe:mongoose
         env:
           MONGODB_URI: mongodb://localhost:27017/supporting_probe_mongoose
+
+  sqlalchemy:
+    name: SQLAlchemy probe
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install sqlalchemy
+
+      - name: Run SQLAlchemy probe
+        run: python test_sqlalchemy.py
+
+  activerecord:
+    name: ActiveRecord probe
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 'ruby'
+
+      - name: Install dependencies
+        run: gem install activerecord sqlite3 activesupport
+
+      - name: Run ActiveRecord probe
+        run: ruby test_activerecord.rb
+
+  hibernate:
+    name: Hibernate probe
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: mvn -q dependency:resolve
+
+      - name: Run Hibernate probe
+        run: mvn -q compile exec:java -Dexec.mainClass=Main
+
+  efcore:
+    name: EF Core probe
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install dependencies
+        run: dotnet restore EfCoreTest.csproj
+
+      - name: Run EF Core probe
+        run: dotnet run --project EfCoreTest.csproj
