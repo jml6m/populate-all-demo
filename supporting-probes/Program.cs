@@ -115,7 +115,7 @@ static SmartCheckResult SmartCheck(List<Node> roots, Dictionary<string, HashSet<
     return new(true, null, byName.Count, visited.Count, edgesTraversed: edges);
 }
 
-public sealed record SmartCheckResult(bool pass, string? reason, int uniqueIds, int uniqueInstances, int edgesTraversed);
+internal sealed record SmartCheckResult(bool pass, string? reason, int uniqueIds, int uniqueInstances, int edgesTraversed);
 
 public class ProbeDbContext(DbContextOptions<ProbeDbContext> options) : DbContext(options)
 {
