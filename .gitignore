@@ -32,3 +32,4 @@ npm-debug.log*
 
 # Supporting probes generated DB
 /supporting-probes/prisma/probe.db
+/supporting-probes/obj/
