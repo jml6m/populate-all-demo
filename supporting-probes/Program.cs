@@ -75,7 +75,7 @@ Console.WriteLine($"queryGate: {JsonSerializer.Serialize(queryGate)}");
 Console.WriteLine($"smartCheck: {JsonSerializer.Serialize(graphCheck)}");
 Console.WriteLine($"serialization: {serialization}");
 
-static object SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> expectedAdj)
+static SmartCheckResult SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> expectedAdj)
 {
     var stack = new Stack<Node>(roots);
     var visited = new HashSet<Node>();
@@ -89,7 +89,7 @@ static object SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> e
 
         if (byName.TryGetValue(node.Name, out var prior) && !ReferenceEquals(prior, node))
         {
-            return new { pass = false, reason = $"id \"{node.Name}\" maps to multiple in-memory instances", uniqueIds = byName.Count, uniqueInstances = visited.Count, edgesTraversed = edges };
+            return new(false, $"id \"{node.Name}\" maps to multiple in-memory instances", byName.Count, visited.Count, edgesTraversed: edges);
         }
 
         byName[node.Name] = node;
@@ -97,7 +97,7 @@ static object SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> e
         var expected = expectedAdj.TryGetValue(node.Name, out var deps) ? deps : new HashSet<string>();
         if (!actual.SetEquals(expected))
         {
-            return new { pass = false, reason = $"dependency closure mismatch at \"{node.Name}\"", uniqueIds = byName.Count, uniqueInstances = visited.Count, edgesTraversed = edges };
+            return new(false, $"dependency closure mismatch at \"{node.Name}\"", byName.Count, visited.Count, edgesTraversed: edges);
         }
 
         foreach (var dep in node.Dependencies)
@@ -109,11 +109,13 @@ static object SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> e
 
     if (byName.Count != expectedAdj.Count)
     {
-        return new { pass = false, reason = $"reachable ids mismatch: got {byName.Count}, expected {expectedAdj.Count}", uniqueIds = byName.Count, uniqueInstances = visited.Count, edgesTraversed = edges };
+        return new(false, $"reachable ids mismatch: got {byName.Count}, expected {expectedAdj.Count}", byName.Count, visited.Count, edgesTraversed: edges);
     }
 
-    return new { pass = true, reason = (string?)null, uniqueIds = byName.Count, uniqueInstances = visited.Count, edgesTraversed = edges };
+    return new(true, null, byName.Count, visited.Count, edgesTraversed: edges);
 }
+
+internal sealed record SmartCheckResult(bool pass, string? reason, int uniqueIds, int uniqueInstances, int edgesTraversed);
 
 public class ProbeDbContext(DbContextOptions<ProbeDbContext> options) : DbContext(options)
 {
@@ -123,8 +125,7 @@ public class ProbeDbContext(DbContextOptions<ProbeDbContext> options) : DbContex
     {
         modelBuilder.Entity<Node>()
             .HasMany(n => n.Dependencies)
-            .WithMany(n => n.Dependents)
-            .UsingEntity("NodeDependencies");
+            .WithMany(n => n.Dependents);
 
         modelBuilder.Entity<Node>().HasIndex(n => n.Name).IsUnique();
     }
