@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
 
   typeorm:
     name: TypeORM probe
@@ -62,7 +62,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run TypeORM probe
         run: npm run probe:typeorm
@@ -86,7 +87,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run TypeORM positive probe
         run: npm run probe:typeorm-positive
@@ -110,7 +112,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run Sequelize probe
         run: npm run probe:sequelize
@@ -134,7 +137,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run MikroORM probe
         run: npm run probe:mikroorm
@@ -158,7 +162,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run Prisma probe
         run: npm run probe:prisma
@@ -192,7 +197,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ hashFiles('supporting-probes/package-lock.json') }}
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
 
       - name: Run Mongoose probe
         run: npm run probe:mongoose
