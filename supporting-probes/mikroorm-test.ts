@@ -32,8 +32,10 @@ async function run() {
   const expectedAdj = { a: ['b'], b: ['a'] };
 
   const orm = await MikroORM.init<SqliteDriver>({
+    driver: SqliteDriver,
     entities: [NodeSchema],
     dbName: ':memory:',
+    allowGlobalContext: true,
     debug: ['query'],
     logger: (message) => {
       if (message.toLowerCase().includes('select') || message.toLowerCase().includes('insert') || message.toLowerCase().includes('update')) {

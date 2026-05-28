@@ -1,0 +1,206 @@
+name: Supporting Probes
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: supporting-probes
+
+jobs:
+  install:
+    name: Install supporting probes dependencies
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: supporting-probes/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=prisma/schema.prisma
+
+      - name: Upload lockfile artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: supporting-probes-lockfile
+          path: supporting-probes/package-lock.json
+          if-no-files-found: error
+
+      - name: Cache dependencies
+        uses: actions/cache/save@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+
+  typeorm:
+    name: TypeORM probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run TypeORM probe
+        run: npm run probe:typeorm
+
+  typeorm-positive:
+    name: TypeORM positive probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run TypeORM positive probe
+        run: npm run probe:typeorm-positive
+
+  sequelize:
+    name: Sequelize probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run Sequelize probe
+        run: npm run probe:sequelize
+
+  mikroorm:
+    name: MikroORM probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run MikroORM probe
+        run: npm run probe:mikroorm
+
+  prisma:
+    name: Prisma probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run Prisma probe
+        run: npm run probe:prisma
+
+  mongoose:
+    name: Mongoose probe
+    needs: install
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: supporting-probes/node_modules
+          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Run Mongoose probe
+        run: npm run probe:mongoose
+        env:
+          MONGODB_URI: mongodb://localhost:27017/supporting_probe_mongoose

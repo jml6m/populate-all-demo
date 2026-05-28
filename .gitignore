@@ -2,6 +2,7 @@
 
 # Node
 /node_modules
+/supporting-probes/node_modules
 
 # Build output
 /dist
@@ -28,3 +29,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Supporting probes generated DB
+/supporting-probes/prisma/probe.db

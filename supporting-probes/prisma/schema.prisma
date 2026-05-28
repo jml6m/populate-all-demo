@@ -1,0 +1,15 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./probe.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Node {
+  id           Int    @id @default(autoincrement())
+  name         String @unique
+  dependencies Node[] @relation("NodeDeps")
+  dependents   Node[] @relation("NodeDeps")
+}
