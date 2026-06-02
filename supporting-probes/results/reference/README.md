@@ -1,6 +1,6 @@
 # Canonical probe results by release
 
-Official tagged-release probe artifacts will be stored here under `v1/`, `v2/`, ... .
+Official tagged-release probe artifacts will be stored here under `v1/`, `v2/`, ...
 
 Each version directory is immutable after publication.
 
