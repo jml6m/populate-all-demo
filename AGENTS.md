@@ -41,7 +41,7 @@ Before starting work, check the open issues in this repository for related tasks
 - **Modifying any past-version reference directory** (e.g. `reports/reference/v1/` once `v2` exists). Past versions are frozen in source control forever.
 - **Adding new top-level dependencies** to either `package.json` without explicit approval. Dev-only deps require justification in the PR description.
 - `git push` — Agents do not push to remote directly.
-- `git commit` — Commits are handled by the `report_progress` tool.
+- `git commit` — Avoid creating commits unless your execution environment explicitly supports agent-authored commits and you have been instructed to do so.
 - `npm publish` — This package is not published to the registry.
 - `npm install <pkg>` without explicit instruction. Use `npm ci` for reproducible installs from the lockfile.
 
@@ -49,13 +49,12 @@ Before starting work, check the open issues in this repository for related tasks
 
 - `npm ci` — reproducible install from `package-lock.json` (preferred over `npm install`).
 - `npm run generate` — produce test datasets (writes to `data/`, gitignored).
-- `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/local/<run-id>/`).
-- `npm test` — run unit tests (writes trace logs to `logs/local/<run-id>/`).
+- `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
+- `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
-- `npm run clean` — wipe all `local/` output dirs, `data/`, `dist/`. Never touches `reference/`.
-- `cd supporting-probes && npm ci && npm run probe:ts` — run TypeScript probes only (default for local dev).
-- `cd supporting-probes && npm ci && npm run probe:all` — run all 10 probes (requires Python, Ruby, Java, .NET runtimes installed; this is the canonical CI command).
-
+- `cd supporting-probes && npm ci && npm run probe:all` — run the Node-based probes wired into `supporting-probes/package.json`.
+- `cd supporting-probes && npm ci && npm run probe:mongoose` — run the Mongoose probe (requires a local MongoDB; defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
+- For the Python/Ruby/Java/.NET probes, use the exact commands from `.github/workflows/supporting-probes.yml` (they are not invoked by `npm run probe:all`).
 ### 4. Code Review & PR Interaction
 
 The agent **MUST** respond to all comments from the **primary reviewer** (the project admin, `@jml6m`) without requiring an explicit `@`-mention. A "Request changes" review on the PR is sufficient signal that every unresolved comment needs action.
@@ -96,17 +95,16 @@ The `reference/` directories under `reports/`, `logs/`, and `supporting-probes/r
 
 - **Past versions are frozen.** Once `v1/` is committed, no PR may modify any file under `reports/reference/v1/`, `logs/reference/v1/`, or `supporting-probes/results/reference/v1/`. Same rule for every subsequent version.
 - **The current in-development version's reference dir does not yet exist** until the next release workflow runs. Do not pre-create it.
-- **Local runs** must always write under `local/<run-id>/` directories (gitignored). The runner is configured to do this by default; do not change this behavior without explicit instruction.
-- **CI runs from non-release workflows** must always upload artifacts from `local/` paths. They must never write under any `reference/` path.
-
-A `repo-config-guard` workflow enforces these rules at PR time. Any PR that violates them will fail CI and be unmergeable.
+- **Local runs** write benchmark output under `reports/` (gitignored). Tests and trace artifacts write under `logs/` (gitignored).
+- **CI runs** (non-release workflows) must upload artifacts from `reports/` and/or `logs/` only; they must never write under any `reference/` path.
+CI does not currently include a dedicated `repo-config-guard` workflow; treat the reference-artifact rules above as a strict policy and verify compliance during review.
 
 ### 7. Idempotency-First Design
 
 This is a research repo. **Determinism and reproducibility are core requirements.** When writing or modifying experiment/runner/probe code:
 
 - **Seeded randomness only.** All randomness must flow through a seeded RNG (currently `seedrandom`). Never use `Math.random()` directly in code paths that affect committed artifacts.
-- **No wall-clock time in fingerprints/hashes.** Timestamps may be recorded as descriptive metadata, but must never participate in the equality check used to decide whether an experiment needs to re-run.
+- **No run timestamps in fingerprints/hashes.** Do not add `runAt` or other wall-clock fields to the experiment fingerprint; note that the current fingerprint intentionally includes `manifest.generatedAt` to detect data regenerations.
 - **Stable file ordering.** When iterating directory contents or object keys to write into a committed artifact, sort first. Otherwise hashes drift across OSes.
 - **No environment leakage.** Tests and the experiment runner must produce identical outputs on Linux and Windows given the same seeds and dependency versions. If platform-specific paths or behavior are unavoidable, isolate them and document.
 
