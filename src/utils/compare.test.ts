@@ -3,38 +3,14 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { makeRunId } from '../runner';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
 import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
 import { buildPopulatedFromAnswer } from './answer-builder';
 import { smartCompare } from './compare';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
-function getTestRunId(): string {
-  const startedAt = new Date();
-  const yyyy = String(startedAt.getUTCFullYear());
-  const mm = String(startedAt.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(startedAt.getUTCDate()).padStart(2, '0');
-  const hh = String(startedAt.getUTCHours()).padStart(2, '0');
-  const min = String(startedAt.getUTCMinutes()).padStart(2, '0');
-  const ss = String(startedAt.getUTCSeconds()).padStart(2, '0');
-
-  let shortSha = 'nogit';
-  try {
-    shortSha = execSync('git rev-parse --short=7 HEAD', {
-      cwd: path.resolve(__dirname, '..', '..'),
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString()
-      .trim();
-  } catch {
-    shortSha = 'nogit';
-  }
-
-  const resolvedShortSha = shortSha.length > 0 ? shortSha : 'nogit';
-  return `${yyyy}${mm}${dd}-${hh}${min}${ss}-${resolvedShortSha}`;
-}
-
-const TEST_RUN_ID = getTestRunId();
+const TEST_RUN_ID = makeRunId(new Date(), path.resolve(__dirname, '..', '..'));
 const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs', 'local', TEST_RUN_ID);
 
 // ---------------------------------------------------------------------------

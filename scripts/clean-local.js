@@ -7,6 +7,12 @@ if (!fs.existsSync(path.join(projectRoot, 'package.json'))) {
   process.exit(1);
 }
 const targets = [
+  'reports/local',
+  'logs/local',
+  'supporting-probes/results/local',
+  'data',
+  'dist',
+];
 
 const removed = [];
 

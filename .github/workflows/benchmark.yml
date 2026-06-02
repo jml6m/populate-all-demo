@@ -39,5 +39,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-reports
-          path: reports/local/
+          path: |
+            reports/local/
+            reports/reference/
           if-no-files-found: error

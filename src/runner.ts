@@ -1061,7 +1061,7 @@ function getGitShortSha(projectRoot: string): string {
   }
 }
 
-function makeRunId(runStartedAt: Date, projectRoot: string): string {
+export function makeRunId(runStartedAt: Date, projectRoot: string): string {
   const yyyy = String(runStartedAt.getUTCFullYear());
   const mm = String(runStartedAt.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(runStartedAt.getUTCDate()).padStart(2, '0');
