@@ -1,4 +1,4 @@
-# 🤖 Agent & AI Protocols (All Agents)
+# Agent & AI Protocols (All Agents)
 
 **Project:** populate-all-demo <br />
 **Stack:** TypeScript / Node.js (executed via [tsx](https://tsx.is/)) <br />
@@ -7,13 +7,13 @@
 
 This document defines the operational parameters, architectural standards, and safety protocols for all AI agents working within this repository.
 
-> **📌 Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
+> **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
 
-> **📌 Public Research Repo**: This is a publicly visible research project. The committed `reference/` artifacts are the canonical record of published findings. Treat them as immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
+> **Public Research Repo**: This is a publicly visible research project. The committed `reference/` artifacts are the canonical record of published findings. Treat them as immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
 
 ---
 
-## 🛑 Critical Protocols (Read First)
+## Critical Protocols (Read First)
 
 ### 1. The "Three Strike" Rule (Loop Prevention)
 
@@ -33,7 +33,7 @@ Before starting work, check the open issues in this repository for related tasks
 
 ### 3. Command Execution Safety
 
-⛔ **STRICTLY PROHIBITED:**
+**STRICTLY PROHIBITED:**
 
 - **Triggering or modifying `.github/workflows/release.yml`** — official releases are an admin-only manual flow. Never invoke it, never push commits that change it without an explicit `release-infra` label on the PR (see §5).
 - **Modifying any file under `reports/reference/`, `logs/reference/`, or `supporting-probes/results/reference/`** — these are the canonical published artifacts (see §6).
@@ -45,7 +45,7 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm publish` — This package is not published to the registry.
 - `npm install <pkg>` without explicit instruction. Use `npm ci` for reproducible installs from the lockfile.
 
-✅ **Standard Commands:**
+**Standard Commands:**
 
 - `npm ci` — reproducible install from `package-lock.json` (preferred over `npm install`).
 - `npm run generate` — produce test datasets (writes to `data/`, gitignored).
@@ -59,9 +59,9 @@ Before starting work, check the open issues in this repository for related tasks
 
 The agent **MUST** respond to all comments from the **primary reviewer** (the project admin, `@jml6m`) without requiring an explicit `@`-mention. A "Request changes" review on the PR is sufficient signal that every unresolved comment needs action.
 
-- **⛔ PROHIBITED Responses:**
+- **Prohibited Responses:**
   - Passive acknowledgments (e.g., "Acknowledged", "Noted", "Comment read", "Will fix").
-- **✅ REQUIRED Resolution:**
+- **Required Resolution:**
   - **Act:** Push a code change to resolve the feedback.
   - **Discuss:** If you disagree with the suggestion, state the reason why or propose an alternate approach. Never silently ignore a comment.
 - **Threaded comments / replies-to-replies:** If the project admin replies to a comment thread (including a thread originally started by an agent), the agent **MUST** treat that reply as new actionable feedback and respond per the rules above. Do not consider a thread "closed" until the admin explicitly marks it resolved or merges the PR.
@@ -112,7 +112,7 @@ If a change you make causes the same input to produce different output across re
 
 ---
 
-## 📐 Architecture & Coding Standards
+## Architecture & Coding Standards
 
 ### 1. TypeScript Practices (Strict)
 
@@ -145,7 +145,7 @@ If a change you make causes the same input to produce different output across re
 
 ---
 
-## 🛠️ Configuration (SSoT)
+## Configuration (SSoT)
 
 - **Generation config:** `src/generate-config.json` is the single source of truth for dataset tier definitions, seeds, and sizing. Changes here are part of the experiment definition; treat with care.
 - **Run-time fingerprinting:** see `RunMetadata` in `src/runner.ts`. The fingerprint determines whether a re-run is needed. Do not add wall-clock fields to it.
@@ -153,7 +153,7 @@ If a change you make causes the same input to produce different output across re
 
 ---
 
-## 📦 Package Ecosystem
+## Package Ecosystem
 
 - **Top-level (`/package.json`):** TypeScript, tsx, ESLint, Prettier, seedrandom, yaml. See `package.json` for resolved versions.
 - **Supporting-probes (`/supporting-probes/package.json`):** ORM clients (TypeORM, Sequelize, MikroORM, Prisma, Mongoose) plus their drivers. See that file for versions.
@@ -161,7 +161,7 @@ If a change you make causes the same input to produce different output across re
 
 ---
 
-## 🛡️ Project Security & Context Constraints
+## Project Security & Context Constraints
 
 ### Excluded / Protected Paths
 
