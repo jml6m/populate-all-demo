@@ -31,12 +31,18 @@ This writes the input and answer files for all dataset tiers to the `data/` dire
 npm run experiment
 ```
 
-The runner benchmarks four population algorithms across five dataset tiers (`acyclic-control`, `basic`, `medium`, `stress`, `extreme`), verifies correctness with two independent comparers, and runs consumer probes on each passing result. Results are printed to the console and saved as JSON reports in the `reports/` directory.
+The runner benchmarks four population algorithms across five dataset tiers (`acyclic-control`, `basic`, `medium`, `stress`, `extreme`), verifies correctness with two independent comparers, and runs consumer probes on each passing result. Results are printed to the console and saved under `reports/local/<run-id>/`, and test trace logs are written under `logs/local/<run-id>/`.
 
 **Optional — force a re-run even if results are already cached:**
 
 ```bash
 npm run experiment:force
+```
+
+Use `npm run clean` to remove local run outputs (`reports/local/`, `logs/local/`, `supporting-probes/results/local/`) plus `data/` and `dist/`.
+
+```bash
+npm run clean
 ```
 
 ## Further reading

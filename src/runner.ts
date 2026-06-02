@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import pkgJson from '../package.json';
@@ -73,12 +74,12 @@ export interface RunMetadata {
 
 /**
  * Top-level index file written at the end of every successful run to
- * `reports/experiment-run.json`.  Used by the next invocation to decide
+ * `reports/local/<run-id>/experiment-run.json`.  Used by the next invocation to decide
  * whether to skip.
  */
 export interface ExperimentIndex {
   metadata: RunMetadata;
-  /** Per-dataset report paths, relative to the reports directory (e.g. "basic/benchmark-1234.json"). */
+  /** Per-dataset report paths, relative to the current run directory (e.g. "basic/benchmark-1234.json"). */
   reports: Record<string, string>;
 }
 
@@ -1046,12 +1047,50 @@ export function computeFingerprint(manifest: Manifest, datasets: string[], algor
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
 }
 
+function getGitShortSha(projectRoot: string): string {
+  try {
+    const shortSha = execSync('git rev-parse --short=7 HEAD', {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+    return shortSha.length > 0 ? shortSha : 'nogit';
+  } catch {
+    return 'nogit';
+  }
+}
+
+function makeRunId(runStartedAt: Date, projectRoot: string): string {
+  const yyyy = String(runStartedAt.getUTCFullYear());
+  const mm = String(runStartedAt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(runStartedAt.getUTCDate()).padStart(2, '0');
+  const hh = String(runStartedAt.getUTCHours()).padStart(2, '0');
+  const min = String(runStartedAt.getUTCMinutes()).padStart(2, '0');
+  const ss = String(runStartedAt.getUTCSeconds()).padStart(2, '0');
+  const shortSha = getGitShortSha(projectRoot);
+  return `${yyyy}${mm}${dd}-${hh}${min}${ss}-${shortSha}`;
+}
+
 /**
- * Returns true when an existing experiment-run.json index matches the current
- * fingerprint AND every referenced per-dataset report file exists on disk.
+ * Returns true when the most recent `reports/local/<run-id>/experiment-run.json`
+ * index matches the current fingerprint AND every referenced per-dataset report
+ * file exists on disk.
  */
-export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datasets: string[]): boolean {
-  const indexPath = path.join(reportsDir, 'experiment-run.json');
+export function isAlreadyUpToDate(reportsLocalDir: string, fingerprint: string, datasets: string[]): boolean {
+  if (!fs.existsSync(reportsLocalDir)) return false;
+
+  const runIds = fs
+    .readdirSync(reportsLocalDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const latestRunId = runIds.at(-1);
+  if (latestRunId === undefined) return false;
+
+  const latestRunDir = path.join(reportsLocalDir, latestRunId);
+  const indexPath = path.join(latestRunDir, 'experiment-run.json');
   if (!fs.existsSync(indexPath)) return false;
 
   try {
@@ -1061,9 +1100,9 @@ export function isAlreadyUpToDate(reportsDir: string, fingerprint: string, datas
     for (const dataset of datasets) {
       const reportRelPath = index.reports[dataset];
       if (typeof reportRelPath !== 'string') return false;
-      // Guard against path traversal: the resolved path must stay within reportsDir.
-      const absPath = path.resolve(reportsDir, reportRelPath);
-      const rel = path.relative(reportsDir, absPath);
+      // Guard against path traversal: the resolved path must stay within latestRunDir.
+      const absPath = path.resolve(latestRunDir, reportRelPath);
+      const rel = path.relative(latestRunDir, absPath);
       if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
       if (!fs.existsSync(absPath)) return false;
     }
@@ -1092,7 +1131,8 @@ export function isForceMode(): boolean {
 
 function runBenchmark() {
   const manifest = loadManifest();
-  const reportsDir = path.join(__dirname, '../reports');
+  const projectRoot = path.resolve(__dirname, '..');
+  const reportsLocalDir = path.join(projectRoot, 'reports', 'local');
 
   // Derive dataset names from manifest keys (e.g. "basic_input" -> "basic")
   const allDatasets = [
@@ -1129,9 +1169,7 @@ function runBenchmark() {
   const traceBuild = process.argv.includes('--trace-build');
   const traceCompare = process.argv.includes('--trace-compare');
 
-  if (!fs.existsSync(reportsDir)) {
-    fs.mkdirSync(reportsDir);
-  }
+  fs.mkdirSync(reportsLocalDir, { recursive: true });
 
   // ---------------------------------------------------------------------------
   // Idempotency check — skip the whole run if results are already up-to-date.
@@ -1140,16 +1178,21 @@ function runBenchmark() {
   const probeNames = consumerProbes.map((p) => p.name);
   const fingerprint = computeFingerprint(manifest, datasets, algorithmNames, probeNames);
 
-  if (!forceRun && isAlreadyUpToDate(reportsDir, fingerprint, datasets)) {
+  if (!forceRun && isAlreadyUpToDate(reportsLocalDir, fingerprint, datasets)) {
     console.log(`⚡ Experiment results are already up-to-date — skipping run.`);
     console.log(`   (Run \`npm run experiment:force\` to re-run the experiment regardless.)`);
     return;
   }
 
+  const runStartedAt = new Date();
+  const runId = makeRunId(runStartedAt, projectRoot);
+  const currentRunDir = path.join(reportsLocalDir, runId);
+  fs.mkdirSync(currentRunDir, { recursive: true });
+
   // ---------------------------------------------------------------------------
   // Build run metadata (written into every report and the experiment index).
   // ---------------------------------------------------------------------------
-  const runAt = new Date().toISOString();
+  const runAt = runStartedAt.toISOString();
   const runMetadata: RunMetadata = {
     fingerprint,
     runAt,
@@ -1670,7 +1713,7 @@ function runBenchmark() {
     // Write per-dataset report (wrapped with run metadata).
     // Write first, then clean up stale benchmark files so the new report is always
     // on disk before any older files are removed (avoids an empty directory on write failure).
-    const datasetReportsDir = path.join(reportsDir, dataset);
+    const datasetReportsDir = path.join(currentRunDir, dataset);
     fs.mkdirSync(datasetReportsDir, { recursive: true });
     const reportFilename = `benchmark-${Date.now()}.json`;
     const reportPath = path.join(datasetReportsDir, reportFilename);
@@ -1688,7 +1731,7 @@ function runBenchmark() {
     metadata: runMetadata,
     reports: reportPaths,
   };
-  fs.writeFileSync(path.join(reportsDir, 'experiment-run.json'), JSON.stringify(experimentIndex, null, 2));
+  fs.writeFileSync(path.join(currentRunDir, 'experiment-run.json'), JSON.stringify(experimentIndex, null, 2));
 
   // ---------------------------------------------------------------------------
   // Post-run summary table

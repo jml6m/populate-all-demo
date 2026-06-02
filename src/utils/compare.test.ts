@@ -9,7 +9,33 @@ import { buildPopulatedFromAnswer } from './answer-builder';
 import { smartCompare } from './compare';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
-const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs');
+function getTestRunId(): string {
+  const startedAt = new Date();
+  const yyyy = String(startedAt.getUTCFullYear());
+  const mm = String(startedAt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(startedAt.getUTCDate()).padStart(2, '0');
+  const hh = String(startedAt.getUTCHours()).padStart(2, '0');
+  const min = String(startedAt.getUTCMinutes()).padStart(2, '0');
+  const ss = String(startedAt.getUTCSeconds()).padStart(2, '0');
+
+  let shortSha = 'nogit';
+  try {
+    shortSha = execSync('git rev-parse --short=7 HEAD', {
+      cwd: path.resolve(__dirname, '..', '..'),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+  } catch {
+    shortSha = 'nogit';
+  }
+
+  const resolvedShortSha = shortSha.length > 0 ? shortSha : 'nogit';
+  return `${yyyy}${mm}${dd}-${hh}${min}${ss}-${resolvedShortSha}`;
+}
+
+const TEST_RUN_ID = getTestRunId();
+const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs', 'local', TEST_RUN_ID);
 
 // ---------------------------------------------------------------------------
 // Helpers — build small, controlled cyclic / acyclic graphs by hand
@@ -565,7 +591,7 @@ function ensureAcyclicControlDataGenerated(): void {
 // ---------------------------------------------------------------------------
 // Trace artifact generation — cycle-structure mismatches, basic-tier, acyclic-control
 //
-// Writes developer-facing trace logs to logs/.  All trace-writing tests are
+// Writes developer-facing trace logs to logs/local/<run-id>/.  All trace-writing tests are
 // grouped in this section so that artifact messages appear together at the
 // end of test output rather than interspersed with correctness results.
 // ---------------------------------------------------------------------------

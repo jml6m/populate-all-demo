@@ -27,7 +27,7 @@ jobs:
         continue-on-error: true
 
       - name: Create logs directory
-        run: mkdir -p logs
+        run: mkdir -p logs/local
 
       - name: Test
         run: npm run test
@@ -36,5 +36,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: accuracy-trace-logs
-          path: logs/
+          path: logs/local/
           if-no-files-found: error

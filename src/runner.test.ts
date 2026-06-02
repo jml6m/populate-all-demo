@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -28,7 +29,33 @@ import {
 } from './runner';
 import type { Manifest } from './types';
 
-const LOGS_DIR = path.resolve(__dirname, '..', 'logs');
+function getTestRunId(): string {
+  const startedAt = new Date();
+  const yyyy = String(startedAt.getUTCFullYear());
+  const mm = String(startedAt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(startedAt.getUTCDate()).padStart(2, '0');
+  const hh = String(startedAt.getUTCHours()).padStart(2, '0');
+  const min = String(startedAt.getUTCMinutes()).padStart(2, '0');
+  const ss = String(startedAt.getUTCSeconds()).padStart(2, '0');
+
+  let shortSha = 'nogit';
+  try {
+    shortSha = execSync('git rev-parse --short=7 HEAD', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+  } catch {
+    shortSha = 'nogit';
+  }
+
+  const resolvedShortSha = shortSha.length > 0 ? shortSha : 'nogit';
+  return `${yyyy}${mm}${dd}-${hh}${min}${ss}-${resolvedShortSha}`;
+}
+
+const TEST_RUN_ID = getTestRunId();
+const LOGS_DIR = path.resolve(__dirname, '..', 'logs', 'local', TEST_RUN_ID);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,6 +89,13 @@ function makeMetadata(overrides: Partial<RunMetadata> = {}): RunMetadata {
 
 function makeTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'runner-test-'));
+}
+
+function writeRunIndex(reportsLocalDir: string, runId: string, indexContents: string): string {
+  const runDir = path.join(reportsLocalDir, runId);
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, 'experiment-run.json'), indexContents);
+  return runDir;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +209,7 @@ describe('isAlreadyUpToDate — missing or invalid index', () => {
   it('returns false when experiment-run.json contains invalid JSON', () => {
     const tempDir = makeTempDir();
     try {
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), 'not json');
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', 'not json');
       assert.equal(isAlreadyUpToDate(tempDir, 'fp', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -191,7 +225,7 @@ describe('isAlreadyUpToDate — fingerprint mismatch', () => {
         metadata: makeMetadata({ fingerprint: 'old-fingerprint-abc' }),
         reports: { basic: 'basic/benchmark-1.json' },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'new-fingerprint-xyz', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -200,6 +234,41 @@ describe('isAlreadyUpToDate — fingerprint mismatch', () => {
 });
 
 describe('isAlreadyUpToDate — dataset/report completeness', () => {
+  it('uses the most recent run-id directory when checking cached results', () => {
+    const tempDir = makeTempDir();
+    const oldRun = '20260101-000000-aaaaaaa';
+    const newRun = '20260101-000001-bbbbbbb';
+    const reportRelPath = 'basic/benchmark-1.json';
+
+    try {
+      const newRunReportPath = path.join(tempDir, newRun, reportRelPath);
+      fs.mkdirSync(path.dirname(newRunReportPath), { recursive: true });
+      fs.writeFileSync(newRunReportPath, '{}');
+
+      writeRunIndex(
+        tempDir,
+        oldRun,
+        JSON.stringify({
+          metadata: makeMetadata({ fingerprint: 'old-fingerprint' }),
+          reports: { basic: reportRelPath },
+        } satisfies ExperimentIndex)
+      );
+      writeRunIndex(
+        tempDir,
+        newRun,
+        JSON.stringify({
+          metadata: makeMetadata({ fingerprint: 'new-fingerprint' }),
+          reports: { basic: reportRelPath },
+        } satisfies ExperimentIndex)
+      );
+
+      assert.equal(isAlreadyUpToDate(tempDir, 'new-fingerprint', ['basic']), true);
+      assert.equal(isAlreadyUpToDate(tempDir, 'old-fingerprint', ['basic']), false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+
   it('returns false when a dataset is missing from the index reports', () => {
     const tempDir = makeTempDir();
     try {
@@ -207,7 +276,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
         metadata: makeMetadata({ fingerprint: 'fp123' }),
         reports: {},
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'fp123', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -219,9 +288,9 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     try {
       const index: ExperimentIndex = {
         metadata: makeMetadata({ fingerprint: 'fp123' }),
-        reports: { basic: 'reports/basic/benchmark-missing.json' },
+        reports: { basic: 'basic/benchmark-missing.json' },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'fp123', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -230,12 +299,12 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
 
   it('returns true when fingerprint matches and all report files exist', () => {
     const tempDir = makeTempDir();
-    // tempDir is the reportsDir; the report path is relative to reportsDir.
-    // isAlreadyUpToDate resolves: path.join(reportsDir, reportRelPath)
+    const runId = '20260101-000000-aaaaaaa';
     const reportRelPath = `basic/benchmark-1.json`;
-    const absReportPath = path.join(tempDir, reportRelPath);
 
     try {
+      const runDir = path.join(tempDir, runId);
+      const absReportPath = path.join(runDir, reportRelPath);
       fs.mkdirSync(path.dirname(absReportPath), { recursive: true });
       fs.writeFileSync(absReportPath, '{}');
 
@@ -243,7 +312,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
         metadata: makeMetadata({ fingerprint: 'fp-match-123' }),
         reports: { basic: reportRelPath },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, runId, JSON.stringify(index));
 
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-match-123', ['basic']), true);
     } finally {
@@ -267,7 +336,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
           // medium is not in the reports map
         },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
 
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-partial', ['basic', 'medium']), false);
     } finally {
@@ -277,14 +346,16 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
 
   it('returns true when all datasets in a multi-dataset run have matching reports', () => {
     const tempDir = makeTempDir();
+    const runId = '20260101-000000-aaaaaaa';
     const acyclicRelPath = 'acyclic-control/benchmark-1.json';
     const basicRelPath = 'basic/benchmark-1.json';
 
     try {
-      fs.mkdirSync(path.join(tempDir, 'acyclic-control'), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, 'basic'), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, acyclicRelPath), '{}');
-      fs.writeFileSync(path.join(tempDir, basicRelPath), '{}');
+      const runDir = path.join(tempDir, runId);
+      fs.mkdirSync(path.join(runDir, 'acyclic-control'), { recursive: true });
+      fs.mkdirSync(path.join(runDir, 'basic'), { recursive: true });
+      fs.writeFileSync(path.join(runDir, acyclicRelPath), '{}');
+      fs.writeFileSync(path.join(runDir, basicRelPath), '{}');
 
       const index: ExperimentIndex = {
         metadata: makeMetadata({
@@ -293,7 +364,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
         }),
         reports: { 'acyclic-control': acyclicRelPath, basic: basicRelPath },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, runId, JSON.stringify(index));
 
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-multi-complete', ['acyclic-control', 'basic']), true);
     } finally {
@@ -320,7 +391,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
           basic: basicRelPath,
         },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
 
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-multi-missing', ['acyclic-control', 'basic']), false);
     } finally {
@@ -342,7 +413,7 @@ describe('isAlreadyUpToDate — path safety', () => {
         metadata: makeMetadata({ fingerprint: 'fp-abs' }),
         reports: { basic: path.join(tempDir, 'basic', 'benchmark-1.json') }, // absolute path
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-abs', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -356,7 +427,7 @@ describe('isAlreadyUpToDate — path safety', () => {
         metadata: makeMetadata({ fingerprint: 'fp-traversal' }),
         reports: { basic: '../../../etc/passwd' },
       };
-      fs.writeFileSync(path.join(tempDir, 'experiment-run.json'), JSON.stringify(index));
+      writeRunIndex(tempDir, '20260101-000000-aaaaaaa', JSON.stringify(index));
       assert.equal(isAlreadyUpToDate(tempDir, 'fp-traversal', ['basic']), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true });
@@ -1688,7 +1759,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
 // ---------------------------------------------------------------------------
 // Dataset output format matrix — audit log generator
 //
-// Generates logs/dataset-output-format-matrix.log covering every possible
+// Generates logs/local/<run-id>/dataset-output-format-matrix.log covering every possible
 // display state for the full-detail three-line phase contract and the
 // later-tier compact format.  The file is intended for manual human review
 // of formatting consistency; it is gitignored and uploaded as a CI artifact.
@@ -1703,7 +1774,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     }
   });
 
-  it('writes logs/dataset-output-format-matrix.log with all display states', () => {
+  it('writes logs/local/<run-id>/dataset-output-format-matrix.log with all display states', () => {
     fs.mkdirSync(LOGS_DIR, { recursive: true });
     const lines: string[] = [];
 
