@@ -1047,16 +1047,27 @@ export function computeFingerprint(manifest: Manifest, datasets: string[], algor
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
 }
 
+/**
+ * Validates raw output from `git rev-parse --short=7 HEAD` and returns either
+ * the normalised 7-char hex SHA or the string "nogit" when the output does not
+ * match the expected format.
+ *
+ * Pure function with no I/O — exported so it can be tested directly across
+ * platforms without filesystem or PATH manipulation.
+ */
+export function validateGitShortSha(rawOutput: string): string {
+  const trimmed = rawOutput.trim().toLowerCase();
+  return /^[0-9a-f]{7}$/.test(trimmed) ? trimmed : 'nogit';
+}
+
 function getGitShortSha(projectRoot: string): string {
   try {
-    const shortSha = execSync('git rev-parse --short=7 HEAD', {
+    const raw = execSync('git rev-parse --short=7 HEAD', {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-      .toString()
-      .trim()
-      .toLowerCase();
-    return /^[0-9a-f]{7}$/.test(shortSha) ? shortSha : 'nogit';
+      .toString();
+    return validateGitShortSha(raw);
   } catch {
     return 'nogit';
   }
