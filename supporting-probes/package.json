@@ -5,13 +5,8 @@
   "description": "Standalone sandbox probes validating hydration/serialization behavior across ORMs",
   "type": "commonjs",
   "scripts": {
-    "probe:typeorm": "tsx typeorm-test.ts",
-    "probe:typeorm-positive": "tsx typeorm-test-positive.ts",
-    "probe:sequelize": "tsx sequelize-test.ts",
-    "probe:mikroorm": "tsx mikroorm-test.ts",
-    "probe:mongoose": "tsx mongoose-test.ts",
-    "probe:prisma": "prisma db push --schema=prisma/schema.prisma --skip-generate && prisma generate --schema=prisma/schema.prisma && tsx prisma-test.ts",
-    "probe:all": "npm run probe:typeorm && npm run probe:typeorm-positive && npm run probe:sequelize && npm run probe:mikroorm && npm run probe:prisma"
+    "probe:ts": "tsx run-probes.ts --suite=ts",
+    "probe:all": "tsx run-probes.ts --suite=all"
   },
   "dependencies": {
     "@mikro-orm/core": "^6.6.13",
