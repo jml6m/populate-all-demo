@@ -61,6 +61,10 @@ function runCommand(command: string, args: string[], options?: { env?: NodeJS.Pr
     shell: isWin,
   });
 
+  if (result.error && !result.stderr.trim()) {
+    result.stderr = String(result.error);
+  }
+
   if (!options?.quiet) {
     if (result.stdout) {
       process.stdout.write(result.stdout);
@@ -301,7 +305,7 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
           return { status: javacResult.status ?? -1, stdout: javacResult.stdout ?? '', stderr: javacResult.stderr ?? '' };
         }
         const sep = path.delimiter;
-        const javaResult = runCommand('java', ['-cp', `${classpath}${sep}.`, 'Main'], { env });
+        const javaResult = runCommand('java', ['-cp', `.${sep}${classpath}`, 'Main'], { env });
         return { status: javaResult.status ?? -1, stdout: javaResult.stdout ?? '', stderr: javaResult.stderr ?? '' };
       },
       resolveLibraryVersion: () => hibernateVersionFromPom(),
