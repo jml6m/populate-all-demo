@@ -166,6 +166,27 @@ describe('computeFingerprint — sensitivity', () => {
 });
 
 // ---------------------------------------------------------------------------
+// makeRunId
+// ---------------------------------------------------------------------------
+
+describe('makeRunId', () => {
+  it('formats UTC timestamp components and appends a git short SHA (or nogit fallback)', () => {
+    const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), TEST_PROJECT_ROOT);
+    assert.match(runId, /^20260102-030405-(?:[0-9a-f]{7}|nogit)$/);
+  });
+
+  it('falls back to nogit when project root is not a git repository', () => {
+    const tempDir = makeTempDir();
+    try {
+      const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), tempDir);
+      assert.equal(runId, '20260102-030405-nogit');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // isAlreadyUpToDate
 // ---------------------------------------------------------------------------
 
