@@ -6,16 +6,18 @@ import { getNodePackageVersion, writeProbeResultForRunId } from './ts/result-bui
 
 type Suite = 'ts' | 'all';
 
-type ProbeConfig = {
+type ProbeConfigBase = {
   name: string;
   language: ProbeLanguage;
   library: string;
-  command: string;
-  args: string[];
   resolveLibraryVersion: () => string;
   resolveRuntimeVersion: () => string;
   extraEnv?: Record<string, string>;
 };
+
+type ProbeConfig =
+  | (ProbeConfigBase & { run: (env: NodeJS.ProcessEnv) => { status: number | null; stdout: string; stderr: string }; command?: never; args?: never })
+  | (ProbeConfigBase & { command: string; args: string[]; run?: never });
 
 function parseSuite(argv: string[]): Suite {
   const suiteArg = argv.find((arg) => arg.startsWith('--suite='));
@@ -29,12 +31,40 @@ function parseSuite(argv: string[]): Suite {
   return value;
 }
 
+function quoteIfNeeded(arg: string): string {
+  if (process.platform !== 'win32') return arg;
+  if (!/[\s"\\]/.test(arg)) return arg;
+  // MSDN CommandLineToArgvW-compatible quoting: double backslashes before a
+  // double-quote or at end-of-string, then escape double-quotes.
+  let result = '';
+  let backslashCount = 0;
+  for (const ch of arg) {
+    if (ch === '\\') {
+      backslashCount++;
+    } else if (ch === '"') {
+      result += '\\'.repeat(backslashCount * 2) + '\\"';
+      backslashCount = 0;
+    } else {
+      result += '\\'.repeat(backslashCount) + ch;
+      backslashCount = 0;
+    }
+  }
+  result += '\\'.repeat(backslashCount * 2);
+  return `"${result}"`;
+}
+
 function runCommand(command: string, args: string[], options?: { env?: NodeJS.ProcessEnv; quiet?: boolean }) {
-  const result = spawnSync(command, args, {
+  const isWin = process.platform === 'win32';
+  const result = spawnSync(command, isWin ? args.map(quoteIfNeeded) : args, {
     cwd: process.cwd(),
     encoding: 'utf8',
     env: options?.env ?? process.env,
+    shell: isWin,
   });
+
+  if (result.error && !result.stderr.trim()) {
+    result.stderr = String(result.error);
+  }
 
   if (!options?.quiet) {
     if (result.stdout) {
@@ -69,12 +99,6 @@ function checkPrerequisites(suite: Suite): { ok: true; pythonCommand: string | n
   if (!commandWorks('node', ['--version'])) {
     missing.push({ name: 'node', install: 'https://nodejs.org/en/download/' });
   }
-  if (!commandWorks('npx', ['--version'])) {
-    missing.push({ name: 'npx', install: 'https://nodejs.org/en/download/' });
-  }
-  if (!commandWorks('bash', ['-lc', 'echo ok'])) {
-    missing.push({ name: 'bash', install: 'https://git-scm.com/downloads' });
-  }
 
   let pythonCommand: string | null = null;
 
@@ -82,25 +106,14 @@ function checkPrerequisites(suite: Suite): { ok: true; pythonCommand: string | n
     pythonCommand = detectPythonCommand();
     if (!pythonCommand) {
       missing.push({ name: 'python3', install: 'https://www.python.org/downloads/' });
-    } else if (!commandWorks(pythonCommand, ['-m', 'pip', '--version'])) {
-      missing.push({ name: 'pip', install: 'https://pip.pypa.io/en/stable/installation/' });
     }
 
     if (!commandWorks('ruby', ['--version'])) {
       missing.push({ name: 'ruby', install: 'https://www.ruby-lang.org/en/downloads/' });
     }
-    if (!commandWorks('gem', ['--version'])) {
-      missing.push({ name: 'gem', install: 'https://www.ruby-lang.org/en/downloads/' });
-    }
 
     if (!commandWorks('java', ['-version'])) {
       missing.push({ name: 'java', install: 'https://adoptium.net/temurin/releases/' });
-    }
-    if (!commandWorks('javac', ['-version'])) {
-      missing.push({ name: 'javac', install: 'https://adoptium.net/temurin/releases/' });
-    }
-    if (!commandWorks('mvn', ['--version'])) {
-      missing.push({ name: 'mvn', install: 'https://maven.apache.org/install.html' });
     }
 
     if (!commandWorks('dotnet', ['--version'])) {
@@ -224,8 +237,20 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
       name: PROBE_IDENTITIES.prisma.probe,
       language: PROBE_IDENTITIES.prisma.language,
       library: PROBE_IDENTITIES.prisma.library,
-      command: 'bash',
-      args: ['-lc', 'npx prisma db push --schema=prisma/schema.prisma --skip-generate && npx prisma generate --schema=prisma/schema.prisma && npx tsx prisma-test.ts'],
+      run: (env) => {
+        const steps: Array<[string, string[]]> = [
+          ['npx', ['prisma', 'db', 'push', '--schema=prisma/schema.prisma', '--skip-generate']],
+          ['npx', ['prisma', 'generate', '--schema=prisma/schema.prisma']],
+          ['npx', ['tsx', 'prisma-test.ts']],
+        ];
+        let last = { status: 0 as number | null, stdout: '', stderr: '' };
+        for (const [cmd, args] of steps) {
+          const r = runCommand(cmd, args, { env });
+          last = { status: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+          if ((r.status ?? -1) !== 0) return last;
+        }
+        return last;
+      },
       resolveLibraryVersion: () => getNodePackageVersion('@prisma/client'),
       resolveRuntimeVersion: () => process.version,
     },
@@ -264,8 +289,26 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
       name: PROBE_IDENTITIES.hibernate.probe,
       language: PROBE_IDENTITIES.hibernate.language,
       library: PROBE_IDENTITIES.hibernate.library,
-      command: 'bash',
-      args: ['-lc', 'mvn -q dependency:build-classpath -Dmdep.outputFile=.hibernate-classpath && javac -cp "$(cat .hibernate-classpath)" Main.java && java -cp ".:$(cat .hibernate-classpath)" Main'],
+      run: (env) => {
+        const mvnResult = runCommand('mvn', ['-q', 'dependency:build-classpath', '-Dmdep.outputFile=.hibernate-classpath'], { env });
+        if ((mvnResult.status ?? -1) !== 0) {
+          return { status: mvnResult.status ?? -1, stdout: mvnResult.stdout ?? '', stderr: mvnResult.stderr ?? '' };
+        }
+        const classpathFile = path.join(process.cwd(), '.hibernate-classpath');
+        let classpath: string;
+        try {
+          classpath = fs.readFileSync(classpathFile, 'utf8').trim();
+        } catch (err) {
+          return { status: 1, stdout: '', stderr: `Failed to read .hibernate-classpath: ${String(err)}` };
+        }
+        const javacResult = runCommand('javac', ['-cp', classpath, 'Main.java'], { env });
+        if ((javacResult.status ?? -1) !== 0) {
+          return { status: javacResult.status ?? -1, stdout: javacResult.stdout ?? '', stderr: javacResult.stderr ?? '' };
+        }
+        const sep = path.delimiter;
+        const javaResult = runCommand('java', ['-cp', `.${sep}${classpath}`, 'Main'], { env });
+        return { status: javaResult.status ?? -1, stdout: javaResult.stdout ?? '', stderr: javaResult.stderr ?? '' };
+      },
       resolveLibraryVersion: () => hibernateVersionFromPom(),
       resolveRuntimeVersion: () => javaRuntimeVersion(),
     },
@@ -273,8 +316,14 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
       name: PROBE_IDENTITIES.efcore.probe,
       language: PROBE_IDENTITIES.efcore.language,
       library: PROBE_IDENTITIES.efcore.library,
-      command: 'bash',
-      args: ['-lc', 'dotnet restore EfCoreTest.csproj && dotnet run --project EfCoreTest.csproj'],
+      run: (env) => {
+        const restoreResult = runCommand('dotnet', ['restore', 'EfCoreTest.csproj'], { env });
+        if ((restoreResult.status ?? -1) !== 0) {
+          return { status: restoreResult.status ?? -1, stdout: restoreResult.stdout ?? '', stderr: restoreResult.stderr ?? '' };
+        }
+        const runResult = runCommand('dotnet', ['run', '--project', 'EfCoreTest.csproj'], { env });
+        return { status: runResult.status ?? -1, stdout: runResult.stdout ?? '', stderr: runResult.stderr ?? '' };
+      },
       resolveLibraryVersion: () => efCoreVersionFromCsproj(),
       resolveRuntimeVersion: () => dotnetRuntimeVersion(),
     },
@@ -374,13 +423,10 @@ function main(): number {
 
   for (const probe of probes) {
     console.log(`\n=== Running ${probe.name} ===`);
-    const result = runCommand(probe.command, probe.args, {
-      env: {
-        ...process.env,
-        PROBE_RUN_ID: runId,
-        ...(probe.extraEnv ?? {}),
-      },
-    });
+    const env = { ...process.env, PROBE_RUN_ID: runId, ...(probe.extraEnv ?? {}) };
+    const result = probe.run
+      ? probe.run(env)
+      : runCommand(probe.command, probe.args, { env });
 
     const outputPath = path.join(outputDir, `${probe.name}.json`);
     if (!fs.existsSync(outputPath)) {
