@@ -10,6 +10,7 @@
     "generate:force": "cross-env POPULATE_ALL_FORCE=1 NODE_OPTIONS='--max-old-space-size=4096' tsx src/generate.ts",
     "experiment": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tsx src/runner.ts",
     "experiment:force": "cross-env POPULATE_ALL_FORCE=1 NODE_OPTIONS='--max-old-space-size=4096' tsx src/runner.ts",
+    "clean": "node scripts/clean-local.js",
     "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "tsx --test \"src/**/*.test.ts\""

@@ -3,13 +3,15 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { makeRunId } from '../runner';
 import { twoPassWire } from '../algorithms/schema-driven/01-two-pass-wire';
 import { AnswerEntry, ComponentFlat, ComponentPopulated } from '../algorithms/types';
 import { buildPopulatedFromAnswer } from './answer-builder';
 import { smartCompare } from './compare';
 import { getDataDir, loadManifest, loadYaml } from './data-loader';
 
-const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs');
+const TEST_RUN_ID = makeRunId(new Date(), path.resolve(__dirname, '..', '..'));
+const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs', 'local', TEST_RUN_ID);
 
 // ---------------------------------------------------------------------------
 // Helpers — build small, controlled cyclic / acyclic graphs by hand
@@ -565,7 +567,7 @@ function ensureAcyclicControlDataGenerated(): void {
 // ---------------------------------------------------------------------------
 // Trace artifact generation — cycle-structure mismatches, basic-tier, acyclic-control
 //
-// Writes developer-facing trace logs to logs/.  All trace-writing tests are
+// Writes developer-facing trace logs to logs/local/<run-id>/.  All trace-writing tests are
 // grouped in this section so that artifact messages appear together at the
 // end of test output rather than interspersed with correctness results.
 // ---------------------------------------------------------------------------
