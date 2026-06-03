@@ -184,6 +184,26 @@ describe('makeRunId', () => {
       fs.rmSync(tempDir, { recursive: true });
     }
   });
+
+  it('falls back to nogit when git returns a short SHA in an unexpected format', () => {
+    const tempDir = makeTempDir();
+    const fakeBinDir = path.join(tempDir, 'bin');
+    const fakeGitPath = path.join(fakeBinDir, 'git');
+    const originalPath = process.env.PATH;
+
+    try {
+      fs.mkdirSync(fakeBinDir, { recursive: true });
+      fs.writeFileSync(fakeGitPath, '#!/usr/bin/env sh\necho not-a-short-sha\n');
+      fs.chmodSync(fakeGitPath, 0o755);
+      process.env.PATH = originalPath !== undefined && originalPath.length > 0 ? `${fakeBinDir}:${originalPath}` : fakeBinDir;
+
+      const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), TEST_PROJECT_ROOT);
+      assert.equal(runId, '20260102-030405-nogit');
+    } finally {
+      process.env.PATH = originalPath;
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

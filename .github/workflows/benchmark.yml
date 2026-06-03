@@ -41,5 +41,4 @@ jobs:
           name: benchmark-reports
           path: |
             reports/local/
-            reports/reference/
           if-no-files-found: error

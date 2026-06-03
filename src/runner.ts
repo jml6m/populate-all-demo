@@ -1054,8 +1054,9 @@ function getGitShortSha(projectRoot: string): string {
       stdio: ['ignore', 'pipe', 'ignore'],
     })
       .toString()
-      .trim();
-    return shortSha.length > 0 ? shortSha : 'nogit';
+      .trim()
+      .toLowerCase();
+    return /^[0-9a-f]{7}$/.test(shortSha) ? shortSha : 'nogit';
   } catch {
     return 'nogit';
   }

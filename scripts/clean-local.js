@@ -2,10 +2,6 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
-if (!fs.existsSync(path.join(projectRoot, 'package.json'))) {
-  console.error(`Refusing to run clean outside repo root (missing package.json): ${projectRoot}`);
-  process.exit(1);
-}
 const targets = [
   'reports/local',
   'logs/local',
