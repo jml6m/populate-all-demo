@@ -11,10 +11,10 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 ## Prerequisites
 
-- `probe:ts`: Node.js + npm/npx + Bash (or a compatible POSIX shell for Prisma).
-- `probe:all`: Node.js + npm/npx + Bash, Python 3 (+ pip), Ruby (+ gem), Java 21 (+ javac), Maven, .NET 8.
+- `probe:ts`: Node.js
+- `probe:all`: Node.js, Python 3, Ruby, Java 21, .NET 8
 
-The orchestrator fails fast before any probe starts if required runtimes are missing.
+The orchestrator fails fast before any probe starts if required runtimes are missing. Build tools (`mvn`, `javac`, `gem`) are not checked as central prerequisites — if a specific probe's build tool is missing, that probe will fail-soft with a fallback JSON. For reference: the Hibernate probe uses `mvn` and `javac` internally.
 
 ## Output layout
 
