@@ -36,7 +36,6 @@ jobs:
             echo "Unsafe results path resolves under reference/: $local_results"
             exit 1
           fi
-          fi
 
           output_probe_path="$PWD/supporting-probes/results/local/__guard__"
           for candidate in "$RUNNER_TEMP" "$output_probe_path"; do
