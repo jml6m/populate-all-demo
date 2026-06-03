@@ -23,11 +23,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Reject any modifications to reference/ paths
+      - name: Reject any writes to reference/ paths
         run: |
           set -euo pipefail
-          if git ls-files supporting-probes/results/reference/ | xargs -I{} test -f {}; then
-            echo "Reference dirs are read-only in non-release workflows"
+
+          # Make canonical reference artifacts read-only in non-release workflows.
+          chmod -R a-w supporting-probes/results/reference || true
+
+          # Defensive: ensure local results output cannot resolve under any reference/ path.
+          local_results="$(realpath supporting-probes/results/local)"
+          if echo "$local_results" | grep -E '(^|/)reference(/|$)' >/dev/null; then
+            echo "Unsafe results path resolves under reference/: $local_results"
+            exit 1
+          fi
           fi
 
           output_probe_path="$PWD/supporting-probes/results/local/__guard__"

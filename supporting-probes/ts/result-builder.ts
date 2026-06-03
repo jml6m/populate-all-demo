@@ -95,10 +95,20 @@ export function writeProbeResult(result: ProbeResult): string {
 }
 
 export function writeProbeResultForRunId(runId: string, result: ProbeResult): string {
+  if (!/^[0-9]{8}-[0-9]{6}-(?:[0-9a-f]{7}|nogit)$/.test(runId) || runId.includes(path.sep)) {
+    throw new Error(`Invalid PROBE_RUN_ID '${runId}' (expected YYYYMMDD-HHMMSS-<shortsha>)`);
+  }
+
   const outputDir = path.join(process.cwd(), 'results', 'local', runId);
   fs.mkdirSync(outputDir, { recursive: true });
 
   const outputPath = path.join(outputDir, `${result.probe}.json`);
+  const tmpPath = `${outputPath}.tmp`;
+  fs.writeFileSync(tmpPath, serializeSortedJson(result), 'utf8');
+  fs.renameSync(tmpPath, outputPath);
+
+  return outputPath;
+}
   const tmpPath = `${outputPath}.tmp`;
   fs.writeFileSync(tmpPath, serializeSortedJson(result), 'utf8');
   fs.renameSync(tmpPath, outputPath);

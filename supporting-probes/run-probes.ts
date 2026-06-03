@@ -72,6 +72,9 @@ function checkPrerequisites(suite: Suite): { ok: true; pythonCommand: string | n
   if (!commandWorks('npx', ['--version'])) {
     missing.push({ name: 'npx', install: 'https://nodejs.org/en/download/' });
   }
+  if (!commandWorks('bash', ['-lc', 'echo ok'])) {
+    missing.push({ name: 'bash', install: 'https://git-scm.com/downloads' });
+  }
 
   let pythonCommand: string | null = null;
 
@@ -79,13 +82,27 @@ function checkPrerequisites(suite: Suite): { ok: true; pythonCommand: string | n
     pythonCommand = detectPythonCommand();
     if (!pythonCommand) {
       missing.push({ name: 'python3', install: 'https://www.python.org/downloads/' });
+    } else if (!commandWorks(pythonCommand, ['-m', 'pip', '--version'])) {
+      missing.push({ name: 'pip', install: 'https://pip.pypa.io/en/stable/installation/' });
     }
+
     if (!commandWorks('ruby', ['--version'])) {
       missing.push({ name: 'ruby', install: 'https://www.ruby-lang.org/en/downloads/' });
     }
+    if (!commandWorks('gem', ['--version'])) {
+      missing.push({ name: 'gem', install: 'https://www.ruby-lang.org/en/downloads/' });
+    }
+
     if (!commandWorks('java', ['-version'])) {
       missing.push({ name: 'java', install: 'https://adoptium.net/temurin/releases/' });
     }
+    if (!commandWorks('javac', ['-version'])) {
+      missing.push({ name: 'javac', install: 'https://adoptium.net/temurin/releases/' });
+    }
+    if (!commandWorks('mvn', ['--version'])) {
+      missing.push({ name: 'mvn', install: 'https://maven.apache.org/install.html' });
+    }
+
     if (!commandWorks('dotnet', ['--version'])) {
       missing.push({ name: 'dotnet', install: 'https://dotnet.microsoft.com/download' });
     }
