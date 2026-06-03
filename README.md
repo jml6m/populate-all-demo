@@ -55,6 +55,10 @@ npm run clean
   - `reports/reference/v1/`, `reports/reference/v2/`, ...
   - `logs/reference/v1/`, `logs/reference/v2/`, ...
   - `supporting-probes/results/reference/v1/`, `supporting-probes/results/reference/v2/`, ...
+- Rules for editing these directories:
+  - `*/local/*` is developer output and is intentionally not committed.
+  - `*/reference/*` is canonical release evidence; do not edit existing versioned contents (`v1/`, `v2/`, ...) in normal development.
+  - `npm run clean` is for local cleanup only and is not part of CI workflows, so CI artifacts can be inspected after each run.
 
 ## Further reading
 
