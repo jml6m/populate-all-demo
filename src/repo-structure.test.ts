@@ -57,9 +57,16 @@ describe('repo-structure — required docs', () => {
 // Reference directory layout
 //
 // Each reference/ dir must contain exactly a .gitkeep marker before any
-// release has been made.  No README.md belongs here (those rules are in the
-// root README), and no version subdirectory (v1/, v2/, …) should be
-// pre-created — they are written by the release workflow only.
+// release has been made.  No markdown files belong here — document reference
+// rules in the root README instead.  Version subdirectories (v1/, v2/, …)
+// are written exclusively by the release workflow.
+//
+// Versioned structure invariant (AGENTS.md §6):
+//   - Versions 1 through (major - 1) are already released → their vK/ dirs
+//     must be present in all three reference directories.
+//   - The current in-development version (vMajor/) must NOT be pre-created.
+//   - All three reference directories must always hold an identical set of
+//     version subdirectories (no partial releases).
 // ---------------------------------------------------------------------------
 
 describe('repo-structure — reference directory layout', () => {
@@ -79,23 +86,76 @@ describe('repo-structure — reference directory layout', () => {
       );
     });
 
-    it(`no README.md in ${label}/`, () => {
-      assert.ok(
-        !fs.existsSync(path.join(refDir, 'README.md')),
-        `${label}/README.md must not exist — document reference rules in the root README instead`
-      );
-    });
-
-    it(`no pre-created version subdirectories in ${label}/`, () => {
-      const entries = fs.readdirSync(refDir);
-      const versionDirs = entries.filter((e) => /^v\d+$/.test(e));
+    it(`no *.md files in ${label}/`, () => {
+      const mdFiles = fs.readdirSync(refDir).filter((e) => e.endsWith('.md'));
       assert.deepEqual(
-        versionDirs,
+        mdFiles,
         [],
-        `${label}/ must not contain pre-created version dirs (${versionDirs.join(', ')}); they are created by the release workflow`
+        `${label}/ must not contain any markdown files (mainly concerned about README.md, but no *.md belongs here) — document reference rules in the root README instead`
       );
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Reference directory versioned structure
+// ---------------------------------------------------------------------------
+
+describe('repo-structure — reference directory versioned structure', () => {
+  const referenceDirs = [
+    path.join(ROOT, 'reports', 'reference'),
+    path.join(ROOT, 'logs', 'reference'),
+    path.join(ROOT, 'supporting-probes', 'results', 'reference'),
+  ];
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
+    version: string;
+  };
+  const majorVersion = parseInt(pkg.version.split('.')[0], 10);
+
+  // All released versions (1 through major-1) must be present in every reference dir.
+  for (let k = 1; k < majorVersion; k++) {
+    for (const refDir of referenceDirs) {
+      const label = path.relative(ROOT, refDir);
+      it(`${label}/v${k}/ exists (released at v${k}.0.0)`, () => {
+        assert.ok(
+          fs.existsSync(path.join(refDir, `v${k}`)),
+          `${label}/v${k}/ must exist — it was created by the v${k}.0.0 release workflow and is immutable`
+        );
+      });
+    }
+  }
+
+  // The current in-development version's directory must not be pre-created.
+  for (const refDir of referenceDirs) {
+    const label = path.relative(ROOT, refDir);
+    it(`${label}/v${majorVersion}/ is not pre-created (written by release workflow only)`, () => {
+      assert.ok(
+        !fs.existsSync(path.join(refDir, `v${majorVersion}`)),
+        `${label}/v${majorVersion}/ must not exist yet — it will be created by the v${majorVersion}.0.0 release workflow, not pre-created manually`
+      );
+    });
+  }
+
+  // All three reference directories must contain the same set of version subdirectories.
+  it('version subdirectories are consistent across all three reference dirs', () => {
+    const versionSets = referenceDirs.map((refDir) => {
+      const label = path.relative(ROOT, refDir);
+      const versions = fs
+        .readdirSync(refDir)
+        .filter((e) => /^v\d+$/.test(e))
+        .sort();
+      return { label, versions };
+    });
+    const [first, ...rest] = versionSets;
+    for (const other of rest) {
+      assert.deepEqual(
+        other.versions,
+        first.versions,
+        `version dirs in ${other.label}/ (${other.versions.length > 0 ? other.versions.join(', ') : 'none'}) must match those in ${first.label}/ (${first.versions.length > 0 ? first.versions.join(', ') : 'none'})`
+      );
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
