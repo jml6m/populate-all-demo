@@ -1,17 +1,29 @@
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import jakarta.persistence.*;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class Main {
   private static final AtomicInteger QUERY_COUNT = new AtomicInteger(0);
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws Exception {
     var expectedAdj = Map.of("a", Set.of("b"), "b", Set.of("a"));
+    var findings = createDefaultFindings();
 
     var configuration = new Configuration();
     configuration.setProperty(AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver");
@@ -53,31 +65,160 @@ public final class Main {
         }
       }
 
-      boolean queryGatePass = QUERY_COUNT.get() == queriesAfterHydration;
-      var queryGate = new LinkedHashMap<String, Object>();
-      queryGate.put("pass", queryGatePass);
-      queryGate.put("reason", queryGatePass ? null : "expected no additional queries during traversal, saw +" + (QUERY_COUNT.get() - queriesAfterHydration));
-
-      var graphCheck = smartCheck(roots, expectedAdj);
-      boolean hydrationPass = queryGatePass && Boolean.TRUE.equals(graphCheck.get("pass"));
-      var hydration = hydrationPass ? "HYDRATION PASS" : "HYDRATION FAIL";
-
-      var serialization = "SERIALIZE_PASS";
-      try {
-        new ObjectMapper().writeValueAsString(roots);
-      } catch (Exception e) {
-        var msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
-        serialization = (msg.contains("cycle") || msg.contains("circular") || msg.contains("recursion"))
-          ? "SERIALIZE_FAIL_CYCLE"
-          : "SERIALIZE_FAIL_OTHER";
+      int extraQueries = QUERY_COUNT.get() - queriesAfterHydration;
+      if (extraQueries == 0) {
+        findings.queryGate = mapOf("detail", "No additional queries observed during traversal.", "result", "PASS");
+      } else {
+        findings.queryGate = mapOf(
+          "detail", "Expected 0 additional queries during traversal, observed " + extraQueries + ".",
+          "extraQueries", extraQueries,
+          "result", "FAIL"
+        );
       }
 
-      System.out.println("java Main");
-      System.out.println("hydration: " + hydration);
-      System.out.println("queryGate: " + queryGate);
-      System.out.println("smartCheck: " + graphCheck);
-      System.out.println("serialization: " + serialization);
+      var graphCheck = smartCheck(roots, expectedAdj);
+      if (Boolean.TRUE.equals(graphCheck.get("pass"))) {
+        findings.smartCheck = mapOf("detail", "Identity and dependency closure checks passed.", "result", "PASS");
+      } else {
+        findings.smartCheck = mapOf("detail", graphCheck.get("reason"), "result", "FAIL");
+      }
+
+      if ("PASS".equals(findings.queryGate.get("result")) && "PASS".equals(findings.smartCheck.get("result"))) {
+        findings.hydration = mapOf("detail", "Hydration check passed.", "result", "PASS");
+      } else {
+        findings.hydration = mapOf(
+          "detail", "Hydration failed: queryGate=" + findings.queryGate.get("result") + ", smartCheck=" + findings.smartCheck.get("result") + ".",
+          "result", "FAIL"
+        );
+      }
+
+      try {
+        new ObjectMapper().writeValueAsString(roots);
+        findings.serialize = mapOf("detail", "JSON serialization passed.", "result", "SERIALIZE_PASS");
+      } catch (Exception e) {
+        var msg = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase(Locale.ROOT);
+        var serialization = (msg.contains("cycle") || msg.contains("circular") || msg.contains("recursion"))
+          ? "SERIALIZE_FAIL_CYCLE"
+          : "SERIALIZE_FAIL_OTHER";
+        findings.serialize = mapOf("detail", stackDetail(e), "result", serialization);
+      }
+    } catch (Exception e) {
+      var detail = stackDetail(e);
+      findings.hydration = mapOf("detail", detail, "result", "FAIL");
+      findings.queryGate = mapOf("detail", detail, "result", "FAIL");
+      findings.smartCheck = mapOf("detail", detail, "result", "FAIL");
+      findings.serialize = mapOf("detail", detail, "result", "SERIALIZE_FAIL_OTHER");
     }
+
+    var result = new TreeMap<String, Object>();
+    result.put("findings", findings.toMap());
+    result.put("language", "java");
+    result.put("library", "Hibernate");
+    result.put("libraryVersion", hibernateVersionFromPom());
+    result.put("outcome", buildOutcome(findings));
+    result.put("probe", "hibernate");
+    result.put("runtimeVersion", System.getProperty("java.version"));
+
+    var outputPath = writeResult(result, "hibernate");
+
+    System.out.println("java Main");
+    System.out.println("hydration: " + ("PASS".equals(findings.hydration.get("result")) ? "HYDRATION PASS" : "HYDRATION FAIL"));
+    System.out.println("queryGate: " + findings.queryGate);
+    System.out.println("smartCheck: " + findings.smartCheck);
+    System.out.println("serialization: " + findings.serialize.get("result"));
+    System.out.println("json: " + outputPath);
+  }
+
+  // Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
+  private static String buildOutcome(Findings findings) {
+    if ("FAIL".equals(findings.hydration.get("result"))) {
+      return "HYDRATION_FAIL";
+    }
+
+    var serializeResult = String.valueOf(findings.serialize.get("result"));
+    if (serializeResult.startsWith("SERIALIZE_FAIL_")) {
+      return "SERIALIZE_FAIL";
+    }
+
+    boolean allPassed =
+      "PASS".equals(findings.hydration.get("result")) &&
+      "PASS".equals(findings.queryGate.get("result")) &&
+      "PASS".equals(findings.smartCheck.get("result")) &&
+      "SERIALIZE_PASS".equals(findings.serialize.get("result"));
+
+    return allPassed ? "PASS" : "MIXED";
+  }
+
+  private static Findings createDefaultFindings() {
+    var findings = new Findings();
+    findings.hydration = mapOf("detail", "", "result", "FAIL");
+    findings.queryGate = mapOf("detail", "", "result", "FAIL");
+    findings.smartCheck = mapOf("detail", "", "result", "FAIL");
+    findings.serialize = mapOf("detail", "", "result", "SERIALIZE_FAIL_OTHER");
+    return findings;
+  }
+
+  private static String hibernateVersionFromPom() {
+    try {
+      var pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+      var pattern = Pattern.compile("<artifactId>hibernate-core</artifactId>\\s*<version>([^<]+)</version>", Pattern.MULTILINE);
+      Matcher matcher = pattern.matcher(pom);
+      if (matcher.find()) {
+        return matcher.group(1).trim();
+      }
+    } catch (IOException ignored) {
+      // fall through
+    }
+    return "unknown";
+  }
+
+  private static String writeResult(Map<String, Object> result, String probeName) throws IOException {
+    var runId = System.getenv("PROBE_RUN_ID");
+    if (runId == null || runId.isBlank()) {
+      throw new IllegalStateException("PROBE_RUN_ID is required for probe JSON output");
+    }
+
+    var outputDir = Path.of("results", "local", runId);
+    Files.createDirectories(outputDir);
+
+    var outputPath = outputDir.resolve(probeName + ".json");
+    var tmpPath = outputDir.resolve(probeName + ".json.tmp");
+
+    var mapper = new ObjectMapper();
+    mapper.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+    mapper.enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY);
+    var payload = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result) + "\n";
+    Files.writeString(tmpPath, payload, StandardCharsets.UTF_8);
+    try {
+      Files.move(tmpPath, outputPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException ignored) {
+      Files.move(tmpPath, outputPath, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    return outputPath.toString();
+  }
+
+  private static LinkedHashMap<String, Object> mapOf(Object... kv) {
+    var map = new LinkedHashMap<String, Object>();
+    for (int i = 0; i < kv.length; i += 2) {
+      map.put(String.valueOf(kv[i]), kv[i + 1]);
+    }
+    return map;
+  }
+
+  private static String stackDetail(Throwable error) {
+    var sw = new StringWriter();
+    error.printStackTrace(new PrintWriter(sw));
+    var lines = sw.toString().split("\\R");
+    var maxLines = Math.min(lines.length, 13);
+    var sb = new StringBuilder();
+    for (int i = 0; i < maxLines; i++) {
+      sb.append(lines[i]);
+      if (i + 1 < maxLines) {
+        sb.append(System.lineSeparator());
+      }
+    }
+    return sb.toString();
   }
 
   private static Map<String, Object> smartCheck(List<Node> roots, Map<String, Set<String>> expectedAdj) {
@@ -94,7 +235,7 @@ public final class Main {
 
       var prior = byName.get(node.getName());
       if (prior != null && prior != node) {
-        return Map.of("pass", false, "reason", "id \"" + node.getName() + "\" maps to multiple in-memory instances", "uniqueIds", byName.size(), "uniqueInstances", visited.size(), "edgesTraversed", edges);
+        return mapOf("pass", false, "reason", "id \"" + node.getName() + "\" maps to multiple in-memory instances");
       }
 
       byName.put(node.getName(), node);
@@ -104,7 +245,7 @@ public final class Main {
       }
       var expected = expectedAdj.getOrDefault(node.getName(), Set.of());
       if (!actual.equals(expected)) {
-        return Map.of("pass", false, "reason", "dependency closure mismatch at \"" + node.getName() + "\"", "uniqueIds", byName.size(), "uniqueInstances", visited.size(), "edgesTraversed", edges);
+        return mapOf("pass", false, "reason", "dependency closure mismatch at \"" + node.getName() + "\"");
       }
 
       for (var dep : node.getDependencies()) {
@@ -114,16 +255,10 @@ public final class Main {
     }
 
     if (byName.size() != expectedAdj.size()) {
-      return Map.of("pass", false, "reason", "reachable ids mismatch: got " + byName.size() + ", expected " + expectedAdj.size(), "uniqueIds", byName.size(), "uniqueInstances", visited.size(), "edgesTraversed", edges);
+      return mapOf("pass", false, "reason", "reachable ids mismatch: got " + byName.size() + ", expected " + expectedAdj.size());
     }
 
-    var passResult = new LinkedHashMap<String, Object>();
-    passResult.put("pass", true);
-    passResult.put("reason", null);
-    passResult.put("uniqueIds", byName.size());
-    passResult.put("uniqueInstances", visited.size());
-    passResult.put("edgesTraversed", edges);
-    return passResult;
+    return mapOf("pass", true, "reason", null);
   }
 
   public static class QueryInspector implements StatementInspector {
@@ -165,6 +300,22 @@ public final class Main {
 
     public Set<Node> getDependencies() {
       return dependencies;
+    }
+  }
+
+  private static final class Findings {
+    private LinkedHashMap<String, Object> hydration;
+    private LinkedHashMap<String, Object> queryGate;
+    private LinkedHashMap<String, Object> smartCheck;
+    private LinkedHashMap<String, Object> serialize;
+
+    private Map<String, Object> toMap() {
+      var map = new TreeMap<String, Object>();
+      map.put("hydration", hydration);
+      map.put("queryGate", queryGate);
+      map.put("serialize", serialize);
+      map.put("smartCheck", smartCheck);
+      return map;
     }
   }
 }

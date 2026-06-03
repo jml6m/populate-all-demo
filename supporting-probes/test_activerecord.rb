@@ -2,6 +2,7 @@ require 'active_record'
 require 'active_support/notifications'
 require 'json'
 require 'set'
+require 'fileutils'
 
 ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
 
@@ -31,6 +32,18 @@ def classify_serialization(error)
   return 'SERIALIZE_FAIL_CYCLE' if msg.include?('cycle') || msg.include?('circular') || msg.include?('recursion')
 
   'SERIALIZE_FAIL_OTHER'
+end
+
+# Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
+def build_outcome(findings)
+  return 'HYDRATION_FAIL' if findings[:hydration][:result] == 'FAIL'
+  return 'SERIALIZE_FAIL' if findings[:serialize][:result].start_with?('SERIALIZE_FAIL_')
+
+  all_passed = findings[:hydration][:result] == 'PASS' &&
+               findings[:queryGate][:result] == 'PASS' &&
+               findings[:smartCheck][:result] == 'PASS' &&
+               findings[:serialize][:result] == 'SERIALIZE_PASS'
+  all_passed ? 'PASS' : 'MIXED'
 end
 
 def smart_check(roots, expected_adj)
@@ -65,65 +78,129 @@ def smart_check(roots, expected_adj)
   [true, nil, by_name.length, visited.length, edges]
 end
 
+def write_result(result)
+  run_id = ENV['PROBE_RUN_ID']
+  raise 'PROBE_RUN_ID is required for probe JSON output' if run_id.nil? || run_id.empty?
+
+  out_dir = File.join(Dir.pwd, 'results', 'local', run_id)
+  FileUtils.mkdir_p(out_dir)
+  out_path = File.join(out_dir, 'activerecord.json')
+  tmp_path = "#{out_path}.tmp"
+
+  sorted = deep_sort(result)
+  File.write(tmp_path, JSON.pretty_generate(sorted) + "\n")
+  File.rename(tmp_path, out_path)
+  out_path
+end
+
+def deep_sort(value)
+  case value
+  when Hash
+    value.keys.sort.each_with_object({}) do |key, acc|
+      acc[key] = deep_sort(value[key])
+    end
+  when Array
+    value.map { |item| deep_sort(item) }
+  else
+    value
+  end
+end
+
 def run
   expected_adj = { 'a' => ['b'], 'b' => ['a'] }
   query_count = 0
+
+  findings = {
+    hydration: { result: 'FAIL', detail: '' },
+    queryGate: { result: 'FAIL', detail: '' },
+    smartCheck: { result: 'FAIL', detail: '' },
+    serialize: { result: 'SERIALIZE_FAIL_OTHER', detail: '' }
+  }
 
   callback = lambda do |_name, _start, _finish, _id, payload|
     query_count += 1 unless payload[:name] == 'SCHEMA'
   end
 
-  ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
-    a = Node.create!(name: 'a')
-    b = Node.create!(name: 'b')
-    a.dependencies << b
-    b.dependencies << a
+  begin
+    ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+      a = Node.create!(name: 'a')
+      b = Node.create!(name: 'b')
+      a.dependencies << b
+      b.dependencies << a
 
-    roots = Node.includes(dependencies: :dependencies).where(name: %w[a b]).order(:name).to_a
-    queries_after_hydration = query_count
+      roots = Node.includes(dependencies: :dependencies).where(name: %w[a b]).order(:name).to_a
+      queries_after_hydration = query_count
 
-    roots.each do |root|
-      root.dependencies.each do |dep|
-        dep.dependencies.length
+      roots.each do |root|
+        root.dependencies.each do |dep|
+          dep.dependencies.length
+        end
       end
-    end
 
-    query_gate = if query_count == queries_after_hydration
-                   { pass: true, reason: nil }
-                 else
-                   { pass: false, reason: "expected no additional queries during traversal, saw +#{query_count - queries_after_hydration}" }
-                 end
+      extra_queries = query_count - queries_after_hydration
+      findings[:queryGate] = if extra_queries.zero?
+                               { result: 'PASS', detail: 'No additional queries observed during traversal.' }
+                             else
+                               { result: 'FAIL', extraQueries: extra_queries, detail: "Expected 0 additional queries during traversal, observed #{extra_queries}." }
+                             end
 
-    graph_ok, reason, unique_ids, unique_instances, edges = smart_check(roots, expected_adj)
-    graph_check = {
-      pass: graph_ok,
-      reason: reason,
-      uniqueIds: unique_ids,
-      uniqueInstances: unique_instances,
-      edgesTraversed: edges
-    }
+      graph_ok, reason, = smart_check(roots, expected_adj)
+      findings[:smartCheck] = if graph_ok
+                                { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
+                              else
+                                { result: 'FAIL', detail: reason || 'Identity/closure check failed.' }
+                              end
 
-    hydration = query_gate[:pass] && graph_check[:pass] ? 'HYDRATION PASS' : 'HYDRATION FAIL'
+      findings[:hydration] = if findings[:queryGate][:result] == 'PASS' && findings[:smartCheck][:result] == 'PASS'
+                               { result: 'PASS', detail: 'Hydration check passed.' }
+                             else
+                               { result: 'FAIL', detail: "Hydration failed: queryGate=#{findings[:queryGate][:result]}, smartCheck=#{findings[:smartCheck][:result]}." }
+                             end
 
-    serialization = 'SERIALIZE_PASS'
-    begin
-      project = nil
-      project = lambda do |node|
-        { name: node.name, dependencies: node.dependencies.map { |d| project.call(d) } }
+      serialization_error = nil
+      begin
+        project = nil
+        project = lambda do |node|
+          { name: node.name, dependencies: node.dependencies.map { |d| project.call(d) } }
+        end
+        JSON.generate(roots.map { |r| project.call(r) })
+      rescue StandardError, SystemStackError => e
+        serialization_error = e
       end
-      JSON.generate(roots.map { |r| project.call(r) })
-    rescue SystemStackError
-      serialization = 'SERIALIZE_FAIL_CYCLE'
-    rescue StandardError => e
-      serialization = classify_serialization(e)
-    end
 
-    puts 'test_activerecord'
-    puts "hydration: #{hydration}"
-    puts "queryGate: #{query_gate}"
-    puts "smartCheck: #{graph_check}"
-    puts "serialization: #{serialization}"
+      serialization = classify_serialization(serialization_error)
+      findings[:serialize] = if serialization == 'SERIALIZE_PASS'
+                               { result: serialization, detail: 'JSON serialization passed.' }
+                             else
+                               { result: serialization, detail: serialization_error.full_message }
+                             end
+    end
+  rescue StandardError, SystemStackError => e
+    detail = e.full_message
+    findings[:hydration] = { result: 'FAIL', detail: detail }
+    findings[:queryGate] = { result: 'FAIL', detail: detail }
+    findings[:smartCheck] = { result: 'FAIL', detail: detail }
+    findings[:serialize] = { result: 'SERIALIZE_FAIL_OTHER', detail: detail }
   end
+
+  result = {
+    probe: 'activerecord',
+    language: 'ruby',
+    library: 'ActiveRecord',
+    libraryVersion: ActiveRecord::VERSION::STRING,
+    runtimeVersion: RUBY_VERSION,
+    findings: findings
+  }
+  result[:outcome] = build_outcome(findings)
+
+  output_path = write_result(result)
+
+  puts 'test_activerecord'
+  puts "hydration: #{findings[:hydration][:result] == 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL'}"
+  puts "queryGate: #{findings[:queryGate]}"
+  puts "smartCheck: #{findings[:smartCheck]}"
+  puts "serialization: #{findings[:serialize][:result]}"
+  puts "json: #{output_path}"
 end
 
 run

@@ -1,6 +1,10 @@
 import json
+import os
+import sys
+import traceback
 from collections import deque
 
+import sqlalchemy
 from sqlalchemy import Column, ForeignKey, Integer, String, Table, create_engine, event
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
 
@@ -37,6 +41,21 @@ def classify_serialization(error: Exception | None) -> str:
     return 'SERIALIZE_FAIL_OTHER'
 
 
+# Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
+def build_outcome(findings) -> str:
+    if findings['hydration']['result'] == 'FAIL':
+        return 'HYDRATION_FAIL'
+    if findings['serialize']['result'].startswith('SERIALIZE_FAIL_'):
+        return 'SERIALIZE_FAIL'
+    all_passed = (
+        findings['hydration']['result'] == 'PASS'
+        and findings['queryGate']['result'] == 'PASS'
+        and findings['smartCheck']['result'] == 'PASS'
+        and findings['serialize']['result'] == 'SERIALIZE_PASS'
+    )
+    return 'PASS' if all_passed else 'MIXED'
+
+
 def smart_check(roots, expected_adj):
     stack = deque(roots)
     visited_ids = set()
@@ -70,9 +89,32 @@ def smart_check(roots, expected_adj):
     return True, None, len(by_name), len(visited_ids), edges
 
 
+def write_result(result):
+    run_id = os.environ.get('PROBE_RUN_ID')
+    if not run_id:
+        raise RuntimeError('PROBE_RUN_ID is required for probe JSON output')
+
+    out_dir = os.path.join(os.getcwd(), 'results', 'local', run_id)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, 'sqlalchemy.json')
+    tmp_path = f'{out_path}.tmp'
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, indent=2, sort_keys=True)
+        f.write('\n')
+    os.replace(tmp_path, out_path)
+    return out_path
+
+
 def run():
     expected_adj = {'a': ['b'], 'b': ['a']}
     query_count = 0
+
+    findings = {
+        'hydration': {'result': 'FAIL', 'detail': ''},
+        'queryGate': {'result': 'FAIL', 'detail': ''},
+        'smartCheck': {'result': 'FAIL', 'detail': ''},
+        'serialize': {'result': 'SERIALIZE_FAIL_OTHER', 'detail': ''},
+    }
 
     engine = create_engine('sqlite+pysqlite:///:memory:', future=True)
 
@@ -81,66 +123,98 @@ def run():
         nonlocal query_count
         query_count += 1
 
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    try:
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
 
-    with Session() as session:
-        a = Node(name='a')
-        b = Node(name='b')
-        a.dependencies.append(b)
-        b.dependencies.append(a)
-        session.add_all([a, b])
-        session.commit()
+        with Session() as session:
+            a = Node(name='a')
+            b = Node(name='b')
+            a.dependencies.append(b)
+            b.dependencies.append(a)
+            session.add_all([a, b])
+            session.commit()
 
-        roots = (
-            session.query(Node)
-            .options(selectinload(Node.dependencies).selectinload(Node.dependencies))
-            .filter(Node.name.in_(['a', 'b']))
-            .order_by(Node.name.asc())
-            .all()
-        )
+            roots = (
+                session.query(Node)
+                .options(selectinload(Node.dependencies).selectinload(Node.dependencies))
+                .filter(Node.name.in_(['a', 'b']))
+                .order_by(Node.name.asc())
+                .all()
+            )
 
-        queries_after_hydration = query_count
+            queries_after_hydration = query_count
 
-        for root in roots:
-            for dep in root.dependencies:
-                _ = len(dep.dependencies)
+            for root in roots:
+                for dep in root.dependencies:
+                    _ = len(dep.dependencies)
 
-        query_gate = {
-            'pass': query_count == queries_after_hydration,
-            'reason': None if query_count == queries_after_hydration else f'expected no additional queries during traversal, saw +{query_count - queries_after_hydration}',
-        }
+            extra_queries = query_count - queries_after_hydration
+            if extra_queries == 0:
+                findings['queryGate'] = {'result': 'PASS', 'detail': 'No additional queries observed during traversal.'}
+            else:
+                findings['queryGate'] = {
+                    'result': 'FAIL',
+                    'extraQueries': extra_queries,
+                    'detail': f'Expected 0 additional queries during traversal, observed {extra_queries}.',
+                }
 
-        graph_ok, reason, unique_ids, unique_instances, edges = smart_check(roots, expected_adj)
-        graph_check = {
-            'pass': graph_ok,
-            'reason': reason,
-            'uniqueIds': unique_ids,
-            'uniqueInstances': unique_instances,
-            'edgesTraversed': edges,
-        }
+            graph_ok, reason, _, _, _ = smart_check(roots, expected_adj)
+            if graph_ok:
+                findings['smartCheck'] = {'result': 'PASS', 'detail': 'Identity and dependency closure checks passed.'}
+            else:
+                findings['smartCheck'] = {'result': 'FAIL', 'detail': reason or 'Identity/closure check failed.'}
 
-        hydration = 'HYDRATION PASS' if query_gate['pass'] and graph_check['pass'] else 'HYDRATION FAIL'
+            if findings['queryGate']['result'] == 'PASS' and findings['smartCheck']['result'] == 'PASS':
+                findings['hydration'] = {'result': 'PASS', 'detail': 'Hydration check passed.'}
+            else:
+                findings['hydration'] = {
+                    'result': 'FAIL',
+                    'detail': f"Hydration failed: queryGate={findings['queryGate']['result']}, smartCheck={findings['smartCheck']['result']}.",
+                }
 
-        def _default(obj):
-            if isinstance(obj, Node):
-                # Keep dependency recursion so cycles surface as recursion/cycle failures.
-                return {'name': obj.name, 'dependencies': obj.dependencies}
-            raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+            def _default(obj):
+                if isinstance(obj, Node):
+                    return {'name': obj.name, 'dependencies': obj.dependencies}
+                raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
 
-        serialization_error = None
-        try:
-            json.dumps(roots, default=_default)
-        except Exception as error:
-            serialization_error = error
+            serialization_error = None
+            try:
+                json.dumps(roots, default=_default)
+            except Exception as error:  # pylint: disable=broad-except
+                serialization_error = error
 
-        serialization = classify_serialization(serialization_error)
+            serialization = classify_serialization(serialization_error)
+            if serialization == 'SERIALIZE_PASS':
+                findings['serialize'] = {'result': serialization, 'detail': 'JSON serialization passed.'}
+            else:
+                detail = ''.join(traceback.format_exception(type(serialization_error), serialization_error, serialization_error.__traceback__)) if serialization_error else serialization
+                findings['serialize'] = {'result': serialization, 'detail': detail}
+    except Exception as error:  # pylint: disable=broad-except
+        detail = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+        findings['hydration'] = {'result': 'FAIL', 'detail': detail}
+        findings['queryGate'] = {'result': 'FAIL', 'detail': detail}
+        findings['smartCheck'] = {'result': 'FAIL', 'detail': detail}
+        findings['serialize'] = {'result': 'SERIALIZE_FAIL_OTHER', 'detail': detail}
 
-        print('test_sqlalchemy')
-        print('hydration:', hydration)
-        print('queryGate:', query_gate)
-        print('smartCheck:', graph_check)
-        print('serialization:', serialization)
+    result = {
+        'probe': 'sqlalchemy',
+        'language': 'python',
+        'library': 'SQLAlchemy',
+        'libraryVersion': sqlalchemy.__version__,
+        'runtimeVersion': sys.version.split()[0],
+        'findings': findings,
+    }
+    result['outcome'] = build_outcome(findings)
+
+    output_path = write_result(result)
+
+    print('test_sqlalchemy')
+    print('hydration:', 'HYDRATION PASS' if findings['hydration']['result'] == 'PASS' else 'HYDRATION FAIL')
+    print('queryGate:', findings['queryGate'])
+    print('smartCheck:', findings['smartCheck'])
+    print('serialization:', findings['serialize']['result'])
+    print('json:', output_path)
 
 
 if __name__ == '__main__':

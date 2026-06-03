@@ -3,174 +3,9 @@ name: Supporting Probes
 on:
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: supporting-probes
-
 jobs:
-  install:
-    name: Install supporting probes dependencies
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: supporting-probes/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate --schema=prisma/schema.prisma
-
-      - name: Upload lockfile artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: supporting-probes-lockfile
-          path: supporting-probes/package-lock.json
-          if-no-files-found: error
-
-      - name: Cache dependencies
-        uses: actions/cache/save@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-
-  typeorm:
-    name: TypeORM probe
-    needs: install
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run TypeORM probe
-        run: npm run probe:typeorm
-
-  typeorm-positive:
-    name: TypeORM positive probe
-    needs: install
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run TypeORM positive probe
-        run: npm run probe:typeorm-positive
-
-  sequelize:
-    name: Sequelize probe
-    needs: install
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run Sequelize probe
-        run: npm run probe:sequelize
-
-  mikroorm:
-    name: MikroORM probe
-    needs: install
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run MikroORM probe
-        run: npm run probe:mikroorm
-
-  prisma:
-    name: Prisma probe
-    needs: install
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run Prisma probe
-        run: npm run probe:prisma
-
-  mongoose:
-    name: Mongoose probe
-    needs: install
+  probes:
+    name: Supporting probes
     runs-on: ${{ vars.RUNS_ON }}
     permissions:
       contents: read
@@ -188,71 +23,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Reject any writes to reference/ paths
+        run: |
+          set -euo pipefail
+
+          # Make canonical reference artifacts read-only in non-release workflows.
+          chmod -R a-w supporting-probes/results/reference || true
+
+          # Defensive: ensure local results output cannot resolve under any reference/ path.
+          local_results="$(realpath supporting-probes/results/local)"
+          if echo "$local_results" | grep -E '(^|/)reference(/|$)' >/dev/null; then
+            echo "Unsafe results path resolves under reference/: $local_results"
+            exit 1
+          fi
+
+          output_probe_path="$PWD/supporting-probes/results/local/__guard__"
+          for candidate in "$RUNNER_TEMP" "$output_probe_path"; do
+            if echo "$candidate" | grep -E '(^|/)reference(/|$)' >/dev/null; then
+              echo "Unsafe path detected under reference/: $candidate"
+              exit 1
+            fi
+          done
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: ${{ vars.NODE_VERSION }}
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: supporting-probes/node_modules
-          key: supporting-probes-node-modules-${{ runner.os }}-${{ vars.NODE_VERSION }}-${{ hashFiles('supporting-probes/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Run Mongoose probe
-        run: npm run probe:mongoose
-        env:
-          MONGODB_URI: mongodb://localhost:27017/supporting_probe_mongoose
-
-  sqlalchemy:
-    name: SQLAlchemy probe
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+          cache: 'npm'
+          cache-dependency-path: supporting-probes/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
-        run: pip install sqlalchemy
-
-      - name: Run SQLAlchemy probe
-        run: python test_sqlalchemy.py
-
-  activerecord:
-    name: ActiveRecord probe
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: 'ruby'
-
-      - name: Install dependencies
-        run: gem install activerecord sqlite3 activesupport
-
-      - name: Run ActiveRecord probe
-        run: ruby test_activerecord.rb
-
-  hibernate:
-    name: Hibernate probe
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -260,28 +68,40 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install dependencies
-        run: mvn -q dependency:resolve
-
-      - name: Run Hibernate probe
-        run: mvn -q dependency:build-classpath -Dmdep.outputFile=.hibernate-classpath && javac -cp "$(cat .hibernate-classpath)" Main.java && java -cp ".:$(cat .hibernate-classpath)" Main
-
-  efcore:
-    name: EF Core probe
-    runs-on: ${{ vars.RUNS_ON }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Install dependencies
+      - name: Install Node dependencies
+        working-directory: supporting-probes
+        run: npm ci
+
+      - name: Install Python dependencies
+        working-directory: supporting-probes
+        run: pip install sqlalchemy
+
+      - name: Install Ruby dependencies
+        working-directory: supporting-probes
+        run: gem install activerecord sqlite3 activesupport
+
+      - name: Install Java dependencies
+        working-directory: supporting-probes
+        run: mvn -q dependency:resolve
+
+      - name: Install .NET dependencies
+        working-directory: supporting-probes
         run: dotnet restore EfCoreTest.csproj
 
-      - name: Run EF Core probe
-        run: dotnet run --project EfCoreTest.csproj
+      - name: Run all probes
+        working-directory: supporting-probes
+        env:
+          MONGODB_URI: mongodb://localhost:27017/supporting_probe_mongoose
+        run: npm run probe:all
+
+      - name: Upload structured results
+        uses: actions/upload-artifact@v7
+        with:
+          name: supporting-probes-results
+          path: supporting-probes/results/local/
+          if-no-files-found: error

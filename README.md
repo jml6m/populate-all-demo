@@ -41,6 +41,8 @@ npm run experiment:force
 
 Use `npm run clean` to remove local run outputs (`reports/local/`, `logs/local/`, `supporting-probes/results/local/`) plus `data/` and `dist/`.
 
+For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, and JSON outputs), see [`supporting-probes/README.md`](./supporting-probes/README.md).
+
 ```bash
 npm run clean
 ```
