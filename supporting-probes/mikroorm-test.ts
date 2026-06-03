@@ -1,7 +1,8 @@
 import { Collection, EntitySchema, MikroORM } from '@mikro-orm/core';
 import { SqliteDriver } from '@mikro-orm/sqlite';
 import { finalizeSerialization, smartCheck } from './ts/shared';
-import { buildOutcome, formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { PROBE_IDENTITIES } from './ts/probe-config';
+import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
 class Node {
   id!: string;
@@ -109,14 +110,10 @@ async function run() {
         ? { result: serialization, detail: 'JSON serialization passed.' }
         : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
 
-    const outcome = buildOutcome(findings);
     const outputPath = writeProbeResult({
-      probe: 'mikroorm',
-      language: 'typescript',
-      library: 'MikroORM',
+      ...PROBE_IDENTITIES.mikroorm,
       libraryVersion: getNodePackageVersion('@mikro-orm/core'),
       runtimeVersion: process.version,
-      outcome,
       findings,
     });
 
@@ -134,12 +131,9 @@ async function run() {
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
     writeProbeResult({
-      probe: 'mikroorm',
-      language: 'typescript',
-      library: 'MikroORM',
+      ...PROBE_IDENTITIES.mikroorm,
       libraryVersion: getNodePackageVersion('@mikro-orm/core'),
       runtimeVersion: process.version,
-      outcome: buildOutcome(findings),
       findings,
     });
 

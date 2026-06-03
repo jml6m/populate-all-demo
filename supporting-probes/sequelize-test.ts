@@ -1,6 +1,7 @@
 import { DataTypes, Model, Sequelize } from 'sequelize';
 import { finalizeSerialization, smartCheck } from './ts/shared';
-import { buildOutcome, formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { PROBE_IDENTITIES } from './ts/probe-config';
+import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
 class Node extends Model {
   declare id: number;
@@ -90,14 +91,10 @@ async function run() {
         ? { result: serialization, detail: 'JSON serialization passed.' }
         : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
 
-    const outcome = buildOutcome(findings);
     const outputPath = writeProbeResult({
-      probe: 'sequelize',
-      language: 'typescript',
-      library: 'Sequelize',
+      ...PROBE_IDENTITIES.sequelize,
       libraryVersion: getNodePackageVersion('sequelize'),
       runtimeVersion: process.version,
-      outcome,
       findings,
     });
 
@@ -115,12 +112,9 @@ async function run() {
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
     writeProbeResult({
-      probe: 'sequelize',
-      language: 'typescript',
-      library: 'Sequelize',
+      ...PROBE_IDENTITIES.sequelize,
       libraryVersion: getNodePackageVersion('sequelize'),
       runtimeVersion: process.version,
-      outcome: buildOutcome(findings),
       findings,
     });
 

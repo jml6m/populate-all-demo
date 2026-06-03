@@ -1,6 +1,7 @@
 import mongoose, { Schema, model } from 'mongoose';
 import { finalizeSerialization, smartCheck } from './ts/shared';
-import { buildOutcome, formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { PROBE_IDENTITIES } from './ts/probe-config';
+import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
 type NodeDoc = {
   name: string;
@@ -86,14 +87,10 @@ async function run() {
         ? { result: serialization, detail: 'JSON serialization passed.' }
         : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
 
-    const outcome = buildOutcome(findings);
     const outputPath = writeProbeResult({
-      probe: 'mongoose',
-      language: 'typescript',
-      library: 'Mongoose',
+      ...PROBE_IDENTITIES.mongoose,
       libraryVersion: getNodePackageVersion('mongoose'),
       runtimeVersion: process.version,
-      outcome,
       findings,
     });
 
@@ -111,12 +108,9 @@ async function run() {
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
     writeProbeResult({
-      probe: 'mongoose',
-      language: 'typescript',
-      library: 'Mongoose',
+      ...PROBE_IDENTITIES.mongoose,
       libraryVersion: getNodePackageVersion('mongoose'),
       runtimeVersion: process.version,
-      outcome: buildOutcome(findings),
       findings,
     });
 

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { finalizeSerialization, smartCheck } from './ts/shared';
-import { buildOutcome, formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { PROBE_IDENTITIES } from './ts/probe-config';
+import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
 type PrismaNode = {
   name: string;
@@ -78,14 +79,10 @@ async function run() {
         ? { result: serialization, detail: 'JSON serialization passed.' }
         : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
 
-    const outcome = buildOutcome(findings);
     const outputPath = writeProbeResult({
-      probe: 'prisma',
-      language: 'typescript',
-      library: 'Prisma',
+      ...PROBE_IDENTITIES.prisma,
       libraryVersion: getNodePackageVersion('@prisma/client'),
       runtimeVersion: process.version,
-      outcome,
       findings,
     });
 
@@ -103,12 +100,9 @@ async function run() {
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
     writeProbeResult({
-      probe: 'prisma',
-      language: 'typescript',
-      library: 'Prisma',
+      ...PROBE_IDENTITIES.prisma,
       libraryVersion: getNodePackageVersion('@prisma/client'),
       runtimeVersion: process.version,
-      outcome: buildOutcome(findings),
       findings,
     });
 

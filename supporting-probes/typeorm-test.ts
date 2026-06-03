@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { DataSource, EntitySchema, Logger } from 'typeorm';
 import { finalizeSerialization, smartCheck } from './ts/shared';
-import { buildOutcome, formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { PROBE_IDENTITIES } from './ts/probe-config';
+import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
 type Node = {
   id: number;
@@ -146,14 +147,10 @@ async function run() {
       };
     }
 
-    const outcome = buildOutcome(findings);
     const outputPath = writeProbeResult({
-      probe: 'typeorm',
-      language: 'typescript',
-      library: 'TypeORM',
+      ...PROBE_IDENTITIES.typeorm,
       libraryVersion: getNodePackageVersion('typeorm'),
       runtimeVersion: process.version,
-      outcome,
       findings,
     });
 
@@ -170,12 +167,9 @@ async function run() {
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail: formatErrorDetail(error) };
 
     writeProbeResult({
-      probe: 'typeorm',
-      language: 'typescript',
-      library: 'TypeORM',
+      ...PROBE_IDENTITIES.typeorm,
       libraryVersion: getNodePackageVersion('typeorm'),
       runtimeVersion: process.version,
-      outcome: buildOutcome(findings),
       findings,
     });
 

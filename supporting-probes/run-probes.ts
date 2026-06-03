@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { buildOutcome, getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
+import { PROBE_IDENTITIES, PROBE_RUN_ID_PATTERN, type ProbeLanguage } from './ts/probe-config';
+import { getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
 
 type Suite = 'ts' | 'all';
-type ProbeLanguage = 'typescript' | 'python' | 'ruby' | 'java' | 'csharp';
 
 type ProbeConfig = {
   name: string;
@@ -194,45 +194,45 @@ function efCoreVersionFromCsproj(): string {
 function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeConfig[] } {
   const tsProbes: ProbeConfig[] = [
     {
-      name: 'typeorm',
-      language: 'typescript',
-      library: 'TypeORM',
+      name: PROBE_IDENTITIES.typeorm.probe,
+      language: PROBE_IDENTITIES.typeorm.language,
+      library: PROBE_IDENTITIES.typeorm.library,
       command: 'npx',
       args: ['tsx', 'typeorm-test.ts'],
       resolveLibraryVersion: () => getNodePackageVersion('typeorm'),
       resolveRuntimeVersion: () => process.version,
     },
     {
-      name: 'sequelize',
-      language: 'typescript',
-      library: 'Sequelize',
+      name: PROBE_IDENTITIES.sequelize.probe,
+      language: PROBE_IDENTITIES.sequelize.language,
+      library: PROBE_IDENTITIES.sequelize.library,
       command: 'npx',
       args: ['tsx', 'sequelize-test.ts'],
       resolveLibraryVersion: () => getNodePackageVersion('sequelize'),
       resolveRuntimeVersion: () => process.version,
     },
     {
-      name: 'mikroorm',
-      language: 'typescript',
-      library: 'MikroORM',
+      name: PROBE_IDENTITIES.mikroorm.probe,
+      language: PROBE_IDENTITIES.mikroorm.language,
+      library: PROBE_IDENTITIES.mikroorm.library,
       command: 'npx',
       args: ['tsx', 'mikroorm-test.ts'],
       resolveLibraryVersion: () => getNodePackageVersion('@mikro-orm/core'),
       resolveRuntimeVersion: () => process.version,
     },
     {
-      name: 'prisma',
-      language: 'typescript',
-      library: 'Prisma',
+      name: PROBE_IDENTITIES.prisma.probe,
+      language: PROBE_IDENTITIES.prisma.language,
+      library: PROBE_IDENTITIES.prisma.library,
       command: 'bash',
       args: ['-lc', 'npx prisma db push --schema=prisma/schema.prisma --skip-generate && npx prisma generate --schema=prisma/schema.prisma && npx tsx prisma-test.ts'],
       resolveLibraryVersion: () => getNodePackageVersion('@prisma/client'),
       resolveRuntimeVersion: () => process.version,
     },
     {
-      name: 'mongoose',
-      language: 'typescript',
-      library: 'Mongoose',
+      name: PROBE_IDENTITIES.mongoose.probe,
+      language: PROBE_IDENTITIES.mongoose.language,
+      library: PROBE_IDENTITIES.mongoose.library,
       command: 'npx',
       args: ['tsx', 'mongoose-test.ts'],
       resolveLibraryVersion: () => getNodePackageVersion('mongoose'),
@@ -243,36 +243,36 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
   const allProbes: ProbeConfig[] = [
     ...tsProbes,
     {
-      name: 'sqlalchemy',
-      language: 'python',
-      library: 'SQLAlchemy',
+      name: PROBE_IDENTITIES.sqlalchemy.probe,
+      language: PROBE_IDENTITIES.sqlalchemy.language,
+      library: PROBE_IDENTITIES.sqlalchemy.library,
       command: pythonCommand,
       args: ['test_sqlalchemy.py'],
       resolveLibraryVersion: () => sqlalchemyVersion(pythonCommand),
       resolveRuntimeVersion: () => pythonRuntimeVersion(pythonCommand),
     },
     {
-      name: 'activerecord',
-      language: 'ruby',
-      library: 'ActiveRecord',
+      name: PROBE_IDENTITIES.activerecord.probe,
+      language: PROBE_IDENTITIES.activerecord.language,
+      library: PROBE_IDENTITIES.activerecord.library,
       command: 'ruby',
       args: ['test_activerecord.rb'],
       resolveLibraryVersion: () => activeRecordVersion(),
       resolveRuntimeVersion: () => rubyRuntimeVersion(),
     },
     {
-      name: 'hibernate',
-      language: 'java',
-      library: 'Hibernate',
+      name: PROBE_IDENTITIES.hibernate.probe,
+      language: PROBE_IDENTITIES.hibernate.language,
+      library: PROBE_IDENTITIES.hibernate.library,
       command: 'bash',
       args: ['-lc', 'mvn -q dependency:build-classpath -Dmdep.outputFile=.hibernate-classpath && javac -cp "$(cat .hibernate-classpath)" Main.java && java -cp ".:$(cat .hibernate-classpath)" Main'],
       resolveLibraryVersion: () => hibernateVersionFromPom(),
       resolveRuntimeVersion: () => javaRuntimeVersion(),
     },
     {
-      name: 'efcore',
-      language: 'csharp',
-      library: 'EF Core',
+      name: PROBE_IDENTITIES.efcore.probe,
+      language: PROBE_IDENTITIES.efcore.language,
+      library: PROBE_IDENTITIES.efcore.library,
       command: 'bash',
       args: ['-lc', 'dotnet restore EfCoreTest.csproj && dotnet run --project EfCoreTest.csproj'],
       resolveLibraryVersion: () => efCoreVersionFromCsproj(),
@@ -297,7 +297,6 @@ function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string):
     library: probe.library,
     libraryVersion: probe.resolveLibraryVersion(),
     runtimeVersion: probe.resolveRuntimeVersion(),
-    outcome: buildOutcome(findings),
     findings,
   });
 }

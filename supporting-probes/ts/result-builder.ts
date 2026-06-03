@@ -1,41 +1,49 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { type ProbeLanguage, PROBE_RUN_ID_PATTERN } from './probe-config';
 
-export type ProbeLanguage = 'typescript' | 'python' | 'ruby' | 'java' | 'csharp';
+export type { ProbeLanguage };
 export type FindingResult = 'PASS' | 'FAIL';
 export type QueryGateResult = 'PASS' | 'FAIL' | 'NOT_APPLICABLE';
 export type SerializeResult = 'SERIALIZE_PASS' | 'SERIALIZE_FAIL_CYCLE' | 'SERIALIZE_FAIL_OTHER';
 export type ProbeOutcome = 'PASS' | 'HYDRATION_FAIL' | 'SERIALIZE_FAIL' | 'MIXED';
 
+export interface ProbeFindings {
+  hydration: {
+    result: FindingResult;
+    detail: string;
+  };
+  queryGate: {
+    result: QueryGateResult;
+    detail: string;
+    extraQueries?: number;
+  };
+  smartCheck: {
+    result: FindingResult;
+    detail: string;
+  };
+  serialize: {
+    result: SerializeResult;
+    detail: string;
+  };
+}
+
+/**
+ * Probe result written by each probe file.
+ * `outcome` is intentionally omitted here — it is always derived from `findings`
+ * by `writeProbeResult` / `writeProbeResultForRunId` and stamped into the JSON
+ * artifact automatically.
+ */
 export interface ProbeResult {
   probe: string;
   language: ProbeLanguage;
   library: string;
   libraryVersion: string;
   runtimeVersion: string;
-  outcome: ProbeOutcome;
-  findings: {
-    hydration: {
-      result: FindingResult;
-      detail: string;
-    };
-    queryGate: {
-      result: QueryGateResult;
-      detail: string;
-      extraQueries?: number;
-    };
-    smartCheck: {
-      result: FindingResult;
-      detail: string;
-    };
-    serialize: {
-      result: SerializeResult;
-      detail: string;
-    };
-  };
+  findings: ProbeFindings;
 }
 
-export function buildOutcome(findings: ProbeResult['findings']): ProbeOutcome {
+export function buildOutcome(findings: ProbeFindings): ProbeOutcome {
   if (findings.hydration.result === 'FAIL') {
     return 'HYDRATION_FAIL';
   }
@@ -55,12 +63,8 @@ export function buildOutcome(findings: ProbeResult['findings']): ProbeOutcome {
 
 export function formatErrorDetail(error: unknown): string {
   if (error instanceof Error) {
-    if (error.stack && error.stack.length > 0) {
-      return error.stack;
-    }
     return `${error.name}: ${error.message}`;
   }
-
   return String(error);
 }
 
@@ -95,7 +99,7 @@ export function writeProbeResult(result: ProbeResult): string {
 }
 
 export function writeProbeResultForRunId(runId: string, result: ProbeResult): string {
-  if (!/^[0-9]{8}-[0-9]{6}-(?:[0-9a-f]{7}|nogit)$/.test(runId) || runId.includes(path.sep)) {
+  if (!PROBE_RUN_ID_PATTERN.test(runId) || runId.includes(path.sep)) {
     throw new Error(`Invalid PROBE_RUN_ID '${runId}' (expected YYYYMMDD-HHMMSS-<shortsha>)`);
   }
 
@@ -104,13 +108,9 @@ export function writeProbeResultForRunId(runId: string, result: ProbeResult): st
 
   const outputPath = path.join(outputDir, `${result.probe}.json`);
   const tmpPath = `${outputPath}.tmp`;
-  fs.writeFileSync(tmpPath, serializeSortedJson(result), 'utf8');
-  fs.renameSync(tmpPath, outputPath);
-
-  return outputPath;
-}
-  const tmpPath = `${outputPath}.tmp`;
-  fs.writeFileSync(tmpPath, serializeSortedJson(result), 'utf8');
+  // Always derive outcome from findings so callers don't need to compute it.
+  const resultToWrite = { ...result, outcome: buildOutcome(result.findings) };
+  fs.writeFileSync(tmpPath, serializeSortedJson(resultToWrite), 'utf8');
   fs.renameSync(tmpPath, outputPath);
 
   return outputPath;
