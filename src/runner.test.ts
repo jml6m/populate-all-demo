@@ -26,6 +26,7 @@ import {
   runtimeHydrationInvariant,
   RunMetadata,
   makeRunId,
+  validateGitShortSha,
 } from './runner';
 import type { Manifest } from './types';
 
@@ -185,24 +186,38 @@ describe('makeRunId', () => {
     }
   });
 
-  it('falls back to nogit when git returns a short SHA in an unexpected format', () => {
-    const tempDir = makeTempDir();
-    const fakeBinDir = path.join(tempDir, 'bin');
-    const fakeGitPath = path.join(fakeBinDir, 'git');
-    const originalPath = process.env.PATH;
+});
 
-    try {
-      fs.mkdirSync(fakeBinDir, { recursive: true });
-      fs.writeFileSync(fakeGitPath, '#!/usr/bin/env sh\necho not-a-short-sha\n');
-      fs.chmodSync(fakeGitPath, 0o755);
-      process.env.PATH = originalPath !== undefined && originalPath.length > 0 ? `${fakeBinDir}:${originalPath}` : fakeBinDir;
+describe('validateGitShortSha — pure validation', () => {
+  it('returns the trimmed lowercase SHA when input is a valid 7-char hex string', () => {
+    assert.equal(validateGitShortSha('a1b2c3d\n'), 'a1b2c3d');
+    assert.equal(validateGitShortSha('  abcdef0  '), 'abcdef0');
+  });
 
-      const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), TEST_PROJECT_ROOT);
-      assert.equal(runId, '20260102-030405-nogit');
-    } finally {
-      process.env.PATH = originalPath;
-      fs.rmSync(tempDir, { recursive: true });
-    }
+  it('lowercases uppercase input', () => {
+    assert.equal(validateGitShortSha('A1B2C3D'), 'a1b2c3d');
+  });
+
+  it('returns "nogit" when the output is empty', () => {
+    assert.equal(validateGitShortSha(''), 'nogit');
+    assert.equal(validateGitShortSha('   \n'), 'nogit');
+  });
+
+  it('returns "nogit" when the output is not 7 characters', () => {
+    assert.equal(validateGitShortSha('abcdef'), 'nogit');
+    assert.equal(validateGitShortSha('abcdef12'), 'nogit');
+    assert.equal(validateGitShortSha('abcdef12345'), 'nogit');
+  });
+
+  it('returns "nogit" when the output contains non-hex characters', () => {
+    assert.equal(validateGitShortSha('not-a-short-sha'), 'nogit');
+    assert.equal(validateGitShortSha('zzzzzzz'), 'nogit');
+    assert.equal(validateGitShortSha('1234 67'), 'nogit');
+  });
+
+  it('handles arbitrary whitespace and trailing newlines from git output', () => {
+    assert.equal(validateGitShortSha('1234567\r\n'), '1234567');
+    assert.equal(validateGitShortSha('\t1234567\t'), '1234567');
   });
 });
 
