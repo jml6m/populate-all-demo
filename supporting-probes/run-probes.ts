@@ -6,17 +6,18 @@ import { getNodePackageVersion, writeProbeResultForRunId } from './ts/result-bui
 
 type Suite = 'ts' | 'all';
 
-type ProbeConfig = {
+type ProbeConfigBase = {
   name: string;
   language: ProbeLanguage;
   library: string;
-  command?: string;
-  args?: string[];
-  run?: (env: NodeJS.ProcessEnv) => { status: number | null; stdout: string; stderr: string };
   resolveLibraryVersion: () => string;
   resolveRuntimeVersion: () => string;
   extraEnv?: Record<string, string>;
 };
+
+type ProbeConfig =
+  | (ProbeConfigBase & { run: (env: NodeJS.ProcessEnv) => { status: number | null; stdout: string; stderr: string }; command?: never; args?: never })
+  | (ProbeConfigBase & { command: string; args: string[]; run?: never });
 
 function parseSuite(argv: string[]): Suite {
   const suiteArg = argv.find((arg) => arg.startsWith('--suite='));
@@ -425,7 +426,7 @@ function main(): number {
     const env = { ...process.env, PROBE_RUN_ID: runId, ...(probe.extraEnv ?? {}) };
     const result = probe.run
       ? probe.run(env)
-      : runCommand(probe.command!, probe.args!, { env });
+      : runCommand(probe.command, probe.args, { env });
 
     const outputPath = path.join(outputDir, `${probe.name}.json`);
     if (!fs.existsSync(outputPath)) {
