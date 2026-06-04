@@ -4,6 +4,8 @@ import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
+const verbose = process.env.PROBE_VERBOSE === '1';
+
 type Node = {
   id: number;
   name: string;
@@ -39,7 +41,9 @@ class QueryCounterLogger implements Logger {
 
   logQuery(query: string): void {
     this.queryCount += 1;
-    console.log('[sql]', query);
+    if (verbose) {
+      console.log('[sql]', query);
+    }
   }
 
   logQueryError(): void {}
@@ -74,7 +78,7 @@ async function run() {
     database: ':memory:',
     entities: [NodeSchema],
     synchronize: true,
-    logging: ['query'],
+    logging: true,
     logger,
   });
 

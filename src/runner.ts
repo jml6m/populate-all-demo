@@ -272,8 +272,8 @@ function compareAnswerEntries(generated: AnswerEntry[], expected: AnswerEntry[])
     };
   }
   for (let i = 0; i < generated.length; i++) {
-    const g = generated[i];
-    const e = expected[i];
+    const g = generated[i]!;
+    const e = expected[i]!;
     if (g.id !== e.id) {
       return {
         pass: false,
@@ -334,7 +334,7 @@ function buildRuntimeHydrationExpectedIndex(expected: AnswerEntry[]): RuntimeHyd
           edgesTraversed: edgeCount,
         };
       }
-      depIds.add(expected[depIdx].id);
+      depIds.add(expected[depIdx]!.id);
       edgeCount++;
     }
     byId.set(entry.id, depIds);
@@ -1343,7 +1343,7 @@ function runBenchmark() {
     const laterOutcomes: LaterAlgoOutcome[] = [];
 
     for (let algoIdx = 0; algoIdx < algorithms.length; algoIdx++) {
-      const algo = algorithms[algoIdx];
+      const algo = algorithms[algoIdx]!;
 
       // Skip algorithms that failed on the cyclic baseline (basic) dataset — they
       // deterministically fail at all cyclic scales, so re-executing on larger datasets
@@ -1351,8 +1351,8 @@ function runBenchmark() {
       // established, so acyclic-control and basic always run every algorithm.
       // Map Tracker passes at small scale and only fails at large scale, so it continues running.
       if (!isFullDetailDataset && baselineFailedAlgorithms.has(algo.name)) {
-        summaryRows[algoIdx].results.set(dataset, false);
-        probeSummaryRows[algoIdx].results.set(dataset, '(skip)');
+        summaryRows[algoIdx]!.results.set(dataset, false);
+        probeSummaryRows[algoIdx]!.results.set(dataset, '(skip)');
         // Re-use the exact hydration object from the baseline run.
         // metrics is null — no execution took place; skipped: true lets report
         // consumers distinguish these entries from genuine zero-time measurements.
@@ -1536,17 +1536,17 @@ function runBenchmark() {
       const headlineTimeMs = hydrationTimeMs + fastestProbeMs;
 
       // Record end-to-end result for the summary table.
-      summaryRows[algoIdx].results.set(dataset, disagree ? null : endToEndPass);
+      summaryRows[algoIdx]!.results.set(dataset, disagree ? null : endToEndPass);
 
       // Record consumer probe result for the probe summary table.
       if (!consumerProbeResult.ran) {
-        probeSummaryRows[algoIdx].results.set(dataset, disagree ? '⚠️' : '—');
+        probeSummaryRows[algoIdx]!.results.set(dataset, disagree ? '⚠️' : '—');
       } else {
         const iconStr = consumerProbeResult.probes.map((p) => (p.pass ? '✅' : '❌')).join('/');
-        probeSummaryRows[algoIdx].results.set(dataset, iconStr);
+        probeSummaryRows[algoIdx]!.results.set(dataset, iconStr);
         // Also record per-probe-name pass/fail for the end-of-run narrative summary.
         const namedResults = new Map(consumerProbeResult.probes.map((p) => [p.name, p.pass]));
-        probePassByName[algoIdx].push(namedResults);
+        probePassByName[algoIdx]!.push(namedResults);
       }
 
       const report: BenchmarkReport = {

@@ -86,7 +86,7 @@ function makeChainCycle(n: number): ComponentPopulated[] {
     nodes.push(makeNode(`node_${i}`));
   }
   for (let i = 0; i < n; i++) {
-    nodes[i].dependencies.push(nodes[(i + 1) % n]);
+    nodes[i]!.dependencies.push(nodes[(i + 1) % n]!);
   }
   return nodes;
 }
@@ -95,22 +95,22 @@ function makeChainCycle(n: number): ComponentPopulated[] {
 // Input validation
 // ---------------------------------------------------------------------------
 
-describe('smartCompare — input validation', () => {
-  it('returns FAIL when actual is not an array', () => {
+void describe('smartCompare — input validation', () => {
+  void it('returns FAIL when actual is not an array', () => {
     const r = smartCompare('not an array', []);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('arrays'));
     assert.equal(r.nodesProcessed, 0);
   });
 
-  it('returns FAIL when expected is not an array', () => {
+  void it('returns FAIL when expected is not an array', () => {
     const r = smartCompare([], 42);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('arrays'));
     assert.equal(r.nodesProcessed, 0);
   });
 
-  it('returns FAIL when array lengths differ', () => {
+  void it('returns FAIL when array lengths differ', () => {
     const [actual] = linearPair();
     const [expected] = twoCycle();
     const r = smartCompare(actual, [expected[0]]); // different lengths
@@ -119,14 +119,14 @@ describe('smartCompare — input validation', () => {
     assert.equal(r.nodesProcessed, 0);
   });
 
-  it('returns PASS for two empty arrays', () => {
+  void it('returns PASS for two empty arrays', () => {
     const r = smartCompare([], []);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
     assert.equal(r.nodesProcessed, 0);
   });
 
-  it('returns PASS for a single matching node with no dependencies', () => {
+  void it('returns PASS for a single matching node with no dependencies', () => {
     const n1 = makeNode('x');
     const n2 = makeNode('x');
     const r = smartCompare([n1], [n2]);
@@ -139,22 +139,22 @@ describe('smartCompare — input validation', () => {
 // Correct matching graphs
 // ---------------------------------------------------------------------------
 
-describe('smartCompare — matching graphs', () => {
-  it('matches a simple linear pair (no cycles)', () => {
+void describe('smartCompare — matching graphs', () => {
+  void it('matches a simple linear pair (no cycles)', () => {
     const [actual, expected] = linearPair();
     const r = smartCompare(actual, expected);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('matches a 2-node cycle (A→B→A)', () => {
+  void it('matches a 2-node cycle (A→B→A)', () => {
     const [actual, expected] = twoCycle();
     const r = smartCompare(actual, expected);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', () => {
+  void it('2-node cycle — back-edge fires on in-progress node, asserts nodesProcessed=2 and edgesTraversed=2', () => {
     // comp_0 → comp_1 → comp_0: when the DFS reaches comp_1 → comp_0,
     // comp_0's frame is still on the stack (it pushed comp_1 but hasn't finished),
     // yet comp_0 was added to `paired` before its frame was pushed onto the stack,
@@ -177,7 +177,7 @@ describe('smartCompare — matching graphs', () => {
     assert.equal(r.edgesTraversed, 2);
   });
 
-  it('matches a diamond graph with a shared-reference node', () => {
+  void it('matches a diamond graph with a shared-reference node', () => {
     const [actual, expected] = diamond();
     const r = smartCompare(actual, expected);
     assert.equal(r.pass, true);
@@ -187,7 +187,7 @@ describe('smartCompare — matching graphs', () => {
     assert.equal(r.edgesTraversed, 4);
   });
 
-  it('matches a long chain-cycle (20 nodes)', () => {
+  void it('matches a long chain-cycle (20 nodes)', () => {
     const actual = makeChainCycle(20);
     const expected = makeChainCycle(20);
     const r = smartCompare(actual, expected);
@@ -203,8 +203,8 @@ describe('smartCompare — matching graphs', () => {
 // Mismatch detection
 // ---------------------------------------------------------------------------
 
-describe('smartCompare — mismatch detection', () => {
-  it('detects an id mismatch on the root node', () => {
+void describe('smartCompare — mismatch detection', () => {
+  void it('detects an id mismatch on the root node', () => {
     const a1 = makeNode('a');
     const a2 = makeNode('WRONG_ID');
     const r = smartCompare([a1], [a2]);
@@ -212,7 +212,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('id mismatch'));
   });
 
-  it('detects a dependencies count mismatch', () => {
+  void it('detects a dependencies count mismatch', () => {
     const a1 = makeNode('a');
     a1.dependencies.push(makeNode('b'), makeNode('c')); // 2 deps
 
@@ -224,7 +224,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dependencies length'));
   });
 
-  it('detects a cycle in actual where expected has no cycle', () => {
+  void it('detects a cycle in actual where expected has no cycle', () => {
     // actual:   A → B → A  (cycle)
     // expected: A → B      (no cycle back)
     const a1 = makeNode('a');
@@ -244,7 +244,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dependencies length'));
   });
 
-  it('detects when expected cycles to the wrong node', () => {
+  void it('detects when expected cycles to the wrong node', () => {
     // actual:   A → B → A  (B cycles back to A)
     // expected: A → B → C  (B points to a different node C, not A)
     const a1 = makeNode('a');
@@ -263,7 +263,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
-  it('detects when actual has two nodes sharing an id but expected does not', () => {
+  void it('detects when actual has two nodes sharing an id but expected does not', () => {
     // actual:   A → C, B → C  (C is shared — same object)
     // expected: A → C1, B → C2 (two separate objects with id 'c')
     const a1 = makeNode('a');
@@ -286,7 +286,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
-  it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', () => {
+  void it('mismatch — wrong back-edge target: actual A→B→A but expected A→B→B (self-loop)', () => {
     // actual:   A → B → A  (B cycles back to A — correct 2-node cycle)
     // expected: A → B → B  (B has a self-loop, NOT a back-edge to A)
     // The alreadyPaired guard (the alreadyPaired !== de check) catches this:
@@ -307,7 +307,7 @@ describe('smartCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Cycle structure mismatch'));
   });
 
-  it('mismatch — swapped 2-cycle targets: reversePaired detects graph topology mismatch', () => {
+  void it('mismatch — swapped 2-cycle targets: reversePaired detects graph topology mismatch', () => {
     // Actual: two cycles [p↔q] and [r↔s]. Expected: first cycle correct, second points to
     // first cycle's nodes (r→q, s→p) — a different topology, triggering reversePaired mismatch.
     const a0 = makeNode('p'),
@@ -384,7 +384,7 @@ function makeGroupedCycleGraph(n: number): [ComponentPopulated[], ComponentPopul
       const size = end - start;
       for (let i = 0; i < size; i++) {
         for (let k = 1; k <= DEGREE; k++) {
-          nodes[start + i].dependencies.push(nodes[start + ((i + k) % size)]);
+          nodes[start + i]!.dependencies.push(nodes[start + ((i + k) % size)]!);
         }
       }
     }
@@ -395,7 +395,7 @@ function makeGroupedCycleGraph(n: number): [ComponentPopulated[], ComponentPopul
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  return sorted[Math.floor(sorted.length / 2)]!;
 }
 
 // Compute scaling data once at describe-level so all three it() blocks share it.
@@ -425,11 +425,11 @@ const scalingData: ScalePoint[] = SCALE_FACTORS.map((scale) => {
   };
 });
 
-const baseOps = scalingData[0].ops;
-const baseMs = scalingData[0].medianMs;
+const baseOps = scalingData[0]!.ops;
+const baseMs = scalingData[0]!.medianMs;
 
-describe('smartCompare — O(V+E) complexity proof', () => {
-  it('operation count scales exactly as O(V+E) [mathematical proof]', () => {
+void describe('smartCompare — O(V+E) complexity proof', () => {
+  void it('operation count scales exactly as O(V+E) [mathematical proof]', () => {
     const details: string[] = [];
 
     for (const { scale, N, V, E, ops } of scalingData) {
@@ -448,7 +448,7 @@ describe('smartCompare — O(V+E) complexity proof', () => {
     console.log('   ✅ Operation count scales exactly as O(V+E).');
   });
 
-  it('runtime scales approximately as O(V+E) [empirical check]', () => {
+  void it('runtime scales approximately as O(V+E) [empirical check]', () => {
     const details: string[] = [];
 
     for (const { scale, medianMs } of scalingData) {
@@ -468,7 +468,7 @@ describe('smartCompare — O(V+E) complexity proof', () => {
     console.log('   ✅ Runtime scales approximately as O(V+E).');
   });
 
-  it('final verification: both checks agree on O(V+E) behavior', () => {
+  void it('final verification: both checks agree on O(V+E) behavior', () => {
     let opCountPassed = true;
     let runtimePassed = true;
 
@@ -572,7 +572,7 @@ function ensureAcyclicControlDataGenerated(): void {
 // end of test output rather than interspersed with correctness results.
 // ---------------------------------------------------------------------------
 
-describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => {
+void describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => {
   // Paths to trace files written during this run; printed once via the `after`
   // hook so a single summary appears at the very end of the trace section.
   const traceArtifacts: string[] = [];
@@ -597,7 +597,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
   // targets) are collected in a single self-contained test so the combined log
   // file is always written atomically and does not depend on test ordering.
 
-  it('trace: cycle-structure scenarios (back-edge, wrong target, swapped targets) — writes smart-compare-trace.log', (t) => {
+  void it('trace: cycle-structure scenarios (back-edge, wrong target, swapped targets) — writes smart-compare-trace.log', (t) => {
     const sections: string[] = [];
 
     // --- Scenario 1: 2-node cycle back-edge (pass) ---
@@ -731,7 +731,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
 
   // ── Basic-tier integration trace ───────────────────────────────────────
 
-  it('trace: basic-tier twoPassWire — writes basic-tier-accuracy-trace.log', (t) => {
+  void it('trace: basic-tier twoPassWire — writes basic-tier-accuracy-trace.log', (t) => {
     ensureDataGenerated();
 
     const manifest = loadManifest();
@@ -775,7 +775,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     traceArtifacts.push(tracePath);
   });
 
-  it('trace: basic-tier buildPopulatedFromAnswer — writes build-answer-trace.log', () => {
+  void it('trace: basic-tier buildPopulatedFromAnswer — writes build-answer-trace.log', () => {
     ensureDataGenerated();
 
     const manifest = loadManifest();
@@ -794,18 +794,18 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
 
     traceLines.push('', '--- Pass 2: Wiring ---');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        nodes[i].dependencies.push(nodes[depIdx]);
-        traceLines.push(`Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`);
+      for (let d = 0; d < rawAnswerEntries[i]!.depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i]!.depIndices[d]!;
+        nodes[i]!.dependencies.push(nodes[depIdx]!);
+        traceLines.push(`Wire: ${rawAnswerEntries[i]!.id}.dependencies[${d}] → ${rawAnswerEntries[depIdx]!.id} (index ${depIdx})`);
       }
     }
 
     traceLines.push('', '--- Identity checks ---');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
+      for (let d = 0; d < rawAnswerEntries[i]!.depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i]!.depIndices[d]!;
+        const sameObject = nodes[i]!.dependencies[d] === nodes[depIdx]!;
         traceLines.push(`Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`);
         assert.equal(sameObject, true, `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`);
       }
@@ -818,7 +818,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
 
   // ── Acyclic-control tier trace ─────────────────────────────────────────
 
-  it('trace: acyclic-control twoPassWire — writes acyclic-control-accuracy-trace.log', (t) => {
+  void it('trace: acyclic-control twoPassWire — writes acyclic-control-accuracy-trace.log', (t) => {
     ensureAcyclicControlDataGenerated();
 
     const manifest = loadManifest();
@@ -873,7 +873,7 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     traceArtifacts.push(tracePath);
   });
 
-  it('trace: acyclic-control buildPopulatedFromAnswer — writes acyclic-control-build-answer-trace.log', () => {
+  void it('trace: acyclic-control buildPopulatedFromAnswer — writes acyclic-control-build-answer-trace.log', () => {
     ensureAcyclicControlDataGenerated();
 
     const manifest = loadManifest();
@@ -902,10 +902,10 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
     traceLines.push('', '--- Pass 2: Wiring ---');
     let totalEdges = 0;
     for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        nodes[i].dependencies.push(nodes[depIdx]);
-        traceLines.push(`Wire: ${rawAnswerEntries[i].id}.dependencies[${d}] → ${rawAnswerEntries[depIdx].id} (index ${depIdx})`);
+      for (let d = 0; d < rawAnswerEntries[i]!.depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i]!.depIndices[d]!;
+        nodes[i]!.dependencies.push(nodes[depIdx]!);
+        traceLines.push(`Wire: ${rawAnswerEntries[i]!.id}.dependencies[${d}] → ${rawAnswerEntries[depIdx]!.id} (index ${depIdx})`);
         totalEdges++;
       }
     }
@@ -913,9 +913,9 @@ describe('smartCompare and buildPopulatedFromAnswer — trace artifacts', () => 
 
     traceLines.push('', '--- Identity checks ---');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
-      for (let d = 0; d < rawAnswerEntries[i].depIndices.length; d++) {
-        const depIdx = rawAnswerEntries[i].depIndices[d];
-        const sameObject = nodes[i].dependencies[d] === nodes[depIdx];
+      for (let d = 0; d < rawAnswerEntries[i]!.depIndices.length; d++) {
+        const depIdx = rawAnswerEntries[i]!.depIndices[d]!;
+        const sameObject = nodes[i]!.dependencies[d] === nodes[depIdx]!;
         traceLines.push(`Identity check: nodes[${i}].dependencies[${d}] === nodes[${depIdx}] → ${sameObject}`);
         assert.equal(sameObject, true, `Identity check failed: nodes[${i}].dependencies[${d}] should be nodes[${depIdx}]`);
       }

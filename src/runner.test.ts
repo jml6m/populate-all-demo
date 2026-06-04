@@ -28,6 +28,7 @@ import {
   makeRunId,
   validateGitShortSha,
 } from './runner';
+import type { ComponentPopulated } from './algorithms/types';
 import type { Manifest } from './types';
 
 const TEST_PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -81,28 +82,28 @@ function writeRunIndex(reportsLocalDir: string, runId: string, indexContents: st
 // computeFingerprint
 // ---------------------------------------------------------------------------
 
-describe('computeFingerprint — determinism', () => {
-  it('returns the same value when called twice with identical inputs', () => {
+void describe('computeFingerprint — determinism', () => {
+  void it('returns the same value when called twice with identical inputs', () => {
     const manifest = makeManifest();
     const fp1 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
     const fp2 = computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']);
     assert.equal(fp1, fp2);
   });
 
-  it('is 16 hex characters long', () => {
+  void it('is 16 hex characters long', () => {
     const fp = computeFingerprint(makeManifest(), ['basic'], ['Algo A'], ['probe-x']);
     assert.match(fp, /^[0-9a-f]{16}$/);
   });
 });
 
-describe('computeFingerprint — sensitivity', () => {
-  it('changes when manifest generatedAt changes', () => {
+void describe('computeFingerprint — sensitivity', () => {
+  void it('changes when manifest generatedAt changes', () => {
     const m1 = makeManifest({ generatedAt: '2025-01-01T00:00:00.000Z' });
     const m2 = makeManifest({ generatedAt: '2025-06-01T00:00:00.000Z' });
     assert.notEqual(computeFingerprint(m1, ['basic'], ['Algo A'], ['probe-x']), computeFingerprint(m2, ['basic'], ['Algo A'], ['probe-x']));
   });
 
-  it('changes when a file content hash changes', () => {
+  void it('changes when a file content hash changes', () => {
     const m1 = makeManifest();
     const m2: Manifest = {
       ...m1,
@@ -114,7 +115,7 @@ describe('computeFingerprint — sensitivity', () => {
     assert.notEqual(computeFingerprint(m1, ['basic'], ['Algo A'], ['probe-x']), computeFingerprint(m2, ['basic'], ['Algo A'], ['probe-x']));
   });
 
-  it('changes when the selected datasets change', () => {
+  void it('changes when the selected datasets change', () => {
     const manifest: Manifest = {
       generatedAt: '2025-01-01T00:00:00.000Z',
       files: {
@@ -127,24 +128,24 @@ describe('computeFingerprint — sensitivity', () => {
     assert.notEqual(computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']), computeFingerprint(manifest, ['basic', 'medium'], ['Algo A'], ['probe-x']));
   });
 
-  it('changes when algorithm list changes', () => {
+  void it('changes when algorithm list changes', () => {
     const manifest = makeManifest();
     assert.notEqual(computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']), computeFingerprint(manifest, ['basic'], ['Algo A', 'Algo B'], ['probe-x']));
   });
 
-  it('changes when probe list changes', () => {
+  void it('changes when probe list changes', () => {
     const manifest = makeManifest();
     assert.notEqual(computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x']), computeFingerprint(manifest, ['basic'], ['Algo A'], ['probe-x', 'probe-y']));
   });
 
-  it('is stable regardless of algorithm/probe list order (sorted internally)', () => {
+  void it('is stable regardless of algorithm/probe list order (sorted internally)', () => {
     const manifest = makeManifest();
     const fp1 = computeFingerprint(manifest, ['basic'], ['Algo A', 'Algo B'], ['probe-x', 'probe-y']);
     const fp2 = computeFingerprint(manifest, ['basic'], ['Algo B', 'Algo A'], ['probe-y', 'probe-x']);
     assert.equal(fp1, fp2, 'Fingerprint should be order-independent for algorithm and probe lists');
   });
 
-  it('excludes file hashes for datasets not in the selected list', () => {
+  void it('excludes file hashes for datasets not in the selected list', () => {
     const manifest: Manifest = {
       generatedAt: '2025-01-01T00:00:00.000Z',
       files: {
@@ -170,13 +171,13 @@ describe('computeFingerprint — sensitivity', () => {
 // makeRunId
 // ---------------------------------------------------------------------------
 
-describe('makeRunId', () => {
-  it('formats UTC timestamp components and appends a git short SHA (or nogit fallback)', () => {
+void describe('makeRunId', () => {
+  void it('formats UTC timestamp components and appends a git short SHA (or nogit fallback)', () => {
     const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), TEST_PROJECT_ROOT);
     assert.match(runId, /^20260102-030405-(?:[0-9a-f]{7}|nogit)$/);
   });
 
-  it('falls back to nogit when project root is not a git repository', () => {
+  void it('falls back to nogit when project root is not a git repository', () => {
     const tempDir = makeTempDir();
     try {
       const runId = makeRunId(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)), tempDir);
@@ -188,34 +189,34 @@ describe('makeRunId', () => {
 
 });
 
-describe('validateGitShortSha — pure validation', () => {
-  it('returns the trimmed lowercase SHA when input is a valid 7-char hex string', () => {
+void describe('validateGitShortSha — pure validation', () => {
+  void it('returns the trimmed lowercase SHA when input is a valid 7-char hex string', () => {
     assert.equal(validateGitShortSha('a1b2c3d\n'), 'a1b2c3d');
     assert.equal(validateGitShortSha('  abcdef0  '), 'abcdef0');
   });
 
-  it('lowercases uppercase input', () => {
+  void it('lowercases uppercase input', () => {
     assert.equal(validateGitShortSha('A1B2C3D'), 'a1b2c3d');
   });
 
-  it('returns "nogit" when the output is empty', () => {
+  void it('returns "nogit" when the output is empty', () => {
     assert.equal(validateGitShortSha(''), 'nogit');
     assert.equal(validateGitShortSha('   \n'), 'nogit');
   });
 
-  it('returns "nogit" when the output is not 7 characters', () => {
+  void it('returns "nogit" when the output is not 7 characters', () => {
     assert.equal(validateGitShortSha('abcdef'), 'nogit');
     assert.equal(validateGitShortSha('abcdef12'), 'nogit');
     assert.equal(validateGitShortSha('abcdef12345'), 'nogit');
   });
 
-  it('returns "nogit" when the output contains non-hex characters', () => {
+  void it('returns "nogit" when the output contains non-hex characters', () => {
     assert.equal(validateGitShortSha('not-a-short-sha'), 'nogit');
     assert.equal(validateGitShortSha('zzzzzzz'), 'nogit');
     assert.equal(validateGitShortSha('1234 67'), 'nogit');
   });
 
-  it('handles arbitrary whitespace and trailing newlines from git output', () => {
+  void it('handles arbitrary whitespace and trailing newlines from git output', () => {
     assert.equal(validateGitShortSha('1234567\r\n'), '1234567');
     assert.equal(validateGitShortSha('\t1234567\t'), '1234567');
   });
@@ -225,13 +226,13 @@ describe('validateGitShortSha — pure validation', () => {
 // isAlreadyUpToDate
 // ---------------------------------------------------------------------------
 
-describe('isAlreadyUpToDate — missing or invalid index', () => {
-  it('returns false when reports directory does not exist', () => {
+void describe('isAlreadyUpToDate — missing or invalid index', () => {
+  void it('returns false when reports directory does not exist', () => {
     const tempDir = path.join(os.tmpdir(), 'does-not-exist-' + Date.now());
     assert.equal(isAlreadyUpToDate(tempDir, 'anyfingerprint', ['basic']), false);
   });
 
-  it('returns false when experiment-run.json does not exist', () => {
+  void it('returns false when experiment-run.json does not exist', () => {
     const tempDir = makeTempDir();
     try {
       assert.equal(isAlreadyUpToDate(tempDir, 'anyfingerprint', ['basic']), false);
@@ -240,7 +241,7 @@ describe('isAlreadyUpToDate — missing or invalid index', () => {
     }
   });
 
-  it('returns false when experiment-run.json contains invalid JSON', () => {
+  void it('returns false when experiment-run.json contains invalid JSON', () => {
     const tempDir = makeTempDir();
     try {
       writeRunIndex(tempDir, FIXTURE_RUN_ID, 'not json');
@@ -251,8 +252,8 @@ describe('isAlreadyUpToDate — missing or invalid index', () => {
   });
 });
 
-describe('isAlreadyUpToDate — fingerprint mismatch', () => {
-  it('returns false when the stored fingerprint differs', () => {
+void describe('isAlreadyUpToDate — fingerprint mismatch', () => {
+  void it('returns false when the stored fingerprint differs', () => {
     const tempDir = makeTempDir();
     try {
       const index: ExperimentIndex = {
@@ -267,8 +268,8 @@ describe('isAlreadyUpToDate — fingerprint mismatch', () => {
   });
 });
 
-describe('isAlreadyUpToDate — dataset/report completeness', () => {
-  it('uses the most recent run-id directory when checking cached results', () => {
+void describe('isAlreadyUpToDate — dataset/report completeness', () => {
+  void it('uses the most recent run-id directory when checking cached results', () => {
     const tempDir = makeTempDir();
     const oldRun = FIXTURE_RUN_ID;
     const newRun = NEWER_FIXTURE_RUN_ID;
@@ -303,7 +304,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns false when a dataset is missing from the index reports', () => {
+  void it('returns false when a dataset is missing from the index reports', () => {
     const tempDir = makeTempDir();
     try {
       const index: ExperimentIndex = {
@@ -317,7 +318,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns false when the referenced report file does not exist on disk', () => {
+  void it('returns false when the referenced report file does not exist on disk', () => {
     const tempDir = makeTempDir();
     try {
       const index: ExperimentIndex = {
@@ -331,7 +332,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns true when fingerprint matches and all report files exist', () => {
+  void it('returns true when fingerprint matches and all report files exist', () => {
     const tempDir = makeTempDir();
     const reportRelPath = 'basic/benchmark-1.json';
 
@@ -353,7 +354,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns false when only some datasets have matching reports', () => {
+  void it('returns false when only some datasets have matching reports', () => {
     const tempDir = makeTempDir();
     const basicRelPath = `basic/benchmark-1.json`;
     const absBasicPath = path.join(tempDir, basicRelPath);
@@ -377,7 +378,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns true when all datasets in a multi-dataset run have matching reports', () => {
+  void it('returns true when all datasets in a multi-dataset run have matching reports', () => {
     const tempDir = makeTempDir();
     const acyclicRelPath = 'acyclic-control/benchmark-1.json';
     const basicRelPath = 'basic/benchmark-1.json';
@@ -404,7 +405,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns false when one dataset report is missing in a multi-dataset run', () => {
+  void it('returns false when one dataset report is missing in a multi-dataset run', () => {
     const tempDir = makeTempDir();
     const basicRelPath = 'basic/benchmark-1.json';
 
@@ -431,7 +432,7 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
     }
   });
 
-  it('returns false when the latest run index is malformed even if an older run was valid', () => {
+  void it('returns false when the latest run index is malformed even if an older run was valid', () => {
     const tempDir = makeTempDir();
     const reportRelPath = 'basic/benchmark-1.json';
 
@@ -463,8 +464,8 @@ describe('isAlreadyUpToDate — dataset/report completeness', () => {
 // isAlreadyUpToDate — path safety
 // ---------------------------------------------------------------------------
 
-describe('isAlreadyUpToDate — path safety', () => {
-  it('returns false when the report path is an absolute path (path traversal guard)', () => {
+void describe('isAlreadyUpToDate — path safety', () => {
+  void it('returns false when the report path is an absolute path (path traversal guard)', () => {
     const tempDir = makeTempDir();
     try {
       // An absolute path in the report map should be rejected as unsafe.
@@ -479,7 +480,7 @@ describe('isAlreadyUpToDate — path safety', () => {
     }
   });
 
-  it('returns false when the report path contains ".." traversal segments', () => {
+  void it('returns false when the report path contains ".." traversal segments', () => {
     const tempDir = makeTempDir();
     try {
       const index: ExperimentIndex = {
@@ -498,7 +499,7 @@ describe('isAlreadyUpToDate — path safety', () => {
 // isForceMode
 // ---------------------------------------------------------------------------
 
-describe('isForceMode — environment variable detection', () => {
+void describe('isForceMode — environment variable detection', () => {
   let originalEnvValue: string | undefined;
 
   beforeEach(() => {
@@ -513,27 +514,27 @@ describe('isForceMode — environment variable detection', () => {
     }
   });
 
-  it('returns true when POPULATE_ALL_FORCE is "1"', () => {
+  void it('returns true when POPULATE_ALL_FORCE is "1"', () => {
     process.env['POPULATE_ALL_FORCE'] = '1';
     assert.equal(isForceMode(), true);
   });
 
-  it('returns false when POPULATE_ALL_FORCE is unset', () => {
+  void it('returns false when POPULATE_ALL_FORCE is unset', () => {
     delete process.env['POPULATE_ALL_FORCE'];
     assert.equal(isForceMode(), false);
   });
 
-  it('returns false when POPULATE_ALL_FORCE is "0"', () => {
+  void it('returns false when POPULATE_ALL_FORCE is "0"', () => {
     process.env['POPULATE_ALL_FORCE'] = '0';
     assert.equal(isForceMode(), false);
   });
 
-  it('returns false when POPULATE_ALL_FORCE is "true" (only "1" is accepted)', () => {
+  void it('returns false when POPULATE_ALL_FORCE is "true" (only "1" is accepted)', () => {
     process.env['POPULATE_ALL_FORCE'] = 'true';
     assert.equal(isForceMode(), false);
   });
 
-  it('returns false when POPULATE_ALL_FORCE is empty string', () => {
+  void it('returns false when POPULATE_ALL_FORCE is empty string', () => {
     process.env['POPULATE_ALL_FORCE'] = '';
     assert.equal(isForceMode(), false);
   });
@@ -543,29 +544,29 @@ describe('isForceMode — environment variable detection', () => {
 // capErrorDetail
 // ---------------------------------------------------------------------------
 
-describe('capErrorDetail — character limit enforcement', () => {
-  it('returns null when input is null', () => {
+void describe('capErrorDetail — character limit enforcement', () => {
+  void it('returns null when input is null', () => {
     assert.equal(capErrorDetail(null), null);
   });
 
-  it('returns the message unchanged when it is within the limit', () => {
+  void it('returns the message unchanged when it is within the limit', () => {
     const msg = 'Maximum call stack size exceeded';
     assert.equal(capErrorDetail(msg), msg);
   });
 
-  it('caps messages that exceed MAX_ERROR_DETAIL_CHARS', () => {
+  void it('caps messages that exceed MAX_ERROR_DETAIL_CHARS', () => {
     const longMsg = 'A'.repeat(MAX_ERROR_DETAIL_CHARS + 20);
     const capped = capErrorDetail(longMsg);
     assert.ok(capped !== null && capped.length === MAX_ERROR_DETAIL_CHARS);
     assert.equal(capped, 'A'.repeat(MAX_ERROR_DETAIL_CHARS));
   });
 
-  it('normalises embedded newlines to spaces', () => {
+  void it('normalises embedded newlines to spaces', () => {
     assert.equal(capErrorDetail('line1\nline2'), 'line1 line2');
     assert.equal(capErrorDetail('line1\r\nline2'), 'line1 line2');
   });
 
-  it('MAX_ERROR_DETAIL_CHARS is a positive integer', () => {
+  void it('MAX_ERROR_DETAIL_CHARS is a positive integer', () => {
     assert.equal(typeof MAX_ERROR_DETAIL_CHARS, 'number');
     assert.ok(Number.isInteger(MAX_ERROR_DETAIL_CHARS));
   });
@@ -575,28 +576,28 @@ describe('capErrorDetail — character limit enforcement', () => {
 // formatHydrationFailTag
 // ---------------------------------------------------------------------------
 
-describe('formatHydrationFailTag — de-duplication', () => {
-  it('consolidates identical errors to a single [both comparers: …] tag', () => {
+void describe('formatHydrationFailTag — de-duplication', () => {
+  void it('consolidates identical errors to a single [both comparers: …] tag', () => {
     const tag = formatHydrationFailTag('Maximum call stack size exceeded', 'Maximum call stack size exceeded');
     assert.equal(tag, '[both comparers: Maximum call stack size exceeded]');
   });
 
-  it('returns separate tags when errors differ', () => {
+  void it('returns separate tags when errors differ', () => {
     const tag = formatHydrationFailTag('Error A', 'Error B');
     assert.equal(tag, '[smartCompare: Error A] [flatCompare: Error B]');
   });
 
-  it('returns only the smartCompare tag when flatErr is null', () => {
+  void it('returns only the smartCompare tag when flatErr is null', () => {
     const tag = formatHydrationFailTag('Some error', null);
     assert.equal(tag, '[smartCompare: Some error]');
   });
 
-  it('returns only the flatCompare tag when smartErr is null', () => {
+  void it('returns only the flatCompare tag when smartErr is null', () => {
     const tag = formatHydrationFailTag(null, 'Some error');
     assert.equal(tag, '[flatCompare: Some error]');
   });
 
-  it('returns an empty string when both errors are null', () => {
+  void it('returns an empty string when both errors are null', () => {
     const tag = formatHydrationFailTag(null, null);
     assert.equal(tag, '');
   });
@@ -606,28 +607,28 @@ describe('formatHydrationFailTag — de-duplication', () => {
 // buildFailureDetailLines
 // ---------------------------------------------------------------------------
 
-describe('buildFailureDetailLines — de-duplication', () => {
-  it('returns one combined line when both errors are identical', () => {
+void describe('buildFailureDetailLines — de-duplication', () => {
+  void it('returns one combined line when both errors are identical', () => {
     const lines = buildFailureDetailLines('Maximum call stack size exceeded', 'Maximum call stack size exceeded');
     assert.deepEqual(lines, ['  Both comparers: Maximum call stack size exceeded...']);
   });
 
-  it('returns two separate lines when errors differ', () => {
+  void it('returns two separate lines when errors differ', () => {
     const lines = buildFailureDetailLines('Error from smart', 'Error from flat');
     assert.deepEqual(lines, ['  smartCompare Error: Error from smart...', '  flatCompare Error: Error from flat...']);
   });
 
-  it('returns only the smartCompare line when flatErr is null', () => {
+  void it('returns only the smartCompare line when flatErr is null', () => {
     const lines = buildFailureDetailLines('Smart failed', null);
     assert.deepEqual(lines, ['  smartCompare Error: Smart failed...']);
   });
 
-  it('returns only the flatCompare line when smartErr is null', () => {
+  void it('returns only the flatCompare line when smartErr is null', () => {
     const lines = buildFailureDetailLines(null, 'Flat failed');
     assert.deepEqual(lines, ['  flatCompare Error: Flat failed...']);
   });
 
-  it('returns an empty array when both errors are null', () => {
+  void it('returns an empty array when both errors are null', () => {
     const lines = buildFailureDetailLines(null, null);
     assert.deepEqual(lines, []);
   });
@@ -637,10 +638,10 @@ describe('buildFailureDetailLines — de-duplication', () => {
 // runtimeHydrationInvariant
 // ---------------------------------------------------------------------------
 
-describe('runtimeHydrationInvariant — explicit hydration stability check', () => {
-  it('passes for a stable fully hydrated 2-node cycle', () => {
-    const a = { id: 'a', dependencies: [] as { id: string; dependencies: unknown[] }[] };
-    const b = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+void describe('runtimeHydrationInvariant — explicit hydration stability check', () => {
+  void it('passes for a stable fully hydrated 2-node cycle', () => {
+    const a: ComponentPopulated = { id: 'a', dependencies: [] };
+    const b: ComponentPopulated = { id: 'b', dependencies: [] };
     a.dependencies = [b];
     b.dependencies = [a];
     const expected = [
@@ -655,10 +656,10 @@ describe('runtimeHydrationInvariant — explicit hydration stability check', () 
     assert.equal(r.edgesTraversed, 2);
   });
 
-  it('fails when one logical id maps to multiple live object instances', () => {
-    const b1 = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
-    const b2 = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
-    const a = { id: 'a', dependencies: [b1, b2] };
+  void it('fails when one logical id maps to multiple live object instances', () => {
+    const b1: ComponentPopulated = { id: 'b', dependencies: [] };
+    const b2: ComponentPopulated = { id: 'b', dependencies: [] };
+    const a: ComponentPopulated = { id: 'a', dependencies: [b1, b2] };
     const expected = [
       { id: 'a', depIndices: [1] },
       { id: 'b', depIndices: [] },
@@ -669,9 +670,9 @@ describe('runtimeHydrationInvariant — explicit hydration stability check', () 
     assert.equal(r.errorDetail?.includes('maps to multiple object instances') ?? false, true);
   });
 
-  it('fails when dependency closure is incomplete', () => {
-    const a = { id: 'a', dependencies: [] as { id: string; dependencies: unknown[] }[] };
-    const b = { id: 'b', dependencies: [] as { id: string; dependencies: unknown[] }[] };
+  void it('fails when dependency closure is incomplete', () => {
+    const a: ComponentPopulated = { id: 'a', dependencies: [] };
+    const b: ComponentPopulated = { id: 'b', dependencies: [] };
     a.dependencies = [b];
     const expected = [
       { id: 'a', depIndices: [1] },
@@ -797,8 +798,8 @@ function makeProbesChangedOutcome(name: string, category: string, time = '10ms',
   };
 }
 
-describe('buildLaterDatasetLines — compact summary (no changes)', () => {
-  it('produces a compact summary sentence only when NO algorithms are omitted and all pass', () => {
+void describe('buildLaterDatasetLines — compact summary (no changes)', () => {
+  void it('produces a compact summary sentence only when NO algorithms are omitted and all pass', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makePassOutcome('Map Tracker', 'Reference Tracking'),
       makePassOutcome('Tarjan SCC Layering', 'Topological'),
@@ -811,19 +812,19 @@ describe('buildLaterDatasetLines — compact summary (no changes)', () => {
     assert.ok(!lines.some((l) => l.startsWith('[Reference Tracking] Map Tracker')));
   });
 
-  it('uses singular "algorithm" when only one algorithm passes and nothing is omitted', () => {
+  void it('uses singular "algorithm" when only one algorithm passes and nothing is omitted', () => {
     const outcomes: LaterAlgoOutcome[] = [makePassOutcome('Map Tracker', 'Reference Tracking')];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('1 algorithm continued to pass')));
   });
 
-  it('uses plural "algorithms" when multiple algorithms pass and nothing is omitted', () => {
+  void it('uses plural "algorithms" when multiple algorithms pass and nothing is omitted', () => {
     const outcomes: LaterAlgoOutcome[] = [makePassOutcome('Tarjan SCC Layering', 'Topological'), makePassOutcome('Two-Pass Wire', 'Schema-Driven')];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('2 algorithms continued to pass')));
   });
 
-  it('shows individual entries (not compact summary) when a baseline-skipped algorithm is omitted', () => {
+  void it('shows individual entries (not compact summary) when a baseline-skipped algorithm is omitted', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makePassOutcome('Map Tracker', 'Reference Tracking'),
@@ -842,8 +843,8 @@ describe('buildLaterDatasetLines — compact summary (no changes)', () => {
   });
 });
 
-describe('buildLaterDatasetLines — new failure expansion', () => {
-  it('prints hydration-fail line AND consumer probes "not run" line when an algorithm newly fails', () => {
+void describe('buildLaterDatasetLines — new failure expansion', () => {
+  void it('prints hydration-fail line AND consumer probes "not run" line when an algorithm newly fails', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
@@ -867,8 +868,8 @@ describe('buildLaterDatasetLines — new failure expansion', () => {
   });
 });
 
-describe('buildLaterDatasetLines — known-prior-failure expansion', () => {
-  it('shows individual entries for survivors when there are known-prior failures', () => {
+void describe('buildLaterDatasetLines — known-prior-failure expansion', () => {
+  void it('shows individual entries for survivors when there are known-prior failures', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makeKnownPriorOutcome('Map Tracker', 'Reference Tracking'),
@@ -890,26 +891,26 @@ describe('buildLaterDatasetLines — known-prior-failure expansion', () => {
     assert.ok(!lines.some((l) => l.includes('continued to pass') && l.includes('experiment stable')));
   });
 
-  it('uses singular label for a single omitted algorithm', () => {
+  void it('uses singular label for a single omitted algorithm', () => {
     const outcomes: LaterAlgoOutcome[] = [makeSkippedOutcome('Naive Recursion', 'Reference Tracking'), makePassOutcome('Map Tracker', 'Reference Tracking')];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('Known failure omitted: Naive Recursion')));
     assert.ok(!lines.some((l) => l.includes('Known failures omitted')));
   });
 
-  it('uses plural label for multiple omitted algorithms', () => {
+  void it('uses plural label for multiple omitted algorithms', () => {
     const outcomes: LaterAlgoOutcome[] = [makeSkippedOutcome('Naive Recursion', 'Reference Tracking'), makeKnownPriorOutcome('Map Tracker', 'Reference Tracking')];
     const lines = buildLaterDatasetLines(outcomes);
     assert.ok(lines.some((l) => l.includes('Known failures omitted: Naive Recursion, Map Tracker')));
   });
 });
 
-describe('buildLaterDatasetLines — edge cases', () => {
-  it('returns an empty array when outcomes list is empty', () => {
+void describe('buildLaterDatasetLines — edge cases', () => {
+  void it('returns an empty array when outcomes list is empty', () => {
     assert.deepEqual(buildLaterDatasetLines([]), []);
   });
 
-  it('includes probe change line when provided for a new failure', () => {
+  void it('includes probe change line when provided for a new failure', () => {
     const outcome: LaterAlgoOutcome = {
       ...makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
       probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
@@ -918,7 +919,7 @@ describe('buildLaterDatasetLines — edge cases', () => {
     assert.ok(lines.some((l) => l.includes('Consumer probes: ⚠️  changed from baseline')));
   });
 
-  it('includes probe change line when provided for a stable pass', () => {
+  void it('includes probe change line when provided for a stable pass', () => {
     const outcome: LaterAlgoOutcome = {
       ...makePassOutcome('Map Tracker', 'Reference Tracking'),
       probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ✅ cycle-flat',
@@ -930,8 +931,8 @@ describe('buildLaterDatasetLines — edge cases', () => {
   });
 });
 
-describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output', () => {
-  it('prints two-line format when cycle-flat (authoritative probe) fails', () => {
+void describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output', () => {
+  void it('prints two-line format when cycle-flat (authoritative probe) fails', () => {
     // probesFailed = true only when cycle-flat (authoritative probe) fails.
     // In this scenario naive-json passes but cycle-flat fails — the experiment is not a Full Run pass.
     const outcome: LaterAlgoOutcome = {
@@ -946,14 +947,14 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
     assert.ok(lines.some((l) => l.includes('Hydration:') && l.includes('✅ PASS')));
     assert.ok(lines.some((l) => l.includes('Consumer probes: ❌ FAIL')));
     assert.ok(lines.some((l) => l.includes('❌ cycle-flat')));
-    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('Hydration:'));
-    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('✅ PASS'));
-    assert.ok(lines[mapTrackerHeaderIndex + 2]?.includes('Consumer probes: ❌ FAIL'));
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('Hydration:') ?? false);
+    assert.ok(lines[mapTrackerHeaderIndex + 1]?.includes('✅ PASS') ?? false);
+    assert.ok(lines[mapTrackerHeaderIndex + 2]?.includes('Consumer probes: ❌ FAIL') ?? false);
     // No Full Run line with metrics when the authoritative probe failed
     assert.ok(!lines.some((l) => l.includes('Full Run:')));
   });
 
-  it('does not use two-line format when probesFailed is false', () => {
+  void it('does not use two-line format when probesFailed is false', () => {
     const outcome: LaterAlgoOutcome = {
       ...makePassOutcome('Map Tracker', 'Reference Tracking'),
       probesFailed: false,
@@ -966,7 +967,7 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
     assert.ok(lines.some((l) => l.includes('⚠️  changed from baseline')));
   });
 
-  it('shows Full Run: ✅ PASS even when naive-json fails, as long as cycle-flat passes (probesFailed is false)', () => {
+  void it('shows Full Run: ✅ PASS even when naive-json fails, as long as cycle-flat passes (probesFailed is false)', () => {
     // This is the key semantic: naive-json failure on cyclic graphs is expected and informational.
     // cycle-flat passing means the experiment is a Full Run pass — no two-line format.
     const outcome: LaterAlgoOutcome = {
@@ -980,8 +981,8 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
     // Must show Full Run PASS with metrics (not the two-line phase format)
     const mapTrackerHeaderIdx = lines.findIndex((l) => l.startsWith('[Reference Tracking] Map Tracker'));
     assert.ok(mapTrackerHeaderIdx >= 0);
-    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('Full Run:'));
-    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('✅ PASS'));
+    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('Full Run:') ?? false);
+    assert.ok(lines[mapTrackerHeaderIdx + 1]?.includes('✅ PASS') ?? false);
 
     // Must NOT show the "Hydration: ✅ PASS" two-line phase indicator
     assert.ok(!lines.some((l) => l === '  Hydration:     ✅ PASS'));
@@ -991,8 +992,8 @@ describe('buildLaterDatasetLines — hydration-pass probe-fail two-line output',
   });
 });
 
-describe('buildLaterDatasetLines — conflict handling', () => {
-  it('prints a full block for a conflict and does not collapse it into stable-pass summary', () => {
+void describe('buildLaterDatasetLines — conflict handling', () => {
+  void it('prints a full block for a conflict and does not collapse it into stable-pass summary', () => {
     const outcomes: LaterAlgoOutcome[] = [
       makeSkippedOutcome('Naive Recursion', 'Reference Tracking'),
       makeConflictOutcome('Map Tracker', 'Reference Tracking'),
@@ -1014,14 +1015,14 @@ describe('buildLaterDatasetLines — conflict handling', () => {
     assert.ok(lines.some((l) => l.startsWith('[Schema-Driven] Two-Pass Wire')));
   });
 
-  it('does not include a conflict in the omission note', () => {
+  void it('does not include a conflict in the omission note', () => {
     const outcomes: LaterAlgoOutcome[] = [makeConflictOutcome('Map Tracker', 'Reference Tracking')];
     const lines = buildLaterDatasetLines(outcomes);
     // Conflicts are NOT omitted — they should not appear in the "Known failure omitted" note
     assert.ok(!lines.some((l) => l.includes('Known failure')));
   });
 
-  it('includes a probe change line for a conflict when provided', () => {
+  void it('includes a probe change line for a conflict when provided', () => {
     const outcome: LaterAlgoOutcome = {
       ...makeConflictOutcome('Map Tracker', 'Reference Tracking'),
       probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
@@ -1035,12 +1036,12 @@ describe('buildLaterDatasetLines — conflict handling', () => {
 // CYCLIC_BASELINE_TIER constant
 // ---------------------------------------------------------------------------
 
-describe('CYCLIC_BASELINE_TIER — constant value', () => {
-  it('is the string "basic"', () => {
+void describe('CYCLIC_BASELINE_TIER — constant value', () => {
+  void it('is the string "basic"', () => {
     assert.equal(CYCLIC_BASELINE_TIER, 'basic');
   });
 
-  it('is a string', () => {
+  void it('is a string', () => {
     assert.equal(typeof CYCLIC_BASELINE_TIER, 'string');
   });
 });
@@ -1049,8 +1050,8 @@ describe('CYCLIC_BASELINE_TIER — constant value', () => {
 // buildFullRunLine — hydration display line label semantics
 // ---------------------------------------------------------------------------
 
-describe('buildFullRunLine — hydration failure uses Hydration: label (not Full Run:)', () => {
-  it('returns "Hydration: ❌ FAIL" when hydration failed (bothPass=false)', () => {
+void describe('buildFullRunLine — hydration failure uses Hydration: label (not Full Run:)', () => {
+  void it('returns "Hydration: ❌ FAIL" when hydration failed (bothPass=false)', () => {
     const line = buildFullRunLine(
       false, // bothPass
       false, // endToEndPass
@@ -1065,15 +1066,15 @@ describe('buildFullRunLine — hydration failure uses Hydration: label (not Full
     assert.ok(!line.includes('RAM:'), 'Hydration failure must not include RAM metrics');
   });
 
-  it('returns "Hydration: ❌ FAIL" without metrics even though timing args are provided', () => {
+  void it('returns "Hydration: ❌ FAIL" without metrics even though timing args are provided', () => {
     const line = buildFullRunLine(false, false, '❌ FAIL [both comparers: stack overflow]', 10, 2);
     assert.ok(!line.includes('10'));
     assert.ok(!line.includes('2 MB'));
   });
 });
 
-describe('buildFullRunLine — full-run pass uses Full Run: label with headline metrics', () => {
-  it('returns "Full Run: ✅ PASS" with Time and RAM when endToEndPass=true', () => {
+void describe('buildFullRunLine — full-run pass uses Full Run: label with headline metrics', () => {
+  void it('returns "Full Run: ✅ PASS" with Time and RAM when endToEndPass=true', () => {
     const line = buildFullRunLine(
       true, // bothPass
       true, // endToEndPass
@@ -1088,14 +1089,14 @@ describe('buildFullRunLine — full-run pass uses Full Run: label with headline 
     assert.ok(!line.includes('Hydration:'));
   });
 
-  it('includes formatted headline time in the Full Run line', () => {
+  void it('includes formatted headline time in the Full Run line', () => {
     const line = buildFullRunLine(true, true, '✅ PASS', 22.5, 9.1);
     assert.ok(line.includes('23ms'), `Expected "23ms" (rounded), got: ${line}`);
   });
 });
 
-describe('buildFullRunLine — hydration pass + authoritative probe fail uses Hydration: ✅ PASS', () => {
-  it('returns "Hydration: ✅ PASS" (no metrics) when hydration passed but endToEndPass=false', () => {
+void describe('buildFullRunLine — hydration pass + authoritative probe fail uses Hydration: ✅ PASS', () => {
+  void it('returns "Hydration: ✅ PASS" (no metrics) when hydration passed but endToEndPass=false', () => {
     // This happens when hydration passes but cycle-flat (authoritative probe) failed.
     const line = buildFullRunLine(
       true, // bothPass — hydration passed
@@ -1115,13 +1116,13 @@ describe('buildFullRunLine — hydration pass + authoritative probe fail uses Hy
 // cleanDatasetReports — stale benchmark file cleanup
 // ---------------------------------------------------------------------------
 
-describe('cleanDatasetReports — deletes stale benchmark files', () => {
-  it('returns 0 when the directory does not exist', () => {
+void describe('cleanDatasetReports — deletes stale benchmark files', () => {
+  void it('returns 0 when the directory does not exist', () => {
     const nonExistent = path.join(os.tmpdir(), 'non-existent-dir-' + Date.now());
     assert.equal(cleanDatasetReports(nonExistent), 0);
   });
 
-  it('deletes all benchmark-<timestamp>.json files and returns count', () => {
+  void it('deletes all benchmark-<timestamp>.json files and returns count', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
@@ -1136,7 +1137,7 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
     }
   });
 
-  it('does not delete non-benchmark files', () => {
+  void it('does not delete non-benchmark files', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
@@ -1153,7 +1154,7 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
     }
   });
 
-  it('returns 0 when directory is empty', () => {
+  void it('returns 0 when directory is empty', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       assert.equal(cleanDatasetReports(tmpDir), 0);
@@ -1162,7 +1163,7 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
     }
   });
 
-  it('returns 0 when no benchmark files exist (only other files)', () => {
+  void it('returns 0 when no benchmark files exist (only other files)', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       fs.writeFileSync(path.join(tmpDir, 'experiment-run.json'), '{}');
@@ -1172,7 +1173,7 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
     }
   });
 
-  it('preserves the keepFilename file and deletes all other benchmark files', () => {
+  void it('preserves the keepFilename file and deletes all other benchmark files', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       fs.writeFileSync(path.join(tmpDir, 'benchmark-1000.json'), '{}');
@@ -1188,7 +1189,7 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
     }
   });
 
-  it('returns 0 when only the keepFilename file exists', () => {
+  void it('returns 0 when only the keepFilename file exists', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-test-'));
     try {
       fs.writeFileSync(path.join(tmpDir, 'benchmark-5000.json'), '{}');
@@ -1204,25 +1205,25 @@ describe('cleanDatasetReports — deletes stale benchmark files', () => {
 // classifyHydrationFailTag — error classification
 // ---------------------------------------------------------------------------
 
-describe('classifyHydrationFailTag — stack overflow', () => {
-  it('returns bracket-tag format for stack overflow errors', () => {
+void describe('classifyHydrationFailTag — stack overflow', () => {
+  void it('returns bracket-tag format for stack overflow errors', () => {
     const result = classifyHydrationFailTag('Maximum call stack size exceeded', 'Maximum call stack size exceeded');
     assert.equal(result, '[both comparers: Maximum call stack size exceeded]');
   });
 
-  it('returns bracket-tag format when only one comparer has stack overflow', () => {
+  void it('returns bracket-tag format when only one comparer has stack overflow', () => {
     const result = classifyHydrationFailTag('Maximum call stack size exceeded', null);
     assert.ok(result.includes('[smartCompare: Maximum call stack size exceeded]'));
   });
 
-  it('is case-insensitive for stack overflow detection', () => {
+  void it('is case-insensitive for stack overflow detection', () => {
     const result = classifyHydrationFailTag('maximum call stack size exceeded', 'maximum call stack size exceeded');
     assert.ok(result.includes('call stack'));
   });
 });
 
-describe('classifyHydrationFailTag — identity/reference mismatch', () => {
-  it('returns clean phrase for "Cycle structure mismatch" errors', () => {
+void describe('classifyHydrationFailTag — identity/reference mismatch', () => {
+  void it('returns clean phrase for "Cycle structure mismatch" errors', () => {
     const result = classifyHydrationFailTag(
       'Cycle structure mismatch: expected node "comp_0" is paired with more than one actual',
       'Dependency of node "comp_1" at index 1 is not present in the top-level actual array'
@@ -1230,24 +1231,24 @@ describe('classifyHydrationFailTag — identity/reference mismatch', () => {
     assert.equal(result, '— shared references were duplicated');
   });
 
-  it('returns clean phrase when smartErr contains "is paired with more than one"', () => {
+  void it('returns clean phrase when smartErr contains "is paired with more than one"', () => {
     const result = classifyHydrationFailTag('is paired with more than one actual node', null);
     assert.equal(result, '— shared references were duplicated');
   });
 
-  it('returns clean phrase when flatErr mentions "not present in the top-level"', () => {
+  void it('returns clean phrase when flatErr mentions "not present in the top-level"', () => {
     const result = classifyHydrationFailTag(null, 'not present in the top-level actual array');
     assert.equal(result, '— shared references were duplicated');
   });
 });
 
-describe('classifyHydrationFailTag — other / fallback', () => {
-  it('falls back to bracket-tag for unrecognised error types', () => {
+void describe('classifyHydrationFailTag — other / fallback', () => {
+  void it('falls back to bracket-tag for unrecognised error types', () => {
     const result = classifyHydrationFailTag('id mismatch at index 3', 'id mismatch at index 3');
     assert.equal(result, '[both comparers: id mismatch at index 3]');
   });
 
-  it('returns bracket-tag with both comparer details when errors differ', () => {
+  void it('returns bracket-tag with both comparer details when errors differ', () => {
     const result = classifyHydrationFailTag('dependencies length mismatch', 'wrong dep target');
     assert.ok(result.includes('[smartCompare: dependencies length mismatch]'));
     assert.ok(result.includes('[flatCompare: wrong dep target]'));
@@ -1258,27 +1259,27 @@ describe('classifyHydrationFailTag — other / fallback', () => {
 // buildDetailHydrationLine — full-detail Hydration: line
 // ---------------------------------------------------------------------------
 
-describe('buildDetailHydrationLine — pass', () => {
-  it('returns the "✅ PASS" hydration line', () => {
+void describe('buildDetailHydrationLine — pass', () => {
+  void it('returns the "✅ PASS" hydration line', () => {
     const line = buildDetailHydrationLine(true, false, '✅ PASS');
     assert.equal(line, '  Hydration:     ✅ PASS');
   });
 });
 
-describe('buildDetailHydrationLine — fail', () => {
-  it('returns hydration fail line with stack overflow tag', () => {
+void describe('buildDetailHydrationLine — fail', () => {
+  void it('returns hydration fail line with stack overflow tag', () => {
     const line = buildDetailHydrationLine(false, false, '❌ FAIL [both comparers: Maximum call stack size exceeded]');
     assert.equal(line, '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]');
   });
 
-  it('returns hydration fail line with clean identity mismatch phrase', () => {
+  void it('returns hydration fail line with clean identity mismatch phrase', () => {
     const line = buildDetailHydrationLine(false, false, '❌ FAIL — shared references were duplicated');
     assert.equal(line, '  Hydration:     ❌ FAIL — shared references were duplicated');
   });
 });
 
-describe('buildDetailHydrationLine — conflict', () => {
-  it('always shows the conflict label regardless of resultLine', () => {
+void describe('buildDetailHydrationLine — conflict', () => {
+  void it('always shows the conflict label regardless of resultLine', () => {
     const line = buildDetailHydrationLine(false, true, '🚨 CONFLICT — smartCompare=FAIL, flatCompare=PASS');
     assert.equal(line, '  Hydration:     🚨 CONFLICT — comparers disagree');
   });
@@ -1288,32 +1289,32 @@ describe('buildDetailHydrationLine — conflict', () => {
 // buildDetailConsumerProbesLine — full-detail Consumer probes: line
 // ---------------------------------------------------------------------------
 
-describe('buildDetailConsumerProbesLine — probes ran', () => {
-  it('returns probe summary string when probes ran (both pass)', () => {
+void describe('buildDetailConsumerProbesLine — probes ran', () => {
+  void it('returns probe summary string when probes ran (both pass)', () => {
     const line = buildDetailConsumerProbesLine(true, '✅ naive-json  ✅ cycle-flat (output ✅)');
     assert.equal(line, '  Consumer probes: ✅ naive-json  ✅ cycle-flat (output ✅)');
   });
 
-  it('returns probe summary string when probes ran (naive fails, cycle passes)', () => {
+  void it('returns probe summary string when probes ran (naive fails, cycle passes)', () => {
     const line = buildDetailConsumerProbesLine(true, '❌ naive-json  ✅ cycle-flat (output ✅)');
     assert.equal(line, '  Consumer probes: ❌ naive-json  ✅ cycle-flat (output ✅)');
   });
 });
 
-describe('buildDetailConsumerProbesLine — not run (hydration failed)', () => {
-  it('returns "not run (hydration failed)" when probes did not run', () => {
+void describe('buildDetailConsumerProbesLine — not run (hydration failed)', () => {
+  void it('returns "not run (hydration failed)" when probes did not run', () => {
     const line = buildDetailConsumerProbesLine(false, '');
     assert.equal(line, '  Consumer probes: not run (hydration failed)');
   });
 
-  it('returns "not run (hydration failed)" when disagree=false and no probes', () => {
+  void it('returns "not run (hydration failed)" when disagree=false and no probes', () => {
     const line = buildDetailConsumerProbesLine(false, '', false);
     assert.equal(line, '  Consumer probes: not run (hydration failed)');
   });
 });
 
-describe('buildDetailConsumerProbesLine — not run (conflict)', () => {
-  it('returns "not run (comparers conflicted)" when disagree=true', () => {
+void describe('buildDetailConsumerProbesLine — not run (conflict)', () => {
+  void it('returns "not run (comparers conflicted)" when disagree=true', () => {
     const line = buildDetailConsumerProbesLine(false, '', true);
     assert.equal(line, '  Consumer probes: not run (comparers conflicted)');
   });
@@ -1323,36 +1324,36 @@ describe('buildDetailConsumerProbesLine — not run (conflict)', () => {
 // buildDetailFullRunLine — full-detail Full Run: line
 // ---------------------------------------------------------------------------
 
-describe('buildDetailFullRunLine — full pass', () => {
-  it('returns PASS line with Time and RAM when endToEndPass=true', () => {
+void describe('buildDetailFullRunLine — full pass', () => {
+  void it('returns PASS line with Time and RAM when endToEndPass=true', () => {
     const line = buildDetailFullRunLine(true, true, false, 1.8, 0.05);
     assert.ok(line.startsWith('  Full Run:      ✅ PASS'));
     assert.ok(line.includes('Time:'));
     assert.ok(line.includes('RAM:'));
   });
 
-  it('does not include "(double-verified)" on the Full Run line (only on Hydration line)', () => {
+  void it('does not include "(double-verified)" on the Full Run line (only on Hydration line)', () => {
     const line = buildDetailFullRunLine(true, true, false, 1.8, 0.05);
     assert.ok(!line.includes('double-verified'));
   });
 });
 
-describe('buildDetailFullRunLine — hydration failed', () => {
-  it('returns "not run (hydration failed)" when bothPass=false and no conflict', () => {
+void describe('buildDetailFullRunLine — hydration failed', () => {
+  void it('returns "not run (hydration failed)" when bothPass=false and no conflict', () => {
     const line = buildDetailFullRunLine(false, false, false, 0, 0);
     assert.equal(line, '  Full Run:      not run (hydration failed)');
   });
 });
 
-describe('buildDetailFullRunLine — conflict', () => {
-  it('returns "🚨 CONFLICT" when disagree=true', () => {
+void describe('buildDetailFullRunLine — conflict', () => {
+  void it('returns "🚨 CONFLICT" when disagree=true', () => {
     const line = buildDetailFullRunLine(false, false, true, 0, 0);
     assert.equal(line, '  Full Run:      🚨 CONFLICT');
   });
 });
 
-describe('buildDetailFullRunLine — hydration pass, probe fail', () => {
-  it('returns "❌ FAIL" when hydration passed but endToEndPass=false', () => {
+void describe('buildDetailFullRunLine — hydration pass, probe fail', () => {
+  void it('returns "❌ FAIL" when hydration passed but endToEndPass=false', () => {
     const line = buildDetailFullRunLine(false, true, false, 0, 0);
     assert.equal(line, '  Full Run:      ❌ FAIL');
   });
@@ -1362,8 +1363,8 @@ describe('buildDetailFullRunLine — hydration pass, probe fail', () => {
 // Full output-format contract matrix (three-line phase contract)
 // ---------------------------------------------------------------------------
 
-describe('full-detail three-line phase contract — hydration fail scenario', () => {
-  it('produces Hydration FAIL → Consumer probes not run → Full Run not run', () => {
+void describe('full-detail three-line phase contract — hydration fail scenario', () => {
+  void it('produces Hydration FAIL → Consumer probes not run → Full Run not run', () => {
     const resultLine = '❌ FAIL [both comparers: Maximum call stack size exceeded]';
     const hydrationLine = buildDetailHydrationLine(false, false, resultLine);
     const probesLine = buildDetailConsumerProbesLine(false, '');
@@ -1374,20 +1375,20 @@ describe('full-detail three-line phase contract — hydration fail scenario', ()
     assert.equal(fullRunLine, '  Full Run:      not run (hydration failed)');
   });
 
-  it('line order matches: Hydration → Consumer probes → Full Run', () => {
+  void it('line order matches: Hydration → Consumer probes → Full Run', () => {
     const lines = [
       buildDetailHydrationLine(false, false, '❌ FAIL [both comparers: stack]'),
       buildDetailConsumerProbesLine(false, ''),
       buildDetailFullRunLine(false, false, false, 0, 0),
     ];
-    assert.ok(lines[0].startsWith('  Hydration:'));
-    assert.ok(lines[1].startsWith('  Consumer probes:'));
-    assert.ok(lines[2].startsWith('  Full Run:'));
+    assert.ok(lines[0]!.startsWith('  Hydration:'));
+    assert.ok(lines[1]!.startsWith('  Consumer probes:'));
+    assert.ok(lines[2]!.startsWith('  Full Run:'));
   });
 });
 
-describe('full-detail three-line phase contract — full pass scenario', () => {
-  it('produces Hydration PASS → Consumer probes → Full Run PASS with metrics', () => {
+void describe('full-detail three-line phase contract — full pass scenario', () => {
+  void it('produces Hydration PASS → Consumer probes → Full Run PASS with metrics', () => {
     const resultLine = '✅ PASS';
     const probeSummary = '✅ naive-json  ✅ cycle-flat (output ✅)';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
@@ -1402,8 +1403,8 @@ describe('full-detail three-line phase contract — full pass scenario', () => {
   });
 });
 
-describe('full-detail three-line phase contract — hydration pass, probe fail scenario', () => {
-  it('produces Hydration PASS → Consumer probes FAIL → Full Run FAIL', () => {
+void describe('full-detail three-line phase contract — hydration pass, probe fail scenario', () => {
+  void it('produces Hydration PASS → Consumer probes FAIL → Full Run FAIL', () => {
     const resultLine = '✅ PASS';
     const probeSummary = '❌ naive-json  ❌ cycle-flat';
     const hydrationLine = buildDetailHydrationLine(true, false, resultLine);
@@ -1416,8 +1417,8 @@ describe('full-detail three-line phase contract — hydration pass, probe fail s
   });
 });
 
-describe('full-detail three-line phase contract — conflict scenario', () => {
-  it('produces Hydration CONFLICT → Consumer probes conflicted → Full Run CONFLICT', () => {
+void describe('full-detail three-line phase contract — conflict scenario', () => {
+  void it('produces Hydration CONFLICT → Consumer probes conflicted → Full Run CONFLICT', () => {
     const hydrationLine = buildDetailHydrationLine(false, true, '🚨 any');
     const probesLine = buildDetailConsumerProbesLine(false, '', true);
     const fullRunLine = buildDetailFullRunLine(false, false, true, 0, 0);
@@ -1432,8 +1433,8 @@ describe('full-detail three-line phase contract — conflict scenario', () => {
 // Later-tier new failure — consumer probes line now required
 // ---------------------------------------------------------------------------
 
-describe('buildLaterDatasetLines — new failure always includes consumer probes line', () => {
-  it('adds "not run (hydration failed)" when probeChangeLine is null for a new failure', () => {
+void describe('buildLaterDatasetLines — new failure always includes consumer probes line', () => {
+  void it('adds "not run (hydration failed)" when probeChangeLine is null for a new failure', () => {
     const outcome: LaterAlgoOutcome = makeNewFailOutcome('Map Tracker', 'Reference Tracking');
     // Confirm probeChangeLine is null in the default helper
     assert.equal(outcome.probeChangeLine, null);
@@ -1442,7 +1443,7 @@ describe('buildLaterDatasetLines — new failure always includes consumer probes
     assert.ok(lines.some((l) => l.includes('Consumer probes: not run (hydration failed)')));
   });
 
-  it('uses probeChangeLine when it is non-null (overrides the default "not run" line)', () => {
+  void it('uses probeChangeLine when it is non-null (overrides the default "not run" line)', () => {
     const outcome: LaterAlgoOutcome = {
       ...makeNewFailOutcome('Map Tracker', 'Reference Tracking'),
       probeChangeLine: '  Consumer probes: ⚠️  changed from baseline — ❌ naive-json',
@@ -1459,8 +1460,8 @@ describe('buildLaterDatasetLines — new failure always includes consumer probes
 // normalizeFullDetailPhaseState — normalization layer
 // ---------------------------------------------------------------------------
 
-describe('normalizeFullDetailPhaseState — hydration fail', () => {
-  it('returns state with hydrationPassed=false and endToEndPass=false', () => {
+void describe('normalizeFullDetailPhaseState — hydration fail', () => {
+  void it('returns state with hydrationPassed=false and endToEndPass=false', () => {
     const state = normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [both comparers: Maximum call stack size exceeded]', '', 0, 0);
     assert.equal(state.hydrationPassed, false);
     assert.equal(state.comparersConflict, false);
@@ -1470,8 +1471,8 @@ describe('normalizeFullDetailPhaseState — hydration fail', () => {
   });
 });
 
-describe('normalizeFullDetailPhaseState — conflict', () => {
-  it('returns state with comparersConflict=true', () => {
+void describe('normalizeFullDetailPhaseState — conflict', () => {
+  void it('returns state with comparersConflict=true', () => {
     const state = normalizeFullDetailPhaseState(false, true, false, false, '🚨 CONFLICT — comparers disagree', '', 0, 0);
     assert.equal(state.comparersConflict, true);
     assert.equal(state.hydrationPassed, false);
@@ -1479,8 +1480,8 @@ describe('normalizeFullDetailPhaseState — conflict', () => {
   });
 });
 
-describe('normalizeFullDetailPhaseState — full pass', () => {
-  it('returns state with hydrationPassed=true and endToEndPass=true', () => {
+void describe('normalizeFullDetailPhaseState — full pass', () => {
+  void it('returns state with hydrationPassed=true and endToEndPass=true', () => {
     const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     assert.equal(state.hydrationPassed, true);
     assert.equal(state.endToEndPass, true);
@@ -1491,8 +1492,8 @@ describe('normalizeFullDetailPhaseState — full pass', () => {
   });
 });
 
-describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', () => {
-  it('returns state with hydrationPassed=true but endToEndPass=false', () => {
+void describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', () => {
+  void it('returns state with hydrationPassed=true but endToEndPass=false', () => {
     const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '✅ naive-json  ❌ cycle-flat', 0, 0);
     assert.equal(state.hydrationPassed, true);
     assert.equal(state.endToEndPass, false);
@@ -1507,8 +1508,8 @@ describe('normalizeFullDetailPhaseState — hydration pass, cycle-flat fail', ()
 // when callers pass logically contradictory flag combinations.
 // ---------------------------------------------------------------------------
 
-describe('normalizeFullDetailPhaseState — clamping: conflict forces hydration/probes/endToEnd false', () => {
-  it('clamps hydrationPassed=false when comparersConflict=true, even if caller passes true', () => {
+void describe('normalizeFullDetailPhaseState — clamping: conflict forces hydration/probes/endToEnd false', () => {
+  void it('clamps hydrationPassed=false when comparersConflict=true, even if caller passes true', () => {
     const state = normalizeFullDetailPhaseState(
       true /* hydrationPassed */,
       true /* comparersConflict */,
@@ -1527,7 +1528,7 @@ describe('normalizeFullDetailPhaseState — clamping: conflict forces hydration/
     assert.equal(state.comparersConflict, true);
   });
 
-  it('renders correct conflict output even when contradictory inputs are given', () => {
+  void it('renders correct conflict output even when contradictory inputs are given', () => {
     const state = normalizeFullDetailPhaseState(true, true, true, true, '🚨 CONFLICT', '✅ naive-json', 5, 0.1);
     const [h, p, f] = renderFullDetailLines(state);
     assert.equal(h, '  Hydration:     🚨 CONFLICT — comparers disagree');
@@ -1539,8 +1540,8 @@ describe('normalizeFullDetailPhaseState — clamping: conflict forces hydration/
   });
 });
 
-describe('normalizeFullDetailPhaseState — clamping: no probes when hydration failed', () => {
-  it('clamps probesRan=false when hydrationPassed=false, even if caller passes true', () => {
+void describe('normalizeFullDetailPhaseState — clamping: no probes when hydration failed', () => {
+  void it('clamps probesRan=false when hydrationPassed=false, even if caller passes true', () => {
     const state = normalizeFullDetailPhaseState(
       false /* hydrationPassed */,
       false /* conflict */,
@@ -1556,7 +1557,7 @@ describe('normalizeFullDetailPhaseState — clamping: no probes when hydration f
     assert.equal(state.endToEndPass, false);
   });
 
-  it('renders correct hydration-fail output even when contradictory probesRan=true is given', () => {
+  void it('renders correct hydration-fail output even when contradictory probesRan=true is given', () => {
     const state = normalizeFullDetailPhaseState(false, false, false, true /* contradictory */, '❌ FAIL [both comparers: stack]', '✅ naive-json', 0, 0);
     const [_h, p, _f] = renderFullDetailLines(state);
     // Probes line must say "not run" — the clamped probesRan=false controls the output
@@ -1565,8 +1566,8 @@ describe('normalizeFullDetailPhaseState — clamping: no probes when hydration f
   });
 });
 
-describe('normalizeFullDetailPhaseState — clamping: no endToEnd when probes did not run', () => {
-  it('clamps endToEndPass=false when probesRan=false, even if caller passes true', () => {
+void describe('normalizeFullDetailPhaseState — clamping: no endToEnd when probes did not run', () => {
+  void it('clamps endToEndPass=false when probesRan=false, even if caller passes true', () => {
     const state = normalizeFullDetailPhaseState(
       true /* hydrationPassed */,
       false,
@@ -1588,8 +1589,8 @@ describe('normalizeFullDetailPhaseState — clamping: no endToEnd when probes di
 // renderFullDetailLines — three-line phase contract render wrapper
 // ---------------------------------------------------------------------------
 
-describe('renderFullDetailLines — returns exactly three strings', () => {
-  it('always returns a tuple of exactly three strings', () => {
+void describe('renderFullDetailLines — returns exactly three strings', () => {
+  void it('always returns a tuple of exactly three strings', () => {
     const state = normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [both comparers: stack]', '', 0, 0);
     const lines = renderFullDetailLines(state);
     assert.equal(lines.length, 3);
@@ -1598,7 +1599,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
     assert.equal(typeof lines[2], 'string');
   });
 
-  it('line 0 always starts with "  Hydration:"', () => {
+  void it('line 0 always starts with "  Hydration:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
       normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
@@ -1609,7 +1610,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
     }
   });
 
-  it('line 1 always starts with "  Consumer probes:"', () => {
+  void it('line 1 always starts with "  Consumer probes:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
       normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
@@ -1620,7 +1621,7 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
     }
   });
 
-  it('line 2 always starts with "  Full Run:"', () => {
+  void it('line 2 always starts with "  Full Run:"', () => {
     for (const state of [
       normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [x]', '', 0, 0),
       normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json', 1, 0.1),
@@ -1632,8 +1633,8 @@ describe('renderFullDetailLines — returns exactly three strings', () => {
   });
 });
 
-describe('renderFullDetailLines — hydration fail state', () => {
-  it('produces expected three lines for hydration fail (stack overflow)', () => {
+void describe('renderFullDetailLines — hydration fail state', () => {
+  void it('produces expected three lines for hydration fail (stack overflow)', () => {
     const state = normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [both comparers: Maximum call stack size exceeded]', '', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     assert.equal(h, '  Hydration:     ❌ FAIL [both comparers: Maximum call stack size exceeded]');
@@ -1642,8 +1643,8 @@ describe('renderFullDetailLines — hydration fail state', () => {
   });
 });
 
-describe('renderFullDetailLines — conflict state', () => {
-  it('produces expected three lines for comparer conflict', () => {
+void describe('renderFullDetailLines — conflict state', () => {
+  void it('produces expected three lines for comparer conflict', () => {
     const state = normalizeFullDetailPhaseState(false, true, false, false, '🚨 CONFLICT — comparers disagree', '', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     assert.equal(h, '  Hydration:     🚨 CONFLICT — comparers disagree');
@@ -1652,8 +1653,8 @@ describe('renderFullDetailLines — conflict state', () => {
   });
 });
 
-describe('renderFullDetailLines — full pass state', () => {
-  it('produces expected three lines for full pass (both probes pass)', () => {
+void describe('renderFullDetailLines — full pass state', () => {
+  void it('produces expected three lines for full pass (both probes pass)', () => {
     const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     const [h, p, f] = renderFullDetailLines(state);
     assert.equal(h, '  Hydration:     ✅ PASS');
@@ -1668,8 +1669,8 @@ describe('renderFullDetailLines — full pass state', () => {
 // Full state matrix — missing cases from the full probe outcome space
 // ---------------------------------------------------------------------------
 
-describe('full-detail three-line phase contract — hydration pass + naive-json fail + cycle-flat pass', () => {
-  it('produces Full Run PASS even though naive-json failed (cycle-flat is authoritative)', () => {
+void describe('full-detail three-line phase contract — hydration pass + naive-json fail + cycle-flat pass', () => {
+  void it('produces Full Run PASS even though naive-json failed (cycle-flat is authoritative)', () => {
     // This is the core semantic: naive-json failure on cyclic graphs is expected
     // and informational. cycle-flat passing means the experiment is a Full Run pass.
     const resultLine = '✅ PASS';
@@ -1687,7 +1688,7 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
     assert.ok(fullRunLine.includes('RAM:'), 'Full Run PASS must include RAM');
   });
 
-  it('renderFullDetailLines produces the same result via state object', () => {
+  void it('renderFullDetailLines produces the same result via state object', () => {
     const state = normalizeFullDetailPhaseState(
       true,
       false,
@@ -1706,8 +1707,8 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
   });
 });
 
-describe('full-detail three-line phase contract — hydration pass + naive-json pass + cycle-flat fail', () => {
-  it('produces Full Run FAIL when cycle-flat fails (authoritative probe failure)', () => {
+void describe('full-detail three-line phase contract — hydration pass + naive-json pass + cycle-flat fail', () => {
+  void it('produces Full Run FAIL when cycle-flat fails (authoritative probe failure)', () => {
     // This is a rare but important case: naive-json passes but cycle-flat fails.
     // Since cycle-flat is the authoritative probe, the full run fails.
     const resultLine = '✅ PASS';
@@ -1723,7 +1724,7 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
     assert.equal(fullRunLine, '  Full Run:      ❌ FAIL');
   });
 
-  it('renderFullDetailLines produces the same result via state object', () => {
+  void it('renderFullDetailLines produces the same result via state object', () => {
     const state = normalizeFullDetailPhaseState(
       true,
       false,
@@ -1746,14 +1747,14 @@ describe('full-detail three-line phase contract — hydration pass + naive-json 
 // State matrix validity — no contradictory text across the three lines
 // ---------------------------------------------------------------------------
 
-describe('full-detail state matrix validity — no contradictory text', () => {
+void describe('full-detail state matrix validity — no contradictory text', () => {
   /**
    * Tests that for every valid input state, the three-line output does not
    * contain internally contradictory content (e.g. a line saying "not run"
    * while another line shows metrics, or a ✅ on a line that also shows ❌).
    */
 
-  it('hydration fail: no ✅ on any line, no metrics, no "probes ran" content', () => {
+  void it('hydration fail: no ✅ on any line, no metrics, no "probes ran" content', () => {
     const state = normalizeFullDetailPhaseState(false, false, false, false, '❌ FAIL [both comparers: Maximum call stack size exceeded]', '', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     // No pass indicators on any line
@@ -1769,7 +1770,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
     assert.ok(f.includes('not run (hydration failed)'));
   });
 
-  it('conflict: no pass/fail status indicators, no metrics, consistent CONFLICT across all lines', () => {
+  void it('conflict: no pass/fail status indicators, no metrics, consistent CONFLICT across all lines', () => {
     const state = normalizeFullDetailPhaseState(false, true, false, false, '🚨 CONFLICT — comparers disagree', '', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('🚨 CONFLICT'), 'Hydration line must show CONFLICT');
@@ -1779,7 +1780,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
     assert.ok(!h.includes('✅'), 'No pass indicator on conflict hydration line');
   });
 
-  it('full pass: ✅ on all lines, metrics only on Full Run, no ❌ or "not run"', () => {
+  void it('full pass: ✅ on all lines, metrics only on Full Run, no ❌ or "not run"', () => {
     const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '✅ naive-json  ✅ cycle-flat (output ✅)', 2.5, 0.1);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('✅'), 'Hydration line must show ✅ on pass');
@@ -1792,7 +1793,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
     assert.ok(!f.includes('not run'), 'Full Run line must not say "not run" on pass');
   });
 
-  it('hydration pass + cycle-flat fail: Hydration ✅, Probes shows ❌ cycle-flat, Full Run ❌ FAIL (no metrics)', () => {
+  void it('hydration pass + cycle-flat fail: Hydration ✅, Probes shows ❌ cycle-flat, Full Run ❌ FAIL (no metrics)', () => {
     const state = normalizeFullDetailPhaseState(true, false, false, true, '✅ PASS', '✅ naive-json  ❌ cycle-flat', 0, 0);
     const [h, p, f] = renderFullDetailLines(state);
     assert.ok(h.includes('✅ PASS'), 'Hydration must show pass');
@@ -1803,7 +1804,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
     assert.ok(!f.includes('not run'), 'Full Run line must not say "not run" when hydration passed');
   });
 
-  it('hydration pass + naive-json fail + cycle-flat pass: Full Run is ✅ PASS with metrics', () => {
+  void it('hydration pass + naive-json fail + cycle-flat pass: Full Run is ✅ PASS with metrics', () => {
     // naive-json failure must not prevent Full Run from passing.
     const state = normalizeFullDetailPhaseState(true, false, true, true, '✅ PASS', '❌ naive-json  ✅ cycle-flat (output ✅)', 3.0, 0.2);
     const [h, p, f] = renderFullDetailLines(state);
@@ -1824,7 +1825,7 @@ describe('full-detail state matrix validity — no contradictory text', () => {
 // of formatting consistency; it is gitignored and uploaded as a CI artifact.
 // ---------------------------------------------------------------------------
 
-describe('dataset-output-format-matrix — generate audit log', () => {
+void describe('dataset-output-format-matrix — generate audit log', () => {
   let matrixArtifactPath: string | null = null;
 
   after(() => {
@@ -1833,7 +1834,7 @@ describe('dataset-output-format-matrix — generate audit log', () => {
     }
   });
 
-  it('writes logs/local/<run-id>/dataset-output-format-matrix.log with all display states', () => {
+  void it('writes logs/local/<run-id>/dataset-output-format-matrix.log with all display states', () => {
     fs.mkdirSync(LOGS_DIR, { recursive: true });
     const lines: string[] = [];
 

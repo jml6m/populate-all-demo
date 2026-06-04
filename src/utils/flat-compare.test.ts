@@ -91,33 +91,33 @@ function buildDiamond(): [ComponentPopulated[], AnswerEntry[]] {
 // Input validation
 // ---------------------------------------------------------------------------
 
-describe('flatCompare — input validation', () => {
-  it('returns FAIL when actual is not an array', () => {
+void describe('flatCompare — input validation', () => {
+  void it('returns FAIL when actual is not an array', () => {
     const r = flatCompare('not an array' as unknown as ComponentPopulated[], []);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('arrays'));
   });
 
-  it('returns FAIL when rawAnswerEntries is not an array', () => {
+  void it('returns FAIL when rawAnswerEntries is not an array', () => {
     const r = flatCompare([], 42 as unknown as AnswerEntry[]);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('arrays'));
   });
 
-  it('returns FAIL when array lengths differ', () => {
+  void it('returns FAIL when array lengths differ', () => {
     const [actual] = buildLinear();
     const r = flatCompare(actual, [{ id: 'a', depIndices: [] }]);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('Length mismatch'));
   });
 
-  it('returns PASS for two empty arrays', () => {
+  void it('returns PASS for two empty arrays', () => {
     const r = flatCompare([], []);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('returns PASS for a single matching node with no dependencies', () => {
+  void it('returns PASS for a single matching node with no dependencies', () => {
     const node = makeNode('x');
     const r = flatCompare([node], [{ id: 'x', depIndices: [] }]);
     assert.equal(r.pass, true);
@@ -128,22 +128,22 @@ describe('flatCompare — input validation', () => {
 // Correct matching graphs
 // ---------------------------------------------------------------------------
 
-describe('flatCompare — matching graphs', () => {
-  it('matches a simple linear pair (no cycles)', () => {
+void describe('flatCompare — matching graphs', () => {
+  void it('matches a simple linear pair (no cycles)', () => {
     const [actual, entries] = buildLinear();
     const r = flatCompare(actual, entries);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('matches a 2-node cycle', () => {
+  void it('matches a 2-node cycle', () => {
     const [actual, entries] = buildTwoCycle();
     const r = flatCompare(actual, entries);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('matches a diamond graph with a shared-reference node', () => {
+  void it('matches a diamond graph with a shared-reference node', () => {
     const [actual, entries] = buildDiamond();
     const r = flatCompare(actual, entries);
     assert.equal(r.pass, true);
@@ -155,15 +155,15 @@ describe('flatCompare — matching graphs', () => {
 // Mismatch detection
 // ---------------------------------------------------------------------------
 
-describe('flatCompare — mismatch detection', () => {
-  it('detects a wrong id', () => {
+void describe('flatCompare — mismatch detection', () => {
+  void it('detects a wrong id', () => {
     const node = makeNode('a');
     const r = flatCompare([node], [{ id: 'WRONG', depIndices: [] }]);
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('id mismatch'));
   });
 
-  it('detects wrong dependencies (different dep count)', () => {
+  void it('detects wrong dependencies (different dep count)', () => {
     const a = makeNode('a');
     const b = makeNode('b');
     a.dependencies.push(b);
@@ -179,7 +179,7 @@ describe('flatCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep count mismatch'));
   });
 
-  it('detects wrong dep target index', () => {
+  void it('detects wrong dep target index', () => {
     const a = makeNode('a');
     const b = makeNode('b');
     const c = makeNode('c');
@@ -197,7 +197,7 @@ describe('flatCompare — mismatch detection', () => {
     assert.ok(r.errorDetail !== null && r.errorDetail.includes('dep mismatch'));
   });
 
-  it('detects a cycle structure difference', () => {
+  void it('detects a cycle structure difference', () => {
     // actual: a → b (no cycle back)
     const a = makeNode('a');
     const b = makeNode('b');
@@ -213,7 +213,7 @@ describe('flatCompare — mismatch detection', () => {
     assert.equal(r.pass, false);
   });
 
-  it('returns FAIL when a dependency is not in the top-level array', () => {
+  void it('returns FAIL when a dependency is not in the top-level array', () => {
     // Build a node whose dependency is an "orphan" not in the top-level array
     const a = makeNode('a');
     const orphan = makeNode('orphan');
@@ -263,8 +263,8 @@ function ensureDataGenerated(): void {
   }
 }
 
-describe('flatCompare — basic-tier integration', () => {
-  it('twoPassWire output passes flatCompare against raw basic_answer entries', () => {
+void describe('flatCompare — basic-tier integration', () => {
+  void it('twoPassWire output passes flatCompare against raw basic_answer entries', () => {
     ensureDataGenerated();
 
     const manifest = loadManifest();
@@ -288,8 +288,8 @@ describe('flatCompare — basic-tier integration', () => {
 // comparisons may miss
 // ---------------------------------------------------------------------------
 
-describe('flatCompare — differentiation from smartCompare', () => {
-  it('catches a missing dependency that a reference-only comparison would miss', () => {
+void describe('flatCompare — differentiation from smartCompare', () => {
+  void it('catches a missing dependency that a reference-only comparison would miss', () => {
     // Scenario: the algorithm forgets to wire a → b, but the raw answer file says
     // a should depend on b. A reference graph built from the same buggy output would
     // also lack the a→b edge, so smartCompare (which compares two hydrated graphs)

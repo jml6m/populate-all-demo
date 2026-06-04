@@ -4,6 +4,8 @@ import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
+const verbose = process.env.PROBE_VERBOSE === '1';
+
 class Node {
   id!: string;
   dependencies = new Collection<Node>(this);
@@ -49,7 +51,7 @@ async function run() {
     entities: [NodeSchema],
     dbName: ':memory:',
     allowGlobalContext: true,
-    debug: ['query'],
+    debug: verbose,
     logger: (message) => {
       if (message.toLowerCase().includes('select') || message.toLowerCase().includes('insert') || message.toLowerCase().includes('update')) {
         queryCount += 1;

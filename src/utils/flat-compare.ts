@@ -35,12 +35,12 @@ export function flatCompare(actual: ComponentPopulated[], rawAnswerEntries: Answ
   // Build identity map: each top-level node object → its index in the actual array
   const identityMap = new Map<ComponentPopulated, number>();
   for (let i = 0; i < actual.length; i++) {
-    identityMap.set(actual[i], i);
+    identityMap.set(actual[i]!, i);
   }
 
   for (let i = 0; i < actual.length; i++) {
-    const node = actual[i];
-    const entry = rawAnswerEntries[i];
+    const node = actual[i]!;
+    const entry = rawAnswerEntries[i]!;
 
     if (node.id !== entry.id) {
       return { pass: false, errorDetail: `id mismatch at index ${i}: actual="${node.id}", expected="${entry.id}"` };

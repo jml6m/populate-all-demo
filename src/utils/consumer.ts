@@ -98,7 +98,7 @@ export const cycleFlatProbe: ConsumerProbe = {
       // Build an identity-index map in O(V)
       const indexMap = new Map<ComponentPopulated, number>();
       for (let i = 0; i < graph.length; i++) {
-        indexMap.set(graph[i], i);
+        indexMap.set(graph[i]!, i);
       }
 
       // Build the AnswerEntry[] output in O(V + E).

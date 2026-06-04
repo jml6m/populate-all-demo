@@ -19,8 +19,11 @@ module.exports = defineConfig([
     },
     rules: {
       '@typescript-eslint/no-unnecessary-condition': 'warn',
-      '@typescript-eslint/strict-boolean-expressions': ['warn', { allowString: false, allowNumber: false, allowNullableObject: true }],
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/strict-boolean-expressions': ['error', { allowString: false, allowNumber: false, allowNullableObject: true }],
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
 
       // Better unused-vars handling with auto-fix support
       'no-unused-vars': 'off',

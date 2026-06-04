@@ -25,7 +25,7 @@ function generateDataset(size: number, seedSuffix: string) {
   //    so the preflight validator always classifies these datasets as core-valid.
   //    comp_0 is the chain head and has no predecessors, giving it in-degree 0.
   for (let i = 0; i < size - 1; i++) {
-    flatComponents[i].dependencies.push(`comp_${i + 1}`);
+    flatComponents[i]!.dependencies.push(`comp_${i + 1}`);
   }
 
   // 3. Add random extra edges to create cycles and graph variety.
@@ -37,8 +37,8 @@ function generateDataset(size: number, seedSuffix: string) {
       // comp_0 (index 0) is never a target; choose from [1, size-1].
       const targetIdx = 1 + Math.floor(rng() * (size - 1));
       const targetId = `comp_${targetIdx}`;
-      if (targetIdx !== i && !flatComponents[i].dependencies.includes(targetId)) {
-        flatComponents[i].dependencies.push(targetId);
+      if (targetIdx !== i && !flatComponents[i]!.dependencies.includes(targetId)) {
+        flatComponents[i]!.dependencies.push(targetId);
       }
     }
   }
@@ -92,7 +92,7 @@ function generateAcyclicDataset(size: number, seedSuffix: string) {
   //      • Every other node is reachable from comp_0 via some path of tree edges.
   for (let i = 1; i < size; i++) {
     const parentIdx = Math.floor(rng() * i); // random j in [0, i-1]
-    flatComponents[parentIdx].dependencies.push(`comp_${i}`);
+    flatComponents[parentIdx]!.dependencies.push(`comp_${i}`);
   }
 
   // 3. Add random extra acyclic edges (lower-index → higher-index) to create
@@ -106,8 +106,8 @@ function generateAcyclicDataset(size: number, seedSuffix: string) {
     for (let d = 0; d < numExtra; d++) {
       const targetIdx = i + 1 + Math.floor(rng() * remaining);
       const targetId = `comp_${targetIdx}`;
-      if (!flatComponents[i].dependencies.includes(targetId)) {
-        flatComponents[i].dependencies.push(targetId);
+      if (!flatComponents[i]!.dependencies.includes(targetId)) {
+        flatComponents[i]!.dependencies.push(targetId);
       }
     }
   }
