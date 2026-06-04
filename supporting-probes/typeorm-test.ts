@@ -78,7 +78,7 @@ async function run() {
     database: ':memory:',
     entities: [NodeSchema],
     synchronize: true,
-    logging: verbose,
+    logging: true,
     logger,
   });
 

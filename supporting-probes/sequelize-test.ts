@@ -27,12 +27,12 @@ async function run() {
   };
 
   const sequelize = new Sequelize('sqlite::memory:', {
-    logging: verbose
-      ? (sql) => {
-          queryCount += 1;
-          console.log('[sql]', sql);
-        }
-      : false,
+    logging: (sql) => {
+      queryCount += 1;
+      if (verbose) {
+        console.log('[sql]', sql);
+      }
+    },
   });
 
   try {
