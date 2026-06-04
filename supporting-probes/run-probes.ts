@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PROBE_IDENTITIES, PROBE_RUN_ID_PATTERN, type ProbeLanguage } from './ts/probe-config';
-import { getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
+import { buildLaunchFailureFindings, type ProbeOutcome, getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
 
 type Suite = 'ts' | 'all';
 
@@ -333,12 +333,7 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
 }
 
 function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string): void {
-  const findings = {
-    hydration: { result: 'FAIL' as const, detail },
-    queryGate: { result: 'FAIL' as const, detail },
-    smartCheck: { result: 'FAIL' as const, detail },
-    serialize: { result: 'SERIALIZE_FAIL_OTHER' as const, detail },
-  };
+  const findings = buildLaunchFailureFindings(detail);
 
   writeProbeResultForRunId(runId, {
     probe: probe.name,
@@ -347,6 +342,8 @@ function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string):
     libraryVersion: probe.resolveLibraryVersion(),
     runtimeVersion: probe.resolveRuntimeVersion(),
     findings,
+  }, {
+    outcomeOverride: 'PROBE_LAUNCH_FAIL',
   });
 }
 
@@ -382,9 +379,14 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
   const headers = ['probe', 'outcome', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
+    const outcome = readOutcomeCell(filePath, 'outcome');
+    const outcomeCell: ProbeOutcome | string =
+      outcome === 'PROBE_LAUNCH_FAIL'
+        ? `${outcome} (probe did not launch)`
+        : outcome;
     return [
       probe.name,
-      readOutcomeCell(filePath, 'outcome'),
+      outcomeCell,
       readOutcomeCell(filePath, 'hydration'),
       readOutcomeCell(filePath, 'queryGate'),
       readOutcomeCell(filePath, 'smartCheck'),

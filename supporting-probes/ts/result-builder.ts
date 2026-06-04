@@ -6,7 +6,7 @@ export type { ProbeLanguage };
 export type FindingResult = 'PASS' | 'FAIL';
 export type QueryGateResult = 'PASS' | 'FAIL' | 'NOT_APPLICABLE';
 export type SerializeResult = 'SERIALIZE_PASS' | 'SERIALIZE_FAIL_CYCLE' | 'SERIALIZE_FAIL_OTHER';
-export type ProbeOutcome = 'PASS' | 'HYDRATION_FAIL' | 'SERIALIZE_FAIL' | 'MIXED';
+export type ProbeOutcome = 'PASS' | 'HYDRATION_FAIL' | 'SERIALIZE_FAIL' | 'MIXED' | 'PROBE_LAUNCH_FAIL';
 
 export interface ProbeFindings {
   hydration: {
@@ -68,6 +68,16 @@ export function formatErrorDetail(error: unknown): string {
   return String(error);
 }
 
+export function buildLaunchFailureFindings(detail: string): ProbeFindings {
+  const withDetail = (message: string) => `${message}\n${detail}`;
+  return {
+    hydration: { result: 'FAIL', detail },
+    queryGate: { result: 'NOT_APPLICABLE', detail: withDetail('Probe failed to launch — query gate not exercised.') },
+    smartCheck: { result: 'FAIL', detail: withDetail('Probe failed to launch.') },
+    serialize: { result: 'SERIALIZE_FAIL_OTHER', detail: withDetail('Probe failed to launch.') },
+  };
+}
+
 export function serializeSortedJson(value: unknown): string {
   return `${JSON.stringify(sortKeysDeep(value), null, 2)}\n`;
 }
@@ -98,7 +108,11 @@ export function writeProbeResult(result: ProbeResult): string {
   return writeProbeResultForRunId(runId, result);
 }
 
-export function writeProbeResultForRunId(runId: string, result: ProbeResult): string {
+export function writeProbeResultForRunId(
+  runId: string,
+  result: ProbeResult,
+  options?: { outcomeOverride?: 'PROBE_LAUNCH_FAIL' }
+): string {
   if (!PROBE_RUN_ID_PATTERN.test(runId) || runId.includes(path.sep)) {
     throw new Error(`Invalid PROBE_RUN_ID '${runId}' (expected YYYYMMDD-HHMMSS-<shortsha>)`);
   }
@@ -109,7 +123,7 @@ export function writeProbeResultForRunId(runId: string, result: ProbeResult): st
   const outputPath = path.join(outputDir, `${result.probe}.json`);
   const tmpPath = `${outputPath}.tmp`;
   // Always derive outcome from findings so callers don't need to compute it.
-  const resultToWrite = { ...result, outcome: buildOutcome(result.findings) };
+  const resultToWrite = { ...result, outcome: options?.outcomeOverride ?? buildOutcome(result.findings) };
   fs.writeFileSync(tmpPath, serializeSortedJson(resultToWrite), 'utf8');
   fs.renameSync(tmpPath, outputPath);
 

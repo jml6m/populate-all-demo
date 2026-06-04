@@ -64,8 +64,11 @@ Each probe writes one JSON document with alphabetically sorted keys and 2-space 
 - `HYDRATION_FAIL`: `findings.hydration.result === "FAIL"`
 - `SERIALIZE_FAIL`: hydration passed and serialize is `SERIALIZE_FAIL_*`
 - `MIXED`: any other combination
+- `PROBE_LAUNCH_FAIL`: orchestrator fallback row when a probe does not write JSON output (typically after a non-zero exit)
 
 Canonical implementation for rollup and TS JSON writing: `supporting-probes/ts/result-builder.ts`.
+
+`PROBE_LAUNCH_FAIL` is emitted only by the orchestrator fallback path in `run-probes.ts`, never by a probe's self-reported JSON. This is the explicit "probe did not launch" signal for downstream consumers, distinct from real probe-executed outcomes such as `HYDRATION_FAIL`/`MIXED`.
 
 ## Library + version source-of-truth
 
