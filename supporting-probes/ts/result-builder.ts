@@ -101,7 +101,7 @@ export function writeProbeResult(result: ProbeResult): string {
 export function writeProbeResultForRunId(
   runId: string,
   result: ProbeResult,
-  options?: { outcomeOverride?: ProbeOutcome }
+  options?: { outcomeOverride?: 'PROBE_LAUNCH_FAIL' }
 ): string {
   if (!PROBE_RUN_ID_PATTERN.test(runId) || runId.includes(path.sep)) {
     throw new Error(`Invalid PROBE_RUN_ID '${runId}' (expected YYYYMMDD-HHMMSS-<shortsha>)`);
