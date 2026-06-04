@@ -52,7 +52,7 @@ function makeChainCycle(n: number): ComponentPopulated[] {
     nodes.push(makeNode(`node_${i}`));
   }
   for (let i = 0; i < n; i++) {
-    nodes[i].dependencies.push(nodes[(i + 1) % n]);
+    nodes[i]!.dependencies.push(nodes[(i + 1) % n]!);
   }
   return nodes;
 }
@@ -61,20 +61,20 @@ function makeChainCycle(n: number): ComponentPopulated[] {
 // naiveJsonProbe — input validation
 // ---------------------------------------------------------------------------
 
-describe('naiveJsonProbe — input handling', () => {
-  it('passes on an empty graph', () => {
+void describe('naiveJsonProbe — input handling', () => {
+  void it('passes on an empty graph', () => {
     const r = naiveJsonProbe.consume([]);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('passes on an acyclic linear graph', () => {
+  void it('passes on an acyclic linear graph', () => {
     const r = naiveJsonProbe.consume(linearPair());
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
   });
 
-  it('passes on an acyclic diamond graph (shared reference, no cycle)', () => {
+  void it('passes on an acyclic diamond graph (shared reference, no cycle)', () => {
     // diamond() has a shared reference (d) but no cycle — JSON.stringify succeeds
     // because it only detects actual back-edge cycles, not DAG shared references.
     const r = naiveJsonProbe.consume(diamond());
@@ -83,8 +83,8 @@ describe('naiveJsonProbe — input handling', () => {
   });
 });
 
-describe('naiveJsonProbe — cyclic graph detection', () => {
-  it('fails on a 2-node cycle (a → b → a)', () => {
+void describe('naiveJsonProbe — cyclic graph detection', () => {
+  void it('fails on a 2-node cycle (a → b → a)', () => {
     const r = naiveJsonProbe.consume(twoCycle());
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null);
@@ -95,7 +95,7 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
     );
   });
 
-  it('fails on a self-referential 20-node chain cycle', () => {
+  void it('fails on a self-referential 20-node chain cycle', () => {
     const r = naiveJsonProbe.consume(makeChainCycle(20));
     assert.equal(r.pass, false);
     assert.ok(r.errorDetail !== null);
@@ -106,11 +106,11 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
     );
   });
 
-  it('does not mutate the graph nodes', () => {
+  void it('does not mutate the graph nodes', () => {
     const nodes = twoCycle();
-    const depCountBefore = nodes[0].dependencies.length;
+    const depCountBefore = nodes[0]!.dependencies.length;
     naiveJsonProbe.consume(nodes);
-    assert.equal(nodes[0].dependencies.length, depCountBefore);
+    assert.equal(nodes[0]!.dependencies.length, depCountBefore);
   });
 });
 
@@ -118,22 +118,22 @@ describe('naiveJsonProbe — cyclic graph detection', () => {
 // cycleFlatProbe — acyclic graphs
 // ---------------------------------------------------------------------------
 
-describe('cycleFlatProbe — acyclic graphs', () => {
-  it('passes on an empty graph', () => {
+void describe('cycleFlatProbe — acyclic graphs', () => {
+  void it('passes on an empty graph', () => {
     const r = cycleFlatProbe.consume([]);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
     assert.deepEqual(r.serializedOutput, []);
   });
 
-  it('passes on a single node with no dependencies', () => {
+  void it('passes on a single node with no dependencies', () => {
     const r = cycleFlatProbe.consume([makeNode('solo')]);
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
     assert.deepEqual(r.serializedOutput, [{ id: 'solo', depIndices: [] }]);
   });
 
-  it('passes on an acyclic linear pair and produces correct AnswerEntry output', () => {
+  void it('passes on an acyclic linear pair and produces correct AnswerEntry output', () => {
     const r = cycleFlatProbe.consume(linearPair());
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
@@ -144,7 +144,7 @@ describe('cycleFlatProbe — acyclic graphs', () => {
     ]);
   });
 
-  it('passes on a diamond graph and produces correct AnswerEntry output', () => {
+  void it('passes on a diamond graph and produces correct AnswerEntry output', () => {
     const r = cycleFlatProbe.consume(diamond());
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
@@ -162,8 +162,8 @@ describe('cycleFlatProbe — acyclic graphs', () => {
 // cycleFlatProbe — cyclic graphs
 // ---------------------------------------------------------------------------
 
-describe('cycleFlatProbe — cyclic graphs', () => {
-  it('passes on a 2-node cycle and produces correct AnswerEntry output', () => {
+void describe('cycleFlatProbe — cyclic graphs', () => {
+  void it('passes on a 2-node cycle and produces correct AnswerEntry output', () => {
     const r = cycleFlatProbe.consume(twoCycle());
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
@@ -174,7 +174,7 @@ describe('cycleFlatProbe — cyclic graphs', () => {
     ]);
   });
 
-  it('passes on a long chain-cycle (20 nodes)', () => {
+  void it('passes on a long chain-cycle (20 nodes)', () => {
     const r = cycleFlatProbe.consume(makeChainCycle(20));
     assert.equal(r.pass, true);
     assert.equal(r.errorDetail, null);
@@ -182,15 +182,15 @@ describe('cycleFlatProbe — cyclic graphs', () => {
     assert.equal(r.serializedOutput!.length, 20);
     // Each node i should have depIndices [(i+1) % 20]
     for (let i = 0; i < 20; i++) {
-      assert.deepEqual(r.serializedOutput![i].depIndices, [(i + 1) % 20]);
+      assert.deepEqual(r.serializedOutput![i]!.depIndices, [(i + 1) % 20]);
     }
   });
 
-  it('does not mutate the graph nodes', () => {
+  void it('does not mutate the graph nodes', () => {
     const nodes = twoCycle();
-    const depCountBefore = nodes[0].dependencies.length;
+    const depCountBefore = nodes[0]!.dependencies.length;
     cycleFlatProbe.consume(nodes);
-    assert.equal(nodes[0].dependencies.length, depCountBefore);
+    assert.equal(nodes[0]!.dependencies.length, depCountBefore);
   });
 });
 
@@ -198,8 +198,8 @@ describe('cycleFlatProbe — cyclic graphs', () => {
 // cycleFlatProbe — orphaned dependency detection
 // ---------------------------------------------------------------------------
 
-describe('cycleFlatProbe — orphaned dependency detection', () => {
-  it('fails when a dependency object is not in the top-level array', () => {
+void describe('cycleFlatProbe — orphaned dependency detection', () => {
+  void it('fails when a dependency object is not in the top-level array', () => {
     const a = makeNode('a');
     const orphan = makeNode('orphan'); // not included in the top-level array
     a.dependencies.push(orphan);
@@ -221,8 +221,8 @@ describe('cycleFlatProbe — orphaned dependency detection', () => {
 //  does not guarantee consumer viability for naive consumers.)
 // ---------------------------------------------------------------------------
 
-describe('consumer probe contrast — hydration success ≠ naive-json viability', () => {
-  it('naiveJsonProbe fails on a 2-cycle while cycleFlatProbe passes — same graph', () => {
+void describe('consumer probe contrast — hydration success ≠ naive-json viability', () => {
+  void it('naiveJsonProbe fails on a 2-cycle while cycleFlatProbe passes — same graph', () => {
     const graph = twoCycle();
 
     const naiveResult: ConsumerResult = naiveJsonProbe.consume(graph);
@@ -239,7 +239,7 @@ describe('consumer probe contrast — hydration success ≠ naive-json viability
     assert.ok(flatResult.serializedOutput !== null, 'cycleFlatProbe should produce serializedOutput');
   });
 
-  it('naiveJsonProbe passes and cycleFlatProbe passes on an acyclic graph — both succeed', () => {
+  void it('naiveJsonProbe passes and cycleFlatProbe passes on an acyclic graph — both succeed', () => {
     const graph = linearPair();
 
     const naiveResult = naiveJsonProbe.consume(graph);
@@ -286,8 +286,8 @@ function ensureDataGenerated(): void {
   }
 }
 
-describe('cycleFlatProbe — basic-tier integration', () => {
-  it('builds a correct AnswerEntry[] from twoPassWire output — verified against manifest answer', () => {
+void describe('cycleFlatProbe — basic-tier integration', () => {
+  void it('builds a correct AnswerEntry[] from twoPassWire output — verified against manifest answer', () => {
     ensureDataGenerated();
 
     const manifest = loadManifest();
@@ -311,8 +311,8 @@ describe('cycleFlatProbe — basic-tier integration', () => {
     const output = r.serializedOutput!;
     assert.equal(output.length, rawAnswerEntries.length, 'Output entry count should match answer entry count');
     for (let i = 0; i < rawAnswerEntries.length; i++) {
-      assert.equal(output[i].id, rawAnswerEntries[i].id, `Entry[${i}] id mismatch`);
-      assert.deepEqual(output[i].depIndices, rawAnswerEntries[i].depIndices, `Entry[${i}] ("${output[i].id}") depIndices mismatch`);
+      assert.equal(output[i]!.id, rawAnswerEntries[i]!.id, `Entry[${i}] id mismatch`);
+      assert.deepEqual(output[i]!.depIndices, rawAnswerEntries[i]!.depIndices, `Entry[${i}] ("${output[i]!.id}") depIndices mismatch`);
     }
   });
 });

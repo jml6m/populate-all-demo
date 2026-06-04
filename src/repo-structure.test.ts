@@ -22,30 +22,30 @@ const ROOT = path.resolve(__dirname, '..');
 // Required documentation files
 // ---------------------------------------------------------------------------
 
-describe('repo-structure — required docs', () => {
-  it('root README.md exists', () => {
+void describe('repo-structure — required docs', () => {
+  void it('root README.md exists', () => {
     assert.ok(fs.existsSync(path.join(ROOT, 'README.md')), 'root README.md must exist');
   });
 
-  it('supporting-probes/README.md exists', () => {
+  void it('supporting-probes/README.md exists', () => {
     assert.ok(
       fs.existsSync(path.join(ROOT, 'supporting-probes', 'README.md')),
       'supporting-probes/README.md must exist'
     );
   });
 
-  it('AGENTS.md exists', () => {
+  void it('AGENTS.md exists', () => {
     assert.ok(fs.existsSync(path.join(ROOT, 'AGENTS.md')), 'AGENTS.md must exist');
   });
 
-  it('analysis/EXPERIMENT_ANALYSIS.md exists', () => {
+  void it('analysis/EXPERIMENT_ANALYSIS.md exists', () => {
     assert.ok(
       fs.existsSync(path.join(ROOT, 'analysis', 'EXPERIMENT_ANALYSIS.md')),
       'analysis/EXPERIMENT_ANALYSIS.md must exist'
     );
   });
 
-  it('analysis/ECOSYSTEM_RESEARCH.md exists', () => {
+  void it('analysis/ECOSYSTEM_RESEARCH.md exists', () => {
     assert.ok(
       fs.existsSync(path.join(ROOT, 'analysis', 'ECOSYSTEM_RESEARCH.md')),
       'analysis/ECOSYSTEM_RESEARCH.md must exist'
@@ -69,7 +69,7 @@ describe('repo-structure — required docs', () => {
 //     version subdirectories (no partial releases).
 // ---------------------------------------------------------------------------
 
-describe('repo-structure — reference directory layout', () => {
+void describe('repo-structure — reference directory layout', () => {
   const referenceDirs = [
     path.join(ROOT, 'reports', 'reference'),
     path.join(ROOT, 'logs', 'reference'),
@@ -79,14 +79,14 @@ describe('repo-structure — reference directory layout', () => {
   for (const refDir of referenceDirs) {
     const label = path.relative(ROOT, refDir);
 
-    it(`${label}/.gitkeep exists`, () => {
+    void it(`${label}/.gitkeep exists`, () => {
       assert.ok(
         fs.existsSync(path.join(refDir, '.gitkeep')),
         `${label}/.gitkeep must exist to keep the directory tracked by git`
       );
     });
 
-    it(`no *.md files in ${label}/`, () => {
+    void it(`no *.md files in ${label}/`, () => {
       const mdFiles = fs.readdirSync(refDir).filter((e) => e.endsWith('.md'));
       assert.deepEqual(
         mdFiles,
@@ -101,7 +101,7 @@ describe('repo-structure — reference directory layout', () => {
 // Reference directory versioned structure
 // ---------------------------------------------------------------------------
 
-describe('repo-structure — reference directory versioned structure', () => {
+void describe('repo-structure — reference directory versioned structure', () => {
   const referenceDirs = [
     path.join(ROOT, 'reports', 'reference'),
     path.join(ROOT, 'logs', 'reference'),
@@ -111,13 +111,13 @@ describe('repo-structure — reference directory versioned structure', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
     version: string;
   };
-  const majorVersion = parseInt(pkg.version.split('.')[0], 10);
+  const majorVersion = parseInt(pkg.version.split('.')[0]!, 10);
 
   // All released versions (1 through major-1) must be present in every reference dir.
   for (let k = 1; k < majorVersion; k++) {
     for (const refDir of referenceDirs) {
       const label = path.relative(ROOT, refDir);
-      it(`${label}/v${k}/ exists (released at v${k}.0.0)`, () => {
+      void it(`${label}/v${k}/ exists (released at v${k}.0.0)`, () => {
         assert.ok(
           fs.existsSync(path.join(refDir, `v${k}`)),
           `${label}/v${k}/ must exist — it was created by the v${k}.0.0 release workflow and is immutable`
@@ -129,7 +129,7 @@ describe('repo-structure — reference directory versioned structure', () => {
   // The current in-development version's directory must not be pre-created.
   for (const refDir of referenceDirs) {
     const label = path.relative(ROOT, refDir);
-    it(`${label}/v${majorVersion}/ is not pre-created (written by release workflow only)`, () => {
+    void it(`${label}/v${majorVersion}/ is not pre-created (written by release workflow only)`, () => {
       assert.ok(
         !fs.existsSync(path.join(refDir, `v${majorVersion}`)),
         `${label}/v${majorVersion}/ must not exist yet — it will be created by the v${majorVersion}.0.0 release workflow, not pre-created manually`
@@ -138,7 +138,7 @@ describe('repo-structure — reference directory versioned structure', () => {
   }
 
   // All three reference directories must contain the same set of version subdirectories.
-  it('version subdirectories are consistent across all three reference dirs', () => {
+  void it('version subdirectories are consistent across all three reference dirs', () => {
     const versionSets = referenceDirs.map((refDir) => {
       const label = path.relative(ROOT, refDir);
       const versions = fs
@@ -148,6 +148,9 @@ describe('repo-structure — reference directory versioned structure', () => {
       return { label, versions };
     });
     const [first, ...rest] = versionSets;
+    if (first === undefined) {
+      throw new Error('referenceDirs must contain at least one directory');
+    }
     for (const other of rest) {
       assert.deepEqual(
         other.versions,
@@ -162,7 +165,7 @@ describe('repo-structure — reference directory versioned structure', () => {
 // package.json invariants
 // ---------------------------------------------------------------------------
 
-describe('repo-structure — package.json', () => {
+void describe('repo-structure — package.json', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
     version: string;
     scripts: Record<string, string>;
@@ -180,7 +183,7 @@ describe('repo-structure — package.json', () => {
   ];
 
   for (const script of requiredScripts) {
-    it(`scripts.${script} is defined`, () => {
+    void it(`scripts.${script} is defined`, () => {
       assert.ok(
         Object.prototype.hasOwnProperty.call(pkg.scripts, script),
         `package.json must define the "${script}" script`
@@ -188,7 +191,7 @@ describe('repo-structure — package.json', () => {
     });
   }
 
-  it('version follows major-version-only semver (X.0.0)', () => {
+  void it('version follows major-version-only semver (X.0.0)', () => {
     assert.match(
       pkg.version,
       /^\d+\.0\.0$/,
@@ -201,14 +204,14 @@ describe('repo-structure — package.json', () => {
 // tsconfig.json invariants
 // ---------------------------------------------------------------------------
 
-describe('repo-structure — tsconfig.json', () => {
+void describe('repo-structure — tsconfig.json', () => {
   const tsconfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'tsconfig.json'), 'utf8')) as {
     compilerOptions: Record<string, unknown>;
   };
 
-  it('strict: true is set', () => {
+  void it('strict: true is set', () => {
     assert.equal(
-      tsconfig.compilerOptions.strict,
+    tsconfig.compilerOptions['strict'],
       true,
       'tsconfig.json must have strict: true'
     );

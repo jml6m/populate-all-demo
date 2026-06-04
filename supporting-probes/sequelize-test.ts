@@ -3,6 +3,8 @@ import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
 
+const verbose = process.env.PROBE_VERBOSE === '1';
+
 class Node extends Model {
   declare id: number;
   declare name: string;
@@ -25,10 +27,12 @@ async function run() {
   };
 
   const sequelize = new Sequelize('sqlite::memory:', {
-    logging: (sql) => {
-      queryCount += 1;
-      console.log('[sql]', sql);
-    },
+    logging: verbose
+      ? (sql) => {
+          queryCount += 1;
+          console.log('[sql]', sql);
+        }
+      : false,
   });
 
   try {

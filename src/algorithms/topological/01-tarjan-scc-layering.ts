@@ -45,12 +45,12 @@ export const tarjanSccLayering: PopulateAlgorithm = {
       onStack.set(startId, true);
 
       while (callStack.length > 0) {
-        const frame = callStack[callStack.length - 1];
+        const frame = callStack[callStack.length - 1]!;
         const flat = dbMap.get(frame.id);
         const deps = flat ? flat.dependencies : [];
 
         if (frame.depIndex < deps.length) {
-          const depId = deps[frame.depIndex];
+          const depId = deps[frame.depIndex]!;
           frame.depIndex++;
           if (!index.has(depId)) {
             index.set(depId, counter);
@@ -65,7 +65,7 @@ export const tarjanSccLayering: PopulateAlgorithm = {
         } else {
           callStack.pop();
           if (callStack.length > 0) {
-            const parent = callStack[callStack.length - 1];
+            const parent = callStack[callStack.length - 1]!;
             lowlink.set(parent.id, Math.min(lowlink.get(parent.id)!, lowlink.get(frame.id)!));
           }
           if (lowlink.get(frame.id) === index.get(frame.id)) {
@@ -102,10 +102,10 @@ export const tarjanSccLayering: PopulateAlgorithm = {
       const fromScc = sccOf.get(comp.id)!;
       for (const depId of comp.dependencies) {
         const toScc = sccOf.get(depId)!;
-        if (fromScc !== toScc && !condensedChildren[fromScc].has(toScc)) {
-          condensedChildren[fromScc].add(toScc);
-          condensedParents[toScc].push(fromScc);
-          outDegree[fromScc]++;
+        if (fromScc !== toScc && !condensedChildren[fromScc]!.has(toScc)) {
+          condensedChildren[fromScc]!.add(toScc);
+          condensedParents[toScc]!.push(fromScc);
+          outDegree[fromScc]!++;
         }
       }
     }
@@ -117,14 +117,16 @@ export const tarjanSccLayering: PopulateAlgorithm = {
     const remaining = [...outDegree];
     let frontier: number[] = [];
     for (let i = 0; i < numSccs; i++) {
-      if (remaining[i] === 0) frontier.push(i);
+      if (remaining[i] === 0) {
+        frontier.push(i);
+      }
     }
     while (frontier.length > 0) {
       layers.push(frontier);
       const next: number[] = [];
       for (const sccIdx of frontier) {
-        for (const parentScc of condensedParents[sccIdx]) {
-          remaining[parentScc]--;
+        for (const parentScc of condensedParents[sccIdx]!) {
+          remaining[parentScc]!--;
           if (remaining[parentScc] === 0) next.push(parentScc);
         }
       }
@@ -142,7 +144,7 @@ export const tarjanSccLayering: PopulateAlgorithm = {
     // Each layer processes all SCCs at the same depth in the condensation DAG.
     for (const layer of layers) {
       for (const sccIdx of layer) {
-        for (const id of sccs[sccIdx]) {
+        for (const id of sccs[sccIdx]!) {
           const flat = dbMap.get(id)!;
           const node = populated.get(id)!;
           for (const depId of flat.dependencies) {

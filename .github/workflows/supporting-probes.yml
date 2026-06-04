@@ -3,6 +3,9 @@ name: Supporting Probes
 on:
   workflow_dispatch:
 
+env:
+  PROBE_VERBOSE: '1'
+
 jobs:
   probes:
     name: Supporting probes

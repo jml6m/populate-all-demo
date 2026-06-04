@@ -163,7 +163,7 @@ export function validateDataset(components: ComponentFlat[]): ValidationResult {
     return { classification: 'edge-case-only', errors: [], warnings: [warning] };
   }
 
-  const root = zeroInDegreeNodes[0];
+  const root = zeroInDegreeNodes[0]!;
 
   // ---------------------------------------------------------------------------
   // Reachability check: every node must be reachable from the auto-detected
@@ -203,7 +203,7 @@ function computeReachableSet(components: ComponentFlat[], root: string): Set<str
   let head = 0;
 
   while (head < queue.length) {
-    const current = queue[head++];
+    const current = queue[head++]!;
     for (const dep of adj.get(current) ?? []) {
       if (!reachable.has(dep)) {
         reachable.add(dep);

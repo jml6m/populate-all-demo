@@ -97,15 +97,15 @@ export function smartCompare(
       const stack: CompareFrame[] = [{ a: startA, e: startE, depIdx: 0 }];
 
       while (stack.length > 0) {
-        const frame = stack[stack.length - 1];
+        const frame = stack[stack.length - 1]!;
 
         if (frame.depIdx >= frame.a.dependencies.length) {
           stack.pop();
           continue;
         }
 
-        const da = frame.a.dependencies[frame.depIdx];
-        const de = frame.e.dependencies[frame.depIdx];
+        const da = frame.a.dependencies[frame.depIdx]!;
+        const de = frame.e.dependencies[frame.depIdx]!;
         frame.depIdx++;
         // Count every dependency link traversed, including back-edges.
         // Each traversal produces exactly one log line below.
@@ -157,8 +157,8 @@ export function smartCompare(
     }
 
     for (let i = 0; i < actualNodes.length; i++) {
-      if (verbose) log(`[smartCompare] Root[${i}]: actual="${actualNodes[i].id}" vs expected="${expectedNodes[i].id}"`);
-      const err = compareNode(actualNodes[i], expectedNodes[i]);
+      if (verbose) log(`[smartCompare] Root[${i}]: actual="${actualNodes[i]!.id}" vs expected="${expectedNodes[i]!.id}"`);
+      const err = compareNode(actualNodes[i]!, expectedNodes[i]!);
       if (err !== null) {
         log(`[smartCompare] ❌ FAIL — ${err}`);
         return { pass: false, errorDetail: err, nodesProcessed, edgesTraversed };

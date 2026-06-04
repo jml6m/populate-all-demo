@@ -26,18 +26,18 @@ export function buildPopulatedFromAnswer(entries: AnswerEntry[], verbose = false
 
   for (let i = 0; i < entries.length; i++) {
     if (verbose) {
-      console.log(`\n${nodes[i].id}:`);
-      if (entries[i].depIndices.length === 0) {
+      console.log(`\n${nodes[i]!.id}:`);
+      if (entries[i]!.depIndices.length === 0) {
         console.log('  (no dependencies)');
       }
     }
-    for (const depIdx of entries[i].depIndices) {
+    for (const depIdx of entries[i]!.depIndices) {
       if (!Number.isInteger(depIdx) || depIdx < 0 || depIdx >= nodes.length) {
-        throw new Error(`Invalid dependency index ${depIdx} for entry at index ${i} (id: "${entries[i].id}"): must be an integer in [0, ${nodes.length - 1}]`);
+        throw new Error(`Invalid dependency index ${depIdx} for entry at index ${i} (id: "${entries[i]!.id}"): must be an integer in [0, ${nodes.length - 1}]`);
       }
-      nodes[i].dependencies.push(nodes[depIdx]);
+      nodes[i]!.dependencies.push(nodes[depIdx]!);
       if (verbose) {
-        console.log(`  Wire: ${nodes[i].id}.dependencies[${nodes[i].dependencies.length - 1}] → ${nodes[depIdx].id} (index ${depIdx})`);
+        console.log(`  Wire: ${nodes[i]!.id}.dependencies[${nodes[i]!.dependencies.length - 1}] → ${nodes[depIdx]!.id} (index ${depIdx})`);
       }
     }
   }
@@ -45,9 +45,9 @@ export function buildPopulatedFromAnswer(entries: AnswerEntry[], verbose = false
   if (verbose) {
     console.log('\n--- Identity checks ---');
     for (let i = 0; i < entries.length; i++) {
-      for (let j = 0; j < entries[i].depIndices.length; j++) {
-        const depIdx = entries[i].depIndices[j];
-        const isSame = nodes[i].dependencies[j] === nodes[depIdx];
+      for (let j = 0; j < entries[i]!.depIndices.length; j++) {
+        const depIdx = entries[i]!.depIndices[j]!;
+        const isSame = nodes[i]!.dependencies[j] === nodes[depIdx]!;
         console.log(`Identity check: nodes[${i}].dependencies[${j}] === nodes[${depIdx}] → ${isSame}`);
       }
     }

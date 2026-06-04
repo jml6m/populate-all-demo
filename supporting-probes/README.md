@@ -16,6 +16,12 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 The orchestrator fails fast before any probe starts if required runtimes are missing. Build tools (`mvn`, `javac`, `gem`) are not checked as central prerequisites — if a specific probe's build tool is missing, that probe will fail-soft with a fallback JSON. For reference: the Hibernate probe uses `mvn` and `javac` internally.
 
+## Verbose SQL/query logs
+
+Set `PROBE_VERBOSE=1` to enable per-probe SQL/query logging. The default is silent.
+
+The `supporting-probes` workflow runs with `PROBE_VERBOSE=1` so workflow logs preserve full SQL traces for debugging.
+
 ## Output layout
 
 Each orchestrator run computes one `PROBE_RUN_ID` (`YYYYMMDD-HHMMSS-<shortsha>`) and every probe writes JSON to:
