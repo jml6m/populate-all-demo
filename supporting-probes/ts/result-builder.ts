@@ -68,6 +68,16 @@ export function formatErrorDetail(error: unknown): string {
   return String(error);
 }
 
+export function buildLaunchFailureFindings(detail: string): ProbeFindings {
+  const withDetail = (message: string) => `${message}\n${detail}`;
+  return {
+    hydration: { result: 'FAIL', detail },
+    queryGate: { result: 'NOT_APPLICABLE', detail: withDetail('Probe failed to launch — query gate not exercised.') },
+    smartCheck: { result: 'FAIL', detail: withDetail('Probe failed to launch.') },
+    serialize: { result: 'SERIALIZE_FAIL_OTHER', detail: withDetail('Probe failed to launch.') },
+  };
+}
+
 export function serializeSortedJson(value: unknown): string {
   return `${JSON.stringify(sortKeysDeep(value), null, 2)}\n`;
 }

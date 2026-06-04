@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PROBE_IDENTITIES, PROBE_RUN_ID_PATTERN, type ProbeLanguage } from './ts/probe-config';
-import { type ProbeOutcome, getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
+import { buildLaunchFailureFindings, type ProbeOutcome, getNodePackageVersion, writeProbeResultForRunId } from './ts/result-builder';
 
 type Suite = 'ts' | 'all';
 
@@ -333,12 +333,7 @@ function defineProbes(pythonCommand: string): { ts: ProbeConfig[]; all: ProbeCon
 }
 
 function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string): void {
-  const findings = {
-    hydration: { result: 'FAIL' as const, detail },
-    queryGate: { result: 'NOT_APPLICABLE' as const, detail: 'Probe failed to launch — query gate not exercised.' },
-    smartCheck: { result: 'FAIL' as const, detail: 'Probe failed to launch.' },
-    serialize: { result: 'SERIALIZE_FAIL_OTHER' as const, detail: 'Probe failed to launch.' },
-  };
+  const findings = buildLaunchFailureFindings(detail);
 
   writeProbeResultForRunId(runId, {
     probe: probe.name,
