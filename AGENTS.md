@@ -9,7 +9,7 @@ This document defines the operational parameters, architectural standards, and s
 
 > **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
 
-> **Public Research Repo**: This is a publicly visible research project. The committed `reference/` artifacts are the canonical record of published findings. Treat them as immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
+> **Public Research Repo**: This repository is currently private and will be made public after the v1 release ships. The committed `reference/` artifacts are the canonical record of published findings. Treat them as immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
 
 ---
 
@@ -52,9 +52,9 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
 - `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
-- `cd supporting-probes && npm ci && npm run probe:all` — run the Node-based probes wired into `supporting-probes/package.json`.
-- `cd supporting-probes && npm ci && npm run probe:mongoose` — run the Mongoose probe (requires a local MongoDB; defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
-- For the Python/Ruby/Java/.NET probes, use the exact commands from `.github/workflows/supporting-probes.yml` (they are not invoked by `npm run probe:all`).
+- `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`).
+- `cd supporting-probes && npm ci && npm run probe:all` — run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
+- For Python/Ruby/Java/.NET environment setup and troubleshooting, use the exact commands from `.github/workflows/supporting-probes.yml` (these probes are included in `npm run probe:all` once prerequisites are installed).
 ### 4. Code Review & PR Interaction
 
 The agent **MUST** respond to all comments from the **primary reviewer** (the project admin, `@jml6m`) without requiring an explicit `@`-mention. A "Request changes" review on the PR is sufficient signal that every unresolved comment needs action.
@@ -86,7 +86,7 @@ This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`
 - **Agents NEVER trigger `release.yml`.**
 - **Agents NEVER create git tags.**
 - **Agents NEVER create or modify GitHub Releases.**
-- **CI workflow modifications** (`.github/workflows/*.yml`) require the `ci-change` label on the PR. The `release.yml` workflow specifically requires the `release-infra` label.
+- **CI workflow modifications** (`.github/workflows/*.yml`) do not require a `ci-change` label. The `release.yml` workflow specifically requires the `release-infra` label.
 - **Agents MAY** modify probe scripts, runner code, generation code, and analysis docs during the development cycle between releases. Such changes will be picked up by the next admin-triggered release.
 
 ### 6. Reference Artifact Immutability
@@ -97,7 +97,7 @@ The `reference/` directories under `reports/`, `logs/`, and `supporting-probes/r
 - **The current in-development version's reference dir does not yet exist** until the next release workflow runs. Do not pre-create it.
 - **Local runs** write benchmark output under `reports/` (gitignored). Tests and trace artifacts write under `logs/` (gitignored).
 - **CI runs** (non-release workflows) must upload artifacts from `reports/` and/or `logs/` only; they must never write under any `reference/` path.
-CI does not currently include a dedicated `repo-config-guard` workflow; treat the reference-artifact rules above as a strict policy and verify compliance during review.
+CI includes a dedicated `repo-config-guard` workflow that enforces reference-artifact immutability and the `release-infra` label requirement for `release.yml` changes.
 
 ### 7. Idempotency-First Design
 
@@ -168,7 +168,7 @@ If a change you make causes the same input to produce different output across re
 The following paths are **agent-protected**. Do not modify without explicit instruction from the project admin in the PR's problem statement:
 
 1. **`.github/workflows/release.yml`** (when it exists) — the official release workflow. Requires `release-infra` label on the PR.
-2. **All other `.github/workflows/*.yml`** — requires `ci-change` label on the PR.
+2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
 5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`** — frozen per §6.

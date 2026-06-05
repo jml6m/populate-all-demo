@@ -58,7 +58,7 @@ reference-data changes — those must go through the release workflow.
 
 Local smoke test after pulling main:
 
-```powershell
+```bash
 git pull
 npm ci
 npm run lint
@@ -68,7 +68,7 @@ npm test
 
 Run all supporting probes locally (silent by default):
 
-```powershell
+```bash
 cd supporting-probes
 npm ci
 npm run probe:all
@@ -76,9 +76,8 @@ npm run probe:all
 
 Run with verbose ORM query logging:
 
-```powershell
-$env:PROBE_VERBOSE = "1"
-npm run probe:all
+```bash
+PROBE_VERBOSE=1 npm run probe:all
 ```
 
 Preview whether the current PR branch would fail the reference-data guard. Run
@@ -140,6 +139,24 @@ Use this sequence when cutting an official release:
    ```
 
    The tag is the release marker. There is no separate release label.
+
+## Post-v1 admin actions (one-time)
+
+These actions apply only to the v1 release — not to v2, v3, etc. Once completed,
+this section can be deleted or moved to a historical-record archive at the
+admin's discretion.
+
+- **Flip repository visibility to public.** Settings → General → Danger Zone →
+  Change visibility → Public. Confirm by typing the repo name. After flipping,
+  verify the GitHub-hosted README, ADMIN, and analysis docs render correctly
+  for an anonymous viewer (open in an incognito window).
+- **Verify reference artifacts are intact post-flip.** Visit
+  `reports/reference/v1/`, `logs/reference/v1/`, and
+  `supporting-probes/results/reference/v1/` on `main` from the public URL and
+  confirm the JSON/log files are visible and readable.
+- **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
+  trivial PR (e.g., a typo fix) after the visibility flip and confirm the
+  guard appears in the required-checks list and passes.
 
 ## Troubleshooting
 
