@@ -1,0 +1,125 @@
+# Admin Runbook — populate-all-demo
+
+Personal operational notes for the project administrator. Not user-facing.
+
+## Repository setup checklist
+
+Settings to apply on a fresh clone or repo handoff. The current repo has these
+applied; this section exists so the configuration is recoverable.
+
+- Branch protection on `main`:
+  - Require a pull request before merging
+  - Require conversation resolution before merging
+  - Disallow force pushes
+  - Disallow deletions
+  - Apply rules to admins
+- Required status checks (added after PR 3 merges):
+  - `guard` (from `.github/workflows/repo-config-guard.yml`)
+  - `test` (from `.github/workflows/test.yml`) [if/when made non-dispatch]
+- Auto-delete head branches after merge: enabled
+- Labels:
+  - `release-infra` — required by repo-config-guard for any PR touching `release.yml`
+- Tag protection (optional): pattern `v*.*.*` restricted to admins
+
+## Reference data layout
+
+The repo holds canonical experimental artifacts under three trees:
+
+- `reports/reference/v<N>/` — benchmark report JSON from `npm run experiment`
+- `logs/reference/v<N>/` — trace logs from the test suite and experiment runner
+- `supporting-probes/results/reference/v<N>/` — structured probe JSON from
+  `cd supporting-probes && npm run probe:all`
+
+Where `<N>` is a major version (1, 2, 3, …). Until v1 is released, only the
+`.gitkeep` files exist in each tree.
+
+These trees are immutable on pull requests — see "The repo-config-guard workflow"
+below.
+
+## The repo-config-guard workflow
+
+`.github/workflows/repo-config-guard.yml` runs on every pull request against `main`
+and enforces two rules:
+
+1. **Reference-data immutability** — no PR may add, modify, delete, or rename
+   anything under `reports/reference/`, `logs/reference/`, or
+   `supporting-probes/results/reference/`. Only the release workflow (running on
+   `workflow_dispatch` from `main`, never on `pull_request`) may write there.
+
+2. **`release.yml` change requires `release-infra` label** — any PR adding,
+   modifying, deleting, or renaming `.github/workflows/release.yml` must have the
+   `release-infra` label applied. This forces explicit acknowledgment for
+   release-infrastructure changes.
+
+The guard is a required status check on `main`. PRs cannot merge without it
+passing.
+
+If the guard ever blocks a legitimate change, the override is to apply the
+`release-infra` label (for `release.yml` changes only). There is no override for
+reference-data changes — those must go through the release workflow.
+
+## Common admin commands
+
+Local smoke test after pulling main:
+
+```powershell
+git pull
+npm ci
+npm run lint
+npm run build
+npm test
+```
+
+Run all supporting probes locally (silent by default):
+
+```powershell
+cd supporting-probes
+npm ci
+npm run probe:all
+```
+
+Run with verbose ORM query logging:
+
+```powershell
+$env:PROBE_VERBOSE = "1"
+npm run probe:all
+```
+
+Verify reference-guard regex against a branch diff (should return empty on
+any non-release PR):
+
+```bash
+git diff --name-only main...HEAD | grep -E '^(reports|logs|supporting-probes/results)/reference/'
+```
+
+## Release workflow notes
+
+The release workflow (`release.yml`, not yet created) is the **only** automated
+process permitted to write to the `reference/` trees. It runs on
+`workflow_dispatch` from `main` and is never triggered by `pull_request`.
+
+Steps when cutting a release:
+
+1. Ensure `main` is green (all required status checks passing).
+2. Apply the `release-infra` label to any PR that touches `release.yml` before
+   merging.
+3. Dispatch the release workflow from the Actions tab, providing the target
+   version (e.g., `v1`).
+4. After the workflow completes, verify the reference artifacts were written
+   under `reports/reference/v<N>/`, `logs/reference/v<N>/`, and
+   `supporting-probes/results/reference/v<N>/`.
+5. Tag the resulting commit: `git tag v<N>.<minor>.<patch>` and push the tag.
+
+## Troubleshooting
+
+**Guard fails with "Reference data is immutable"**: A file under one of the
+three `reference/` trees was touched in the PR diff. Revert those changes and
+push; the reference trees must only be updated by the release workflow.
+
+**Guard fails with "release.yml without release-infra label"**: Add the
+`release-infra` label to the PR from the Labels panel on the PR page, then
+re-run the guard workflow.
+
+**Supporting-probes post-run check fails**: A probe wrote output to a path
+that resolves under `results/reference/`. Investigate the probe's output
+directory logic and ensure it only writes to `results/local/`.

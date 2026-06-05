@@ -32,6 +32,17 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Verify no writes to reference/ paths
+        run: |
+          set -euo pipefail
+          violations=$(git status --porcelain | awk '{print $2}' | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
+          if [ -n "$violations" ]; then
+            echo "❌ Workflow wrote to reference/ paths. Refusing to upload artifacts."
+            echo "$violations"
+            exit 1
+          fi
+          echo "✅ No reference/ writes detected during workflow."
+
       - name: Upload trace logs
         uses: actions/upload-artifact@v7
         with:
