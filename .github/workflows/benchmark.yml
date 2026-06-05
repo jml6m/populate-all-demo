@@ -38,7 +38,9 @@ jobs:
       - name: Verify no writes to reference/ paths
         run: |
           set -euo pipefail
-          violations=$(git status --porcelain | awk '{print $2}' | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
+          tracked_changes=$(git diff --no-renames --name-only --diff-filter=AMDR HEAD --)
+          untracked_changes=$(git ls-files --others --exclude-standard)
+          violations=$(printf '%s\n%s\n' "$tracked_changes" "$untracked_changes" | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
           if [ -n "$violations" ]; then
             echo "❌ Workflow wrote to reference/ paths. Refusing to upload artifacts."
             echo "$violations"

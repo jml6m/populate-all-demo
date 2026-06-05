@@ -89,7 +89,7 @@ Verify reference-guard regex against a branch diff (should return empty on
 any non-release PR):
 
 ```bash
-git diff --name-only main...HEAD | grep -E '^(reports|logs|supporting-probes/results)/reference/'
+git diff --no-renames --name-only main...HEAD | grep -E '^(reports|logs|supporting-probes/results)/reference/'
 ```
 
 ## Release workflow notes

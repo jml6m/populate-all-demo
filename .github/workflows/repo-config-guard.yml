@@ -18,10 +18,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check reference-data immutability
+      - name: Ensure PR base commit is available
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          changed=$(git diff --name-only --diff-filter=AMDR origin/${{ github.base_ref }}...HEAD)
+          if ! git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+          fi
+
+      - name: Check reference-data immutability
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
           violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
           if [ -n "$violations" ]; then
             echo "❌ Reference data is immutable on PRs. Only the release workflow may write to reference/."
@@ -33,10 +44,11 @@ jobs:
 
       - name: Check release.yml requires release-infra label
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
         run: |
           set -euo pipefail
-          changed=$(git diff --name-only --diff-filter=AMDR origin/${{ github.base_ref }}...HEAD)
+          changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
           if echo "$changed" | grep -qE '^\.github/workflows/release\.yml$'; then
             has_label=$(echo "$PR_LABELS" | jq 'map(select(.name == "release-infra")) | length')
             if [ "$has_label" -eq 0 ]; then
