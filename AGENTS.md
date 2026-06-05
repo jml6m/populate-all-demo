@@ -9,7 +9,7 @@ This document defines the operational parameters, architectural standards, and s
 
 > **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
 
-> **Public Research Repo**: This repository is currently private and will be made public after the v1 release ships. The committed `reference/` artifacts are the canonical record of published findings. Treat them as immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
+> **Research repo (private during development, public after v1)**: This will be published as a public research repository after the first official release. Until then, contributors should still treat committed `reference/` artifacts as the canonical record of published findings — they are immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
 
 ---
 
@@ -52,7 +52,7 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
 - `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
-- `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`).
+- `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
 - `cd supporting-probes && npm ci && npm run probe:all` — run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
 - For Python/Ruby/Java/.NET environment setup and troubleshooting, use the exact commands from `.github/workflows/supporting-probes.yml` (these probes are included in `npm run probe:all` once prerequisites are installed).
 ### 4. Code Review & PR Interaction

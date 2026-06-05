@@ -77,7 +77,7 @@ npm run probe:all
 Run with verbose ORM query logging:
 
 ```bash
-PROBE_VERBOSE=1 npm run probe:all
+PROBE_VERBOSE=1 npm --prefix supporting-probes run probe:all
 ```
 
 Preview whether the current PR branch would fail the reference-data guard. Run
