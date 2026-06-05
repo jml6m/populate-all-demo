@@ -16,6 +16,25 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 The orchestrator fails fast before any probe starts if required runtimes are missing. Build tools (`mvn`, `javac`, `gem`) are not checked as central prerequisites — if a specific probe's build tool is missing, that probe will fail-soft with a fallback JSON. For reference: the Hibernate probe uses `mvn` and `javac` internally.
 
+### Local setup for the Mongoose probe
+
+The `mongoose` TypeScript probe requires a reachable MongoDB instance. The other TypeScript probes use SQLite (file or in-memory) and do not require external services.
+
+```bash
+docker run -d --name probe-mongo -p 27017:27017 mongo:7
+cd supporting-probes
+npm ci
+npm run probe:ts
+```
+
+By default, the Mongoose probe uses `mongodb://127.0.0.1:27017/supporting_probe_mongoose` via `MONGODB_URI`. To point at a different host or database:
+
+```bash
+MONGODB_URI=mongodb://your-host:27017/your-db npm run probe:ts
+```
+
+If MongoDB is unreachable, `mongoose-test.ts` records a probe-level failure and exits non-zero, but the orchestrator continues running sibling probes and still prints the full summary table.
+
 ## Verbose SQL/query logs
 
 Set `PROBE_VERBOSE=1` to enable per-probe SQL/query logging. The default is silent.
