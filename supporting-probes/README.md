@@ -18,7 +18,7 @@ The orchestrator fails fast before any probe starts if required runtimes are mis
 
 ### Local setup for the Mongoose probe
 
-The `mongoose` TypeScript probe requires a reachable MongoDB instance. The other TypeScript probes use SQLite (file or in-memory) and do not require external services.
+The `mongoose` TypeScript probe is the only TypeScript probe that connects to MongoDB; to get a passing result, it needs a reachable MongoDB instance. The other TypeScript probes use SQLite (file or in-memory) and do not require external services.
 
 ```bash
 docker run -d --name probe-mongo -p 27017:27017 mongo:7
