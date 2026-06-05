@@ -1,0 +1,62 @@
+name: Repo Config Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  guard:
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Ensure PR base commit is available
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+          fi
+
+      - name: Check reference-data immutability
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
+          violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
+          if [ -n "$violations" ]; then
+            echo "❌ Reference data is immutable on PRs. Only the release workflow may write to reference/."
+            echo "   Offending paths:"
+            echo "$violations" | sed 's/^/   /'
+            exit 1
+          fi
+          echo "✅ No changes under reference/ paths."
+
+      - name: Check release.yml requires release-infra label
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
+          if echo "$changed" | grep -qE '^\.github/workflows/release\.yml$'; then
+            has_label=$(echo "$PR_LABELS" | jq 'map(select(.name == "release-infra")) | length')
+            if [ "$has_label" -eq 0 ]; then
+              echo "❌ This PR modifies .github/workflows/release.yml without the 'release-infra' label."
+              echo "   Apply the 'release-infra' label to the PR before merging."
+              exit 1
+            fi
+            echo "✅ release.yml change accompanied by release-infra label."
+          else
+            echo "✅ release.yml unchanged."
+          fi
