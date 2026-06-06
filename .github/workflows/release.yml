@@ -218,13 +218,10 @@ jobs:
           echo "Manifest written:"
           cat "reports/reference/$NEXT_VERSION/manifest.json"
 
-      - name: Bump version
-        env:
-          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
         run: |
+          set -euo pipefail
           target="${NEXT_TAG#v}"
-          npm version "$target" --no-git-tag-version
-
+          npm version "$target" --no-git-tag-version --force
       - name: Commit and push
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
