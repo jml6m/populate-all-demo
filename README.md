@@ -28,6 +28,14 @@ npm run generate
 
 This writes the input and answer files for all dataset tiers to the `data/` directory. The generator is idempotent; re-running it will skip tiers that are already up to date.
 
+### How `npm run generate` works
+
+`npm run generate` reads `src/generate-config.json` (seeds, dataset tier sizes, RNG configuration) and produces deterministic dataset YAML files in `data/<tier>/`. Each filename is content-addressed: it includes a hash of the file's contents. A `data/manifest.json` index records every file with its content hash and a generation timestamp.
+
+The script is idempotent — re-running it with the same config produces the same files and skips work that's already done. Use `npm run generate:force` to regenerate from scratch.
+
+The `data/` directory is gitignored on local development. The release workflow snapshots a copy into `data/reference/v<N>/` for each tagged release, so published findings are accompanied by the exact data files they were measured against.
+
 **Step 2 — run the experiment:**
 
 ```bash
@@ -70,9 +78,10 @@ For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, 
   - `reports/reference/v1/`, `reports/reference/v2/`, ...
   - `logs/reference/v1/`, `logs/reference/v2/`, ...
   - `supporting-probes/results/reference/v1/`, `supporting-probes/results/reference/v2/`, ...
+  - `data/reference/v1/`, `data/reference/v2/`, ...
 - Rules for editing these directories:
-  - `*/local/*` is developer output and is intentionally not committed.
-  - `*/reference/*` is canonical release evidence; do not edit existing versioned contents (`v1/`, `v2/`, ...) in normal development.
+  - `*/local/*` is developer output and is intentionally not committed (`reports/`, `logs/`, `supporting-probes/results/`, and `data/` local output).
+  - `*/reference/*` is canonical release evidence (`reports/`, `logs/`, `supporting-probes/results/`, and `data/`); do not edit existing versioned contents (`v1/`, `v2/`, ...) in normal development.
 
 ## Further reading
 

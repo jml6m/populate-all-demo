@@ -1,0 +1,257 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ${{ vars.RUNS_ON }}
+    permissions:
+      contents: write
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        run: |
+          set -euo pipefail
+          current=$(node -p "require('./package.json').version")
+          if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "❌ package.json version '$current' is not in MAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+          major=${BASH_REMATCH[1]}
+          next=$((major + 1))
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "next_major=$next" >> "$GITHUB_OUTPUT"
+          echo "next_version=v$next" >> "$GITHUB_OUTPUT"
+          echo "next_tag=v$next.0.0" >> "$GITHUB_OUTPUT"
+          echo "current_major=$major" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$next.0.0 (current is $current)"
+
+      - name: Existence check
+        env:
+          NEXT: ${{ steps.version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for d in "reports/reference/$NEXT" "logs/reference/$NEXT" "supporting-probes/results/reference/$NEXT" "data/reference/$NEXT"; do
+            if [ -e "$d" ]; then
+              echo "❌ $d already exists. Refusing to overwrite a released version."
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "✅ No existing $NEXT directories."
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+          cache: 'npm'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 'ruby'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install root deps
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: |
+          mkdir -p logs/local logs/reference
+          npm test
+      - name: Generate datasets
+        run: npm run generate
+      - name: Run experiment
+        run: npm run experiment
+
+      - name: Install probe Node deps
+        working-directory: supporting-probes
+        run: npm ci
+      - name: Install probe Python deps
+        working-directory: supporting-probes
+        run: pip install sqlalchemy
+      - name: Install probe Ruby deps
+        working-directory: supporting-probes
+        run: gem install activerecord sqlite3 activesupport
+      - name: Install probe Java deps
+        working-directory: supporting-probes
+        run: mvn -q dependency:resolve
+      - name: Install probe .NET deps
+        working-directory: supporting-probes
+        run: dotnet restore EfCoreTest.csproj
+
+      - name: Run all probes
+        working-directory: supporting-probes
+        env:
+          MONGODB_URI: mongodb://localhost:27017/supporting_probe_mongoose
+          PROBE_VERBOSE: '1'
+        run: npm run probe:all
+
+      - name: Fingerprint check vs previous release
+        env:
+          CURRENT_MAJOR: ${{ steps.version.outputs.current_major }}
+        run: |
+          set -euo pipefail
+          prev_dir="reports/reference/v$CURRENT_MAJOR"
+          if [ ! -d "$prev_dir" ]; then
+            echo "✅ No previous release ($prev_dir absent); first release — fingerprint check skipped."
+            exit 0
+          fi
+          latest_local=$(ls -d reports/local/*/ 2>/dev/null | sort | tail -1)
+          if [ -z "$latest_local" ]; then
+            echo "❌ No reports/local/<run-id>/ found after npm run experiment."
+            exit 1
+          fi
+          new_fp=$(jq -r '.metadata.fingerprint' "$latest_local/experiment-run.json")
+          old_fp=$(jq -r '.metadata.fingerprint' "$prev_dir/experiment-run.json")
+          if [ "$new_fp" = "$old_fp" ]; then
+            echo "❌ Experiment fingerprint matches v$CURRENT_MAJOR ($new_fp)."
+            echo "   No experiment-relevant changes since the last release. Aborting."
+            exit 1
+          fi
+          echo "✅ Fingerprint differs from v$CURRENT_MAJOR."
+          echo "   Previous: $old_fp"
+          echo "   New:      $new_fp"
+
+      - name: Copy artifacts to reference/
+        env:
+          NEXT: ${{ steps.version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "reports/reference/$NEXT"
+          latest_reports=$(ls -d reports/local/*/ | sort | tail -1)
+          cp -r "$latest_reports"* "reports/reference/$NEXT/"
+
+          mkdir -p "logs/reference/$NEXT"
+          latest_logs=$(ls -d logs/local/*/ 2>/dev/null | sort | tail -1 || true)
+          if [ -n "$latest_logs" ]; then
+            cp -r "$latest_logs"* "logs/reference/$NEXT/" 2>/dev/null || true
+          fi
+
+          mkdir -p "supporting-probes/results/reference/$NEXT"
+          latest_probes=$(ls -d supporting-probes/results/local/*/ | sort | tail -1)
+          cp -r "$latest_probes"* "supporting-probes/results/reference/$NEXT/"
+
+          mkdir -p "data/reference/$NEXT"
+          cp data/manifest.json "data/reference/$NEXT/manifest.json"
+          for tier_dir in data/*/; do
+            tier_name=$(basename "$tier_dir")
+            if [ "$tier_name" = "reference" ]; then continue; fi
+            mkdir -p "data/reference/$NEXT/$tier_name"
+            cp "$tier_dir"*.yaml "data/reference/$NEXT/$tier_name/" 2>/dev/null || true
+          done
+
+      - name: Write release manifest
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+          root_hash=$(sha256sum package-lock.json | cut -d' ' -f1)
+          probes_hash=$(sha256sum supporting-probes/package-lock.json | cut -d' ' -f1)
+          latest_reports=$(ls -d reports/local/*/ | sort | tail -1)
+          run_id=$(basename "$latest_reports")
+          node_v=$(node --version)
+          python_v=$(python --version 2>&1 | awk '{print $2}')
+          ruby_v=$(ruby --version | awk '{print $2}')
+          java_v=$(java --version 2>&1 | head -1 | awk '{print $2}')
+          dotnet_v=$(dotnet --version)
+          released_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          commit=$(git rev-parse HEAD)
+          jq -n \
+            --arg version    "$NEXT_VERSION" \
+            --arg tag        "$NEXT_TAG" \
+            --arg releasedAt "$released_at" \
+            --arg commit     "$commit" \
+            --arg runId      "$run_id" \
+            --arg node       "$node_v" \
+            --arg python     "$python_v" \
+            --arg ruby       "$ruby_v" \
+            --arg java       "$java_v" \
+            --arg dotnet     "$dotnet_v" \
+            --arg rootHash   "sha256:$root_hash" \
+            --arg probesHash "sha256:$probes_hash" \
+            '{
+              version: $version,
+              tag: $tag,
+              releasedAt: $releasedAt,
+              commit: $commit,
+              runId: $runId,
+              runtime: { node: $node, python: $python, ruby: $ruby, java: $java, dotnet: $dotnet },
+              lockfileHashes: {
+                "package-lock.json": $rootHash,
+                "supporting-probes/package-lock.json": $probesHash
+              }
+            }' > "reports/reference/$NEXT_VERSION/manifest.json"
+          echo "Manifest written:"
+          cat "reports/reference/$NEXT_VERSION/manifest.json"
+
+      - name: Bump package version
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+          target="${NEXT_TAG#v}"
+          npm version "$target" --no-git-tag-version --force
+      - name: Commit and push
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json \
+            "reports/reference/$NEXT_VERSION/" \
+            "logs/reference/$NEXT_VERSION/" \
+            "supporting-probes/results/reference/$NEXT_VERSION/" \
+            "data/reference/$NEXT_VERSION/"
+          git commit -m "Release $NEXT_TAG"
+          if ! git push origin main; then
+            echo ""
+            echo "❌ Push to main failed."
+            echo "   Most likely cause: the RELEASE_PUSH_TOKEN secret is missing, expired,"
+            echo "   or lacks 'contents: write' permission on this repository, OR the"
+            echo "   token's owning user does not have a bypass entitlement on the main"
+            echo "   branch ruleset."
+            echo ""
+            echo "   Admin remediation:"
+            echo "   1. Verify RELEASE_PUSH_TOKEN exists at Settings > Secrets and variables > Actions."
+            echo "   2. Verify the fine-grained PAT is not expired and has 'Contents: Read and write'."
+            echo "   3. Verify the PAT owner has 'Always allow' bypass on the main ruleset."
+            echo ""
+            exit 1
+          fi
+          echo "✅ Pushed release $NEXT_TAG to main."

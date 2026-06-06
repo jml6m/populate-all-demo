@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
-          violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
+          violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results|data)/reference/' || true)
           if [ -n "$violations" ]; then
             echo "❌ Reference data is immutable on PRs. Only the release workflow may write to reference/."
             echo "   Offending paths:"
@@ -45,12 +45,17 @@ jobs:
       - name: Check release.yml requires release-infra label
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
           if echo "$changed" | grep -qE '^\.github/workflows/release\.yml$'; then
-            has_label=$(echo "$PR_LABELS" | jq 'map(select(.name == "release-infra")) | length')
+            labels_json=$(curl -fsSL \
+              -u "x-access-token:${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels")
+            has_label=$(echo "$labels_json" | jq 'map(select(.name == "release-infra")) | length')
             if [ "$has_label" -eq 0 ]; then
               echo "❌ This PR modifies .github/workflows/release.yml without the 'release-infra' label."
               echo "   Apply the 'release-infra' label to the PR before merging."

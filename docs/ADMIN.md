@@ -9,8 +9,8 @@ ruleset configuration.
 
 - `repo-config-guard.yml` should be a required status check on pull requests to
   `main` because it enforces the two release-safety rules that matter here:
-  - PRs must not touch `reports/reference/`, `logs/reference/`, or
-    `supporting-probes/results/reference/`
+  - PRs must not touch `reports/reference/`, `logs/reference/`,
+    `supporting-probes/results/reference/`, or `data/reference/`
   - PRs that change `.github/workflows/release.yml` must carry the
     `release-infra` label
 - `release-infra` is the only release-related label documented here. It is only
@@ -20,7 +20,7 @@ ruleset configuration.
 
 ## Reference data layout
 
-The repo holds canonical experimental artifacts under three trees:
+The repo holds canonical experimental artifacts under four trees:
 
 - `reports/reference/v<N>/` — the canonical benchmark outcomes for the tagged
   release across the experiment's dataset tiers
@@ -28,9 +28,12 @@ The repo holds canonical experimental artifacts under three trees:
   experiment run behaved
 - `supporting-probes/results/reference/v<N>/` — the canonical cross-framework
   supporting-probe results captured for that release
+- `data/reference/v<N>/` — the input dataset YAML files (and their manifest)
+  consumed by the experiment for that release — published so readers can
+  reproduce findings exactly
 
-Where `<N>` is a major version (1, 2, 3, …). Until v1 is released, only the
-`.gitkeep` files exist in each tree.
+Where `<N>` is a major version (1, 2, 3, …). Versioned directories are created
+by the release workflow.
 
 ## The repo-config-guard workflow
 
@@ -39,8 +42,9 @@ and enforces two rules:
 
 1. **Reference-data immutability** — no PR may add, modify, delete, or rename
    anything under `reports/reference/`, `logs/reference/`, or
-   `supporting-probes/results/reference/`. Only the release workflow (running on
-   `workflow_dispatch` from `main`, never on `pull_request`) may write there.
+   `supporting-probes/results/reference/`, or `data/reference/`. Only the
+   release workflow (running on `workflow_dispatch` from `main`, never on
+   `pull_request`) may write there.
 
 2. **`release.yml` change requires `release-infra` label** — any PR adding,
    modifying, deleting, or renaming `.github/workflows/release.yml` must have the
@@ -86,59 +90,93 @@ this from a local checkout of the PR branch after fetching the latest
 
 ```bash
 git fetch origin main:refs/remotes/origin/main
-git diff --no-renames --name-only --diff-filter=AMDR origin/main...HEAD | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true
+git diff --no-renames --name-only --diff-filter=AMDR origin/main...HEAD | grep -E '^(reports|logs|supporting-probes/results|data)/reference/' || true
 ```
 
 ## Release procedure
 
-The release workflow (`release.yml`, when added) should remain the **only**
-automated process permitted to write to the `reference/` trees. It should run
-on `workflow_dispatch` from `main` and never on `pull_request`.
+Releases are major-only (`v1`, `v2`, `v3`, …). The release workflow is the only
+automated process that may write to the `reference/` trees.
 
-Use this sequence when cutting an official release:
+### What the workflow does
 
-1. Update your local `main` checkout so the release starts from the current
-   protected branch tip:
+`.github/workflows/release.yml` runs on `workflow_dispatch` only. Steps, in order:
 
+1. Computes the next version from `package.json` (e.g. `1.0.0` → release `v2`).
+2. Aborts if any of `reports/reference/v<N>/`, `logs/reference/v<N>/`,
+   `supporting-probes/results/reference/v<N>/`, or `data/reference/v<N>/`
+   already exist on `main`.
+3. Sets up Node, Python, Ruby, Java 21, and .NET 8 runtimes.
+4. Runs `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run generate`,
+   `npm run experiment`, then installs probe deps and runs `npm run probe:all`.
+5. Aborts if the experiment fingerprint matches the previous release's
+   `experiment-run.json` fingerprint (no experiment-relevant changes).
+6. Copies the latest local outputs into the four `reference/v<N>/` trees.
+7. Writes `reports/reference/v<N>/manifest.json` (release evidence).
+8. Bumps `package.json` to `<N>.0.0` via `npm version`.
+9. Commits and pushes directly to `main` using the `RELEASE_PUSH_TOKEN` PAT.
+
+End-to-end runtime is roughly 5–10 minutes including polyglot setup.
+
+### Dispatching a release
+
+1. On a fresh local checkout, confirm `main` is in a releasable state:
    ```bash
    git checkout main
    git pull --ff-only
-   ```
-
-2. Run the local smoke validation from this repo root before dispatching the
-   release workflow:
-
-   ```bash
    npm ci
    npm run lint
    npm run build
    npm test
    ```
+2. On github.com, navigate to **Actions → Release → Run workflow**, select
+   `main`, and confirm.
+3. Watch the run log. Successful completion ends with `✅ Pushed release v<N>.0.0 to main`.
 
-   This confirms the same baseline behavior that the release artifacts are meant
-   to preserve.
+### Tagging the release after the workflow merges
 
-3. If the release workflow definition itself was changed in a preceding PR,
-   merge that PR with the `release-infra` label first. That label is for changes
-   to `release.yml`, not for the release run.
+Tagging is intentionally manual — the release isn't "official" until the admin
+tags the resulting commit. Choose one method.
 
-4. Dispatch the release workflow from the Actions tab on `main`, providing the
-   next major version identifier (for example `v1`). That workflow is the only
-   automation allowed to create the new `reference/` outputs.
+**CLI (preferred):**
 
-5. After the workflow completes, inspect the new `reports/reference/v<N>/`,
-   `logs/reference/v<N>/`, and `supporting-probes/results/reference/v<N>/`
-   outputs on `main` to confirm they reflect the intended canonical experiment
-   results for that release.
+```bash
+git checkout main
+git pull --ff-only
+git tag v<N>.0.0
+git push origin v<N>.0.0
+```
 
-6. Create and push the release tag for the resulting commit:
+(Replace `<N>` with the actual major number, e.g. `v1.0.0`.)
 
-   ```bash
-   git tag v<N>.0.0
-   git push origin v<N>.0.0
-   ```
+**github.com UI:**
 
-   The tag is the release marker. There is no separate release label.
+1. Navigate to **Releases → Draft a new release**.
+2. Under **Choose a tag**, type the new tag (e.g. `v1.0.0`) and pick
+   **Create new tag: v1.0.0 on publish**.
+3. **Target**: `main`.
+4. **Title**: `v1.0.0` (or similar).
+5. Leave description empty or summarize highlights.
+6. Click **Publish release**.
+
+### When the workflow fails
+
+Common failure modes:
+
+- **"Existence check"** — `reports/reference/v<N>/` already exists. The version
+  was already released or partially committed. Investigate manually before
+  retrying; do not delete reference data without admin consent.
+- **"Fingerprint check"** — The experiment produces identical results to the
+  previous release. Either there are no experiment-relevant changes since
+  v<N-1> (release not needed), or a config change was missed.
+- **"Push to main failed"** — `RELEASE_PUSH_TOKEN` is missing, expired, or
+  lacks the right scopes. The error message in the workflow log includes
+  remediation steps.
+
+For failures before the final push step, no repository state is changed on
+`main`; re-run after fixing the cause. If the push step succeeds, the release
+commit is already on `main` and re-running will stop at the existence check for
+that version.
 
 ## Post-v1 admin actions (one-time)
 
@@ -152,8 +190,9 @@ admin's discretion.
   for an anonymous viewer (open in an incognito window).
 - **Verify reference artifacts are intact post-flip.** Visit
   `reports/reference/v1/`, `logs/reference/v1/`, and
-  `supporting-probes/results/reference/v1/` on `main` from the public URL and
-  confirm the JSON/log files are visible and readable.
+  `supporting-probes/results/reference/v1/`, and `data/reference/v1/` on
+  `main` from the public URL and confirm the JSON/log files are visible and
+  readable.
 - **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
   trivial PR (e.g., a typo fix) after the visibility flip and confirm the
   guard appears in the required-checks list and passes.
@@ -161,7 +200,7 @@ admin's discretion.
 ## Troubleshooting
 
 **Guard fails with "Reference data is immutable"**: A file under one of the
-three `reference/` trees was touched in the PR diff. Revert those changes and
+four `reference/` trees was touched in the PR diff. Revert those changes and
 push; the reference trees must only be updated by the release workflow.
 
 **Guard fails with "release.yml without release-infra label"**: Add the
