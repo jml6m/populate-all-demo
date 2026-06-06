@@ -9,8 +9,8 @@ ruleset configuration.
 
 - `repo-config-guard.yml` should be a required status check on pull requests to
   `main` because it enforces the two release-safety rules that matter here:
-  - PRs must not touch `reports/reference/`, `logs/reference/`, or
-    `supporting-probes/results/reference/`
+  - PRs must not touch `reports/reference/`, `logs/reference/`,
+    `supporting-probes/results/reference/`, or `data/reference/`
   - PRs that change `.github/workflows/release.yml` must carry the
     `release-infra` label
 - `release-infra` is the only release-related label documented here. It is only
@@ -32,8 +32,8 @@ The repo holds canonical experimental artifacts under four trees:
   consumed by the experiment for that release — published so readers can
   reproduce findings exactly
 
-Where `<N>` is a major version (1, 2, 3, …). Until v1 is released, only the
-`.gitkeep` files exist in each tree.
+Where `<N>` is a major version (1, 2, 3, …). Versioned directories are created
+by the release workflow.
 
 ## The repo-config-guard workflow
 
@@ -42,8 +42,9 @@ and enforces two rules:
 
 1. **Reference-data immutability** — no PR may add, modify, delete, or rename
    anything under `reports/reference/`, `logs/reference/`, or
-   `supporting-probes/results/reference/`. Only the release workflow (running on
-   `workflow_dispatch` from `main`, never on `pull_request`) may write there.
+   `supporting-probes/results/reference/`, or `data/reference/`. Only the
+   release workflow (running on `workflow_dispatch` from `main`, never on
+   `pull_request`) may write there.
 
 2. **`release.yml` change requires `release-infra` label** — any PR adding,
    modifying, deleting, or renaming `.github/workflows/release.yml` must have the
@@ -89,7 +90,7 @@ this from a local checkout of the PR branch after fetching the latest
 
 ```bash
 git fetch origin main:refs/remotes/origin/main
-git diff --no-renames --name-only --diff-filter=AMDR origin/main...HEAD | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true
+git diff --no-renames --name-only --diff-filter=AMDR origin/main...HEAD | grep -E '^(reports|logs|supporting-probes/results|data)/reference/' || true
 ```
 
 ## Release procedure
@@ -172,8 +173,10 @@ Common failure modes:
   lacks the right scopes. The error message in the workflow log includes
   remediation steps.
 
-For partial failures (workflow died mid-step), no remediation is needed beyond
-re-running: every step is either idempotent or guarded by the existence check.
+For failures before the final push step, no repository state is changed on
+`main`; re-run after fixing the cause. If the push step succeeds, the release
+commit is already on `main` and re-running will stop at the existence check for
+that version.
 
 ## Post-v1 admin actions (one-time)
 
@@ -187,8 +190,9 @@ admin's discretion.
   for an anonymous viewer (open in an incognito window).
 - **Verify reference artifacts are intact post-flip.** Visit
   `reports/reference/v1/`, `logs/reference/v1/`, and
-  `supporting-probes/results/reference/v1/` on `main` from the public URL and
-  confirm the JSON/log files are visible and readable.
+  `supporting-probes/results/reference/v1/`, and `data/reference/v1/` on
+  `main` from the public URL and confirm the JSON/log files are visible and
+  readable.
 - **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
   trivial PR (e.g., a typo fix) after the visibility flip and confirm the
   guard appears in the required-checks list and passes.
@@ -196,7 +200,7 @@ admin's discretion.
 ## Troubleshooting
 
 **Guard fails with "Reference data is immutable"**: A file under one of the
-three `reference/` trees was touched in the PR diff. Revert those changes and
+four `reference/` trees was touched in the PR diff. Revert those changes and
 push; the reference trees must only be updated by the release workflow.
 
 **Guard fails with "release.yml without release-infra label"**: Add the
