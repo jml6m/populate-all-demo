@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           changed=$(git diff --no-renames --name-only --diff-filter=AMDR "$PR_BASE_SHA...HEAD")
-          violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results)/reference/' || true)
+          violations=$(echo "$changed" | grep -E '^(reports|logs|supporting-probes/results|data)/reference/' || true)
           if [ -n "$violations" ]; then
             echo "❌ Reference data is immutable on PRs. Only the release workflow may write to reference/."
             echo "   Offending paths:"

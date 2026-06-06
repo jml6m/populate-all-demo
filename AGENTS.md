@@ -36,7 +36,7 @@ Before starting work, check the open issues in this repository for related tasks
 **STRICTLY PROHIBITED:**
 
 - **Triggering or modifying `.github/workflows/release.yml`** — official releases are an admin-only manual flow. Never invoke it, never push commits that change it without an explicit `release-infra` label on the PR (see §5).
-- **Modifying any file under `reports/reference/`, `logs/reference/`, or `supporting-probes/results/reference/`** — these are the canonical published artifacts (see §6).
+- **Modifying any file under `reports/reference/`, `logs/reference/`, `supporting-probes/results/reference/`, or `data/reference/`** — these are the canonical published artifacts (see §6).
 - **Bumping the `version` field in `package.json`** — version bumps happen only inside the official release workflow. Do not edit this field manually for any reason.
 - **Modifying any past-version reference directory** (e.g. `reports/reference/v1/` once `v2` exists). Past versions are frozen in source control forever.
 - **Adding new top-level dependencies** to either `package.json` without explicit approval. Dev-only deps require justification in the PR description.
@@ -91,7 +91,7 @@ This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`
 
 ### 6. Reference Artifact Immutability
 
-The `reference/` directories under `reports/`, `logs/`, and `supporting-probes/results/` contain the canonical published results for each tagged release. They are organized by version (`v1/`, `v2/`, …).
+The `reference/` directories under `reports/`, `logs/`, `supporting-probes/results/`, and `data/` contain the canonical published results for each tagged release. They are organized by version (`v1/`, `v2/`, …).
 
 - **Past versions are frozen.** Once `v1/` is committed, no PR may modify any file under `reports/reference/v1/`, `logs/reference/v1/`, or `supporting-probes/results/reference/v1/`. Same rule for every subsequent version.
 - **The current in-development version's reference dir does not yet exist** until the next release workflow runs. Do not pre-create it.
@@ -171,7 +171,7 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
-5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`** — frozen per §6.
+5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`, `data/reference/v<N>/`** — frozen per §6.
 6. **`package.json` `version` field** — admin only, modified by the release workflow.
 7. **`AGENTS.md`** (this file) — admin approval required for changes.
 
