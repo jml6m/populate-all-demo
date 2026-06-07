@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "98834e0a7e2b27b0",
-    "runAt": "2026-06-07T01:09:09.397Z",
+    "fingerprint": "6a6dba00c024dab0",
+    "runAt": "2026-06-07T18:26:43.766Z",
     "nodeVersion": "v22.22.3",
     "platform": "linux",
-    "packageVersion": "0.0.0",
+    "packageVersion": "1.0.0",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-06-07T01:09:08.755Z"
+    "manifestGeneratedAt": "2026-06-07T18:26:43.077Z"
   },
   "results": [
     {
@@ -68,7 +68,7 @@
       "metrics": {
         "headlineTimeMs": null,
         "headlineRamMb": null,
-        "hydrationTimeMs": 74.486,
+        "hydrationTimeMs": 177.068,
         "probeTimingsMs": {}
       },
       "hydration": {
@@ -104,12 +104,12 @@
       "spaceComplexity": "O(V)",
       "dataset": "extreme",
       "metrics": {
-        "headlineTimeMs": 2757.259,
-        "headlineRamMb": 287.537,
-        "hydrationTimeMs": 2555.226,
+        "headlineTimeMs": 3482.344,
+        "headlineRamMb": 281.093,
+        "hydrationTimeMs": 3260.873,
         "probeTimingsMs": {
-          "naive-json": 6.72,
-          "cycle-flat": 202.033
+          "naive-json": 6.5,
+          "cycle-flat": 221.471
         }
       },
       "hydration": {
@@ -161,12 +161,12 @@
       "spaceComplexity": "O(V)",
       "dataset": "extreme",
       "metrics": {
-        "headlineTimeMs": 1561.162,
-        "headlineRamMb": 213.153,
-        "hydrationTimeMs": 1364.765,
+        "headlineTimeMs": 2174.188,
+        "headlineRamMb": 203.311,
+        "hydrationTimeMs": 1980.096,
         "probeTimingsMs": {
-          "naive-json": 6.636,
-          "cycle-flat": 196.397
+          "naive-json": 6.246,
+          "cycle-flat": 194.092
         }
       },
       "hydration": {

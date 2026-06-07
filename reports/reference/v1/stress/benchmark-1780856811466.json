@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "98834e0a7e2b27b0",
-    "runAt": "2026-06-07T01:09:09.397Z",
+    "fingerprint": "6a6dba00c024dab0",
+    "runAt": "2026-06-07T18:26:43.766Z",
     "nodeVersion": "v22.22.3",
     "platform": "linux",
-    "packageVersion": "0.0.0",
+    "packageVersion": "1.0.0",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-06-07T01:09:08.755Z"
+    "manifestGeneratedAt": "2026-06-07T18:26:43.077Z"
   },
   "results": [
     {
@@ -30,7 +30,7 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "medium",
+      "dataset": "stress",
       "skipped": true,
       "metrics": null,
       "hydration": {
@@ -64,56 +64,37 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "stress",
       "metrics": {
-        "headlineTimeMs": 46.491,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 42.912,
-        "probeTimingsMs": {
-          "naive-json": 6.596,
-          "cycle-flat": 3.579
-        }
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 23.127,
+        "probeTimingsMs": {}
       },
       "hydration": {
-        "pass": true,
+        "pass": false,
         "smartCompare": {
-          "pass": true,
-          "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "nodesProcessed": 0,
+          "edgesTraversed": 0
         },
         "flatCompare": {
-          "pass": true,
-          "errorDetail": null
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded"
         },
         "runtimeInvariant": {
-          "pass": true,
-          "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "uniqueIds": 0,
+          "uniqueInstances": 0,
+          "edgesTraversed": 0
         },
-        "doubleVerified": true
+        "doubleVerified": false
       },
       "consumerProbes": {
-        "ran": true,
-        "probes": [
-          {
-            "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
-            "outputVerification": null
-          },
-          {
-            "name": "cycle-flat",
-            "pass": true,
-            "errorDetail": null,
-            "outputVerification": {
-              "pass": true,
-              "errorDetail": null
-            }
-          }
-        ]
+        "ran": false,
+        "probes": []
       }
     },
     {
@@ -121,14 +102,14 @@
       "algorithmName": "Tarjan SCC Layering",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "stress",
       "metrics": {
-        "headlineTimeMs": 32.193,
-        "headlineRamMb": 10.25,
-        "hydrationTimeMs": 30.508,
+        "headlineTimeMs": 443.007,
+        "headlineRamMb": 52.639,
+        "hydrationTimeMs": 414.808,
         "probeTimingsMs": {
-          "naive-json": 8.537,
-          "cycle-flat": 1.685
+          "naive-json": 5.982,
+          "cycle-flat": 28.199
         }
       },
       "hydration": {
@@ -136,8 +117,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "nodesProcessed": 50000,
+          "edgesTraversed": 99988
         },
         "flatCompare": {
           "pass": true,
@@ -146,9 +127,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "uniqueIds": 50000,
+          "uniqueInstances": 50000,
+          "edgesTraversed": 99988
         },
         "doubleVerified": true
       },
@@ -178,14 +159,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "stress",
       "metrics": {
-        "headlineTimeMs": 23.074,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 19.178,
+        "headlineTimeMs": 528.237,
+        "headlineRamMb": 37.813,
+        "hydrationTimeMs": 470.556,
         "probeTimingsMs": {
-          "naive-json": 6.667,
-          "cycle-flat": 3.896
+          "naive-json": 16.079,
+          "cycle-flat": 57.681
         }
       },
       "hydration": {
@@ -193,8 +174,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "nodesProcessed": 50000,
+          "edgesTraversed": 99988
         },
         "flatCompare": {
           "pass": true,
@@ -203,9 +184,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "uniqueIds": 50000,
+          "uniqueInstances": 50000,
+          "edgesTraversed": 99988
         },
         "doubleVerified": true
       },

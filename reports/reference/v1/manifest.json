@@ -1,9 +1,9 @@
 {
   "version": "v1",
-  "tag": "v1.0.0",
-  "releasedAt": "2026-06-07T01:11:08Z",
-  "commit": "3858155e08ff4b5ccaabddca4d418532263f14b2",
-  "runId": "20260607-010909-3858155",
+  "tag": "v1.0.1",
+  "releasedAt": "2026-06-07T18:28:40Z",
+  "commit": "75cef1d1e5a6bfba652dd082c7d3b4f4b624efa9",
+  "runId": "20260607-182643-75cef1d",
   "runtime": {
     "node": "v22.22.3",
     "python": "3.14.5",
