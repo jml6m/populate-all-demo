@@ -34,6 +34,11 @@ Because every object already exists in `M`, the target is always a valid referen
 
 It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two fundamentally different challenges. An application can successfully _hydrate_ a cyclic graph in memory, and then crash at the _serialization_ step when standard functions like `JSON.stringify` encounter the circular reference. The ORM did its job correctly, but converting it into a standard industry format for shared use requires additional effort.
 
+Supporting-probe versions for the current published reference set (`v1.0.1`) are:
+TypeORM `0.3.30`, Sequelize `6.37.8`, Prisma `5.22.0`, Mongoose `8.24.0`,
+MikroORM `6.6.14`, EF Core `8.0.6`, SQLAlchemy `2.0.50`, Hibernate
+`6.6.0.Final`, and ActiveRecord `8.1.3`.
+
 For example, when serializers encounter revisited objects, common practice is hard failure or data omission. Some libraries go with their own reference-aware custom format, which is not ideal for sharing data outside of that ecosystem. Most popular backend ORMs tackle the cyclic-graph problem via the two-pass identity map strategy—but usually not in a fully best practice way, leaving the serialization gap unsolved.
 
 ### 2.1 — SQLAlchemy (Python)
@@ -43,6 +48,8 @@ SQLAlchemy's `Session` maintains an identity map of database IDs to Python objec
 ### 2.2 — Hibernate (Java) and EF Core (.NET)
 
 Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as an identity-map during object construction. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: explicit eager loading, such as EF Core's `Include` or Hibernate's `join fetch`, is required for complete data retrieval.[^4] [^5] Native serialization fails on these objects, so annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are available for mitigation, but as mentioned above, the resulting format is not guaranteed to work end-to-end in transport.[^6] [^7]
+
+The same hydration-vs-serialization split appears in the current MikroORM supporting probe: the identity map hydrates one shared in-memory instance per row, but raw `JSON.stringify` on the true cyclic graph still fails unless a cycle-aware projection/handler is applied.
 
 ### 2.4 — ActiveRecord (Ruby on Rails)
 

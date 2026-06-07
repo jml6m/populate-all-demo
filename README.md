@@ -34,7 +34,7 @@ This writes the input and answer files for all dataset tiers to the `data/` dire
 
 The script is idempotent — re-running it with the same config produces the same files and skips work that's already done. Use `npm run generate:force` to regenerate from scratch.
 
-The `data/` directory is gitignored on local development. The release workflow snapshots a copy into `data/reference/v<N>/` for each tagged release, so published findings are accompanied by the exact data files they were measured against.
+The `data/` directory is gitignored on local development. The release workflow snapshots a copy into `data/reference/v1/`, `data/reference/v2/`, etc. for each tagged release, so published findings are accompanied by the exact data files they were measured against.
 
 **Step 2 — run the experiment:**
 
@@ -60,13 +60,19 @@ npm run clean
 
 ## Development commands
 
-```bash
-npm run lint     # ESLint on src/**/*.ts (zero errors required)
-npm run build    # TypeScript compile to dist/
-npm test         # Node test runner against src/**/*.test.ts
-```
+- `npm run lint` — ESLint on `src/**/*.ts` (zero errors required).
+- `npm run build` — TypeScript compile to `dist/`.
+- `npm test` — Node test runner against `src/**/*.test.ts`.
+- `npm run npm:reinstall` — clean reinstall of root + supporting-probes dependencies (deletes `node_modules` and runs `npm ci` in both). Useful when lockfile changes or after pulling a branch with dep updates.
 
 For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, and JSON outputs), see [`supporting-probes/README.md`](./supporting-probes/README.md).
+
+## Releases
+
+- **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
+- **v1.0.1** (patch) — corrected the MikroORM supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for `supporting-probes/results/reference/v1/mikroorm.json` was updated; benchmark/algorithm results are unchanged.
+
+See <a href="https://github.com/jml6m/populate-all-demo/releases">GitHub Releases</a> for canonical release artifacts.
 
 ## Artifact directories
 

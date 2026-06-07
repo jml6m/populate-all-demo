@@ -70,6 +70,12 @@ npm run build
 npm test
 ```
 
+Dependency hard reset (root + supporting-probes):
+
+```bash
+npm run npm:reinstall
+```
+
 Run all supporting probes locally (silent by default):
 
 ```bash
@@ -162,6 +168,10 @@ Use `release_type=patch` only when fixing interpretation-critical defects
 without changing the experiment fingerprint (for example: supporting-probe
 classification bugs or release-manifest/doc errors tied to published outputs).
 
+Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe
+serialization classification behavior while preserving the same benchmark
+algorithm/dataset outcomes.
+
 - Patch mode reuses the existing major directory (`reference/v<N>/`) and
   replaces all release assets in place (`reports/`, `logs/`,
   `supporting-probes/results/`, and `data/` under `reference/v<N>/`), then
@@ -209,6 +219,9 @@ admin's discretion.
   Change visibility → Public. Confirm by typing the repo name. After flipping,
   verify the GitHub-hosted README, ADMIN, and analysis docs render correctly
   for an anonymous viewer (open in an incognito window).
+- **GitHub Discussions stays disabled by design.** Public intake is Issues only,
+  using `.github/ISSUE_TEMPLATE/bug_report.md` and
+  `.github/ISSUE_TEMPLATE/feature_request.md`.
 - **Verify reference artifacts are intact post-flip.** Visit
   `reports/reference/v1/`, `logs/reference/v1/`, and
   `supporting-probes/results/reference/v1/`, and `data/reference/v1/` on
@@ -217,6 +230,12 @@ admin's discretion.
 - **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
   trivial PR (e.g., a typo fix) after the visibility flip and confirm the
   guard appears in the required-checks list and passes.
+- **Update repository description and topics for public discovery.** Ensure the
+  short description and topics reflect cyclic-graph hydration benchmarks,
+  supporting probes, and reproducibility goals.
+- **Verify issue templates render in the New Issue picker.** Confirm both
+  `bug_report.md` and `feature_request.md` are visible and selectable from the
+  public issue creation flow.
 
 ## Troubleshooting
 
