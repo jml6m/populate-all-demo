@@ -13,7 +13,8 @@
     "clean": "node scripts/clean-local.js",
     "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "audit:ci": "npm audit --audit-level=high"
   },
   "keywords": [],
   "author": "",
