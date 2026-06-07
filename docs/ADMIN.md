@@ -116,7 +116,7 @@ that may write to the `reference/` trees.
    `experiment-run.json` fingerprint (no experiment-relevant changes). Patch mode skips this check.
 6. Copies local outputs into reference trees:
    - `major`: copies reports, logs, probes, and data into new `reference/v<N>/`
-   - `patch`: overwrites `supporting-probes/results/reference/v<N>/` only
+   - `patch`: replaces existing `reports/logs/supporting-probes/results/data/reference/v<N>/` assets in place
 7. Writes/updates `reports/reference/v<N>/manifest.json` (tag, releasedAt, runId, lockfile hashes).
 8. Bumps `package.json` to the computed SemVer via `npm version`.
 9. Commits and pushes directly to `main` using the `RELEASE_PUSH_TOKEN` PAT.
@@ -162,10 +162,11 @@ Use `release_type=patch` only when fixing interpretation-critical defects
 without changing the experiment fingerprint (for example: supporting-probe
 classification bugs or release-manifest/doc errors tied to published outputs).
 
-- Patch mode reuses the existing major directory (`reference/v<N>/`), updates
-  `supporting-probes/results/reference/v<N>/`, and refreshes
-  `reports/reference/v<N>/manifest.json` metadata (`tag`, `releasedAt`, `runId`,
-  `lockfileHashes`).
+- Patch mode reuses the existing major directory (`reference/v<N>/`) and
+  replaces all release assets in place (`reports/`, `logs/`,
+  `supporting-probes/results/`, and `data/` under `reference/v<N>/`), then
+  refreshes `reports/reference/v<N>/manifest.json` metadata (`tag`,
+  `releasedAt`, `runId`, `lockfileHashes`).
 - Patch mode must **not** be used for experiment-definition changes. If the
   experiment fingerprint should change, run a major release instead.
 
