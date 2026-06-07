@@ -1,6 +1,6 @@
 {
   "name": "populate-all-demo",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Traversing Directed Cyclic Graphs without depth boundaries",
   "main": "dist/generate.js",
   "scripts": {
