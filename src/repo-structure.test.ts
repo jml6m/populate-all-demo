@@ -61,7 +61,7 @@ void describe('repo-structure — required docs', () => {
 // rules in the root README instead.  Version subdirectories (v1/, v2/, …)
 // are written exclusively by the release workflow.
 //
-// Versioned structure invariant (AGENTS.md §6):
+// Versioned structure invariant (release workflow contract):
 //   - `package.json.version` reflects the MOST RECENTLY RELEASED version.
 //     `release.yml` bumps from current → next during the release run, so
 //     after v1.0.0 ships, package.json shows "1.0.0" (not "2.0.0").
@@ -196,11 +196,11 @@ void describe('repo-structure — package.json', () => {
     });
   }
 
-  void it('version follows X.0.Z semver (major + patch only, no minor)', () => {
+  void it('version uses X.0.Z form (minor is fixed at 0)', () => {
     assert.match(
       pkg.version,
       /^\d+\.0\.\d+$/,
-      `package.json version "${pkg.version}" must follow X.0.Z form (e.g., 1.0.0, 1.0.1, 2.0.0). Minor releases are not used in this repo — release.yml supports major (X.0.0 → (X+1).0.0) and patch (X.0.Z → X.0.(Z+1)) only.`
+      `package.json version "${pkg.version}" must use X.0.Z form (major and patch numeric; minor fixed at 0), e.g. 1.0.0, 1.0.1, 2.0.0.`
     );
   });
 });
