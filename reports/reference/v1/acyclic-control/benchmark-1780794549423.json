@@ -1,0 +1,238 @@
+{
+  "metadata": {
+    "fingerprint": "98834e0a7e2b27b0",
+    "runAt": "2026-06-07T01:09:09.397Z",
+    "nodeVersion": "v22.22.3",
+    "platform": "linux",
+    "packageVersion": "0.0.0",
+    "datasets": [
+      "acyclic-control",
+      "basic",
+      "medium",
+      "stress",
+      "extreme"
+    ],
+    "algorithms": [
+      "Naive Recursion",
+      "Map Tracker",
+      "Tarjan SCC Layering",
+      "Two-Pass Wire"
+    ],
+    "probes": [
+      "naive-json",
+      "cycle-flat"
+    ],
+    "manifestGeneratedAt": "2026-06-07T01:09:08.755Z"
+  },
+  "results": [
+    {
+      "algorithmCategory": "Reference Tracking",
+      "algorithmName": "Naive Recursion",
+      "timeComplexity": "O(∞)",
+      "spaceComplexity": "O(∞)",
+      "dataset": "acyclic-control",
+      "metrics": {
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 0.726,
+        "probeTimingsMs": {}
+      },
+      "hydration": {
+        "pass": false,
+        "smartCompare": {
+          "pass": false,
+          "errorDetail": "Graph topology mismatch at edge comp_2→comp_8: expected edge to point to already",
+          "nodesProcessed": 8,
+          "edgesTraversed": 8
+        },
+        "flatCompare": {
+          "pass": false,
+          "errorDetail": "Dependency of node \"comp_0\" at index 0 is not present in the top-level actual ar"
+        },
+        "runtimeInvariant": {
+          "pass": false,
+          "errorDetail": "Invariant skipped (structural compare failed)",
+          "uniqueIds": 0,
+          "uniqueInstances": 0,
+          "edgesTraversed": 0
+        },
+        "doubleVerified": false
+      },
+      "consumerProbes": {
+        "ran": false,
+        "probes": []
+      }
+    },
+    {
+      "algorithmCategory": "Reference Tracking",
+      "algorithmName": "Map Tracker",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "acyclic-control",
+      "metrics": {
+        "headlineTimeMs": 0.704,
+        "headlineRamMb": 0.081,
+        "hydrationTimeMs": 0.674,
+        "probeTimingsMs": {
+          "naive-json": 0.03,
+          "cycle-flat": 0.183
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "algorithmCategory": "Topological",
+      "algorithmName": "Tarjan SCC Layering",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "acyclic-control",
+      "metrics": {
+        "headlineTimeMs": 0.802,
+        "headlineRamMb": 0.099,
+        "hydrationTimeMs": 0.793,
+        "probeTimingsMs": {
+          "naive-json": 0.009,
+          "cycle-flat": 0.022
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "algorithmCategory": "Schema-Driven",
+      "algorithmName": "Two-Pass Wire",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "acyclic-control",
+      "metrics": {
+        "headlineTimeMs": 0.221,
+        "headlineRamMb": 0.039,
+        "hydrationTimeMs": 0.21,
+        "probeTimingsMs": {
+          "naive-json": 0.012,
+          "cycle-flat": 0.011
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

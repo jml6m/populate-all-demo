@@ -1,0 +1,43 @@
+=== smartCompare verbose trace — acyclic-control tier ===
+nodesProcessed: 10
+edgesTraversed: 11
+twoPassWire pass: true
+
+Dataset structure: 10-node DAG (lower-index nodes depend on higher-index nodes only).
+comp_0 is the root; comp_9 is the leaf.  Edges to already-visited nodes are labeled
+"visited-edge" here; true back-edges do not exist because the graph is acyclic.
+Algorithms with memoization (Map Tracker, Two-Pass Wire, Tarjan SCC) pass cleanly.
+Naive Recursion fails: it creates a fresh object per populate() call, producing a
+shared-reference mismatch even without cycles.
+
+[smartCompare] Root[0]: actual="comp_0" vs expected="comp_0"
+[smartCompare] EDGE #1 comp_0→comp_1: new, paired "comp_1"↔"comp_1" (1 deps)
+[smartCompare] EDGE #2 comp_1→comp_4: new, paired "comp_4"↔"comp_4" (2 deps)
+[smartCompare] EDGE #3 comp_4→comp_8: new, paired "comp_8"↔"comp_8" (1 deps)
+[smartCompare] EDGE #4 comp_8→comp_9: new, paired "comp_9"↔"comp_9" (0 deps)
+[smartCompare] EDGE #5 comp_4→comp_5: new, paired "comp_5"↔"comp_5" (0 deps)
+[smartCompare] EDGE #6 comp_0→comp_2: new, paired "comp_2"↔"comp_2" (2 deps)
+[smartCompare] EDGE #7 comp_2→comp_3: new, paired "comp_3"↔"comp_3" (0 deps)
+[smartCompare] EDGE #8 comp_2→comp_8: visited-edge ↔ comp_8 ✓
+[smartCompare] EDGE #9 comp_0→comp_5: visited-edge ↔ comp_5 ✓
+[smartCompare] EDGE #10 comp_0→comp_6: new, paired "comp_6"↔"comp_6" (0 deps)
+[smartCompare] EDGE #11 comp_0→comp_7: new, paired "comp_7"↔"comp_7" (0 deps)
+[smartCompare] Root[1]: actual="comp_1" vs expected="comp_1"
+[smartCompare] Already paired (outer revisit): actual="comp_1" ↔ expected="comp_1" ✓
+[smartCompare] Root[2]: actual="comp_2" vs expected="comp_2"
+[smartCompare] Already paired (outer revisit): actual="comp_2" ↔ expected="comp_2" ✓
+[smartCompare] Root[3]: actual="comp_3" vs expected="comp_3"
+[smartCompare] Already paired (outer revisit): actual="comp_3" ↔ expected="comp_3" ✓
+[smartCompare] Root[4]: actual="comp_4" vs expected="comp_4"
+[smartCompare] Already paired (outer revisit): actual="comp_4" ↔ expected="comp_4" ✓
+[smartCompare] Root[5]: actual="comp_5" vs expected="comp_5"
+[smartCompare] Already paired (outer revisit): actual="comp_5" ↔ expected="comp_5" ✓
+[smartCompare] Root[6]: actual="comp_6" vs expected="comp_6"
+[smartCompare] Already paired (outer revisit): actual="comp_6" ↔ expected="comp_6" ✓
+[smartCompare] Root[7]: actual="comp_7" vs expected="comp_7"
+[smartCompare] Already paired (outer revisit): actual="comp_7" ↔ expected="comp_7" ✓
+[smartCompare] Root[8]: actual="comp_8" vs expected="comp_8"
+[smartCompare] Already paired (outer revisit): actual="comp_8" ↔ expected="comp_8" ✓
+[smartCompare] Root[9]: actual="comp_9" vs expected="comp_9"
+[smartCompare] Already paired (outer revisit): actual="comp_9" ↔ expected="comp_9" ✓
+[smartCompare] ✅ PASS — 10 nodes, 11 edges

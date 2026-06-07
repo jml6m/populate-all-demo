@@ -1,0 +1,40 @@
+=== smartCompare verbose trace — 2-node cycle back-edge ===
+nodesProcessed: 2
+edgesTraversed: 2
+pass: true
+
+[smartCompare] Root[0]: actual="comp_0" vs expected="comp_0"
+[smartCompare] EDGE #1 comp_0→comp_1: new, paired "comp_1"↔"comp_1" (1 deps)
+[smartCompare] EDGE #2 comp_1→comp_0: back-edge ↔ comp_0 ✓
+[smartCompare] Root[1]: actual="comp_1" vs expected="comp_1"
+[smartCompare] Already paired (outer revisit): actual="comp_1" ↔ expected="comp_1" ✓
+[smartCompare] ✅ PASS — 2 nodes, 2 edges
+
+=== smartCompare verbose trace — wrong back-edge target (A→B→A vs A→B→B) ===
+pass: false
+errorDetail: Cycle structure mismatch at node "a": expected cycle target differs
+
+[smartCompare] Root[0]: actual="a" vs expected="a"
+[smartCompare] EDGE #1 a→b: new, paired "b"↔"b" (1 deps)
+[smartCompare] ❌ EDGE #2 b→a: back-edge mismatch, paired with "a" but expected "b"
+[smartCompare] ❌ FAIL — Cycle structure mismatch at node "a": expected cycle target differs
+
+=== smartCompare verbose trace — graph topology mismatch (reversePaired) ===
+Scenario: actual has two separate 2-cycles (p↔q) and (r↔s).
+Expected has the first cycle correct (p↔q), but its second cycle points to
+nodes already visited in the first cycle: r→q and s→p. The expected graph is
+valid but structurally different from actual. When smartCompare reaches the
+edge r→s (actual) vs r→q (expected), the expected destination "q" was already
+paired with actual "q" — the actual edge points to a different node than
+the expected edge does.
+pass: false
+errorDetail: Graph topology mismatch at edge r→s: expected edge to point to already-visited node "q", but actual graph points to "s"
+
+[smartCompare] Root[0]: actual="p" vs expected="p"
+[smartCompare] EDGE #1 p→q: new, paired "q"↔"q" (1 deps)
+[smartCompare] EDGE #2 q→p: back-edge ↔ p ✓
+[smartCompare] Root[1]: actual="q" vs expected="q"
+[smartCompare] Already paired (outer revisit): actual="q" ↔ expected="q" ✓
+[smartCompare] Root[2]: actual="r" vs expected="r"
+[smartCompare] ❌ EDGE #3 r→s: topology mismatch. Expected destination "q" was already paired with "q"
+[smartCompare] ❌ FAIL — Graph topology mismatch at edge r→s: expected edge to point to already-visited node "q", but actual graph points to "s"

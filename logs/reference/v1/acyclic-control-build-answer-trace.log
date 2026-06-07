@@ -1,0 +1,46 @@
+
+=== buildPopulatedFromAnswer verbose trace — acyclic-control tier ===
+
+Dataset structure: 10-node DAG (lower-index nodes depend on higher-index nodes only).
+No cycles exist.  Dependency edges are present; identity-sharing is required for
+any node that appears as a dependency of multiple parents.
+Algorithms with memoization reconstruct this correctly; Naive Recursion does not.
+
+--- Pass 1: Shell creation ---
+Shell: comp_0 (deps: [1, 2, 5, 6, 7])
+Shell: comp_1 (deps: [4])
+Shell: comp_2 (deps: [3, 8])
+Shell: comp_3 (deps: [])
+Shell: comp_4 (deps: [8, 5])
+Shell: comp_5 (deps: [])
+Shell: comp_6 (deps: [])
+Shell: comp_7 (deps: [])
+Shell: comp_8 (deps: [9])
+Shell: comp_9 (deps: [])
+
+--- Pass 2: Wiring ---
+Wire: comp_0.dependencies[0] → comp_1 (index 1)
+Wire: comp_0.dependencies[1] → comp_2 (index 2)
+Wire: comp_0.dependencies[2] → comp_5 (index 5)
+Wire: comp_0.dependencies[3] → comp_6 (index 6)
+Wire: comp_0.dependencies[4] → comp_7 (index 7)
+Wire: comp_1.dependencies[0] → comp_4 (index 4)
+Wire: comp_2.dependencies[0] → comp_3 (index 3)
+Wire: comp_2.dependencies[1] → comp_8 (index 8)
+Wire: comp_4.dependencies[0] → comp_8 (index 8)
+Wire: comp_4.dependencies[1] → comp_5 (index 5)
+Wire: comp_8.dependencies[0] → comp_9 (index 9)
+Total edges wired: 11
+
+--- Identity checks ---
+Identity check: nodes[0].dependencies[0] === nodes[1] → true
+Identity check: nodes[0].dependencies[1] === nodes[2] → true
+Identity check: nodes[0].dependencies[2] === nodes[5] → true
+Identity check: nodes[0].dependencies[3] === nodes[6] → true
+Identity check: nodes[0].dependencies[4] === nodes[7] → true
+Identity check: nodes[1].dependencies[0] === nodes[4] → true
+Identity check: nodes[2].dependencies[0] === nodes[3] → true
+Identity check: nodes[2].dependencies[1] === nodes[8] → true
+Identity check: nodes[4].dependencies[0] === nodes[8] → true
+Identity check: nodes[4].dependencies[1] === nodes[5] → true
+Identity check: nodes[8].dependencies[0] === nodes[9] → true

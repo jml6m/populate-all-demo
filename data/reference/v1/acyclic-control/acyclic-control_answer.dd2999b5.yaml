@@ -1,0 +1,31 @@
+- id: comp_0
+  depIndices:
+    - 1
+    - 2
+    - 5
+    - 6
+    - 7
+- id: comp_1
+  depIndices:
+    - 4
+- id: comp_2
+  depIndices:
+    - 3
+    - 8
+- id: comp_3
+  depIndices: []
+- id: comp_4
+  depIndices:
+    - 8
+    - 5
+- id: comp_5
+  depIndices: []
+- id: comp_6
+  depIndices: []
+- id: comp_7
+  depIndices: []
+- id: comp_8
+  depIndices:
+    - 9
+- id: comp_9
+  depIndices: []

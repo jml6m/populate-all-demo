@@ -1,0 +1,26 @@
+{
+  "findings": {
+    "hydration": {
+      "detail": "Hydration check passed.",
+      "result": "PASS"
+    },
+    "queryGate": {
+      "detail": "No additional queries observed during traversal.",
+      "result": "PASS"
+    },
+    "serialize": {
+      "detail": "JSON serialization passed.",
+      "result": "SERIALIZE_PASS"
+    },
+    "smartCheck": {
+      "detail": "Identity and dependency closure checks passed.",
+      "result": "PASS"
+    }
+  },
+  "language": "typescript",
+  "library": "MikroORM",
+  "libraryVersion": "6.6.14",
+  "outcome": "PASS",
+  "probe": "mikroorm",
+  "runtimeVersion": "v22.22.3"
+}

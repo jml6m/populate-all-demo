@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-06-07T01:09:08.755Z",
+  "files": {
+    "acyclic-control_input": {
+      "filename": "acyclic-control/acyclic-control_input.6f41d7b7.yaml",
+      "contentHash": "6f41d7b7"
+    },
+    "acyclic-control_answer": {
+      "filename": "acyclic-control/acyclic-control_answer.dd2999b5.yaml",
+      "contentHash": "dd2999b5"
+    },
+    "basic_input": {
+      "filename": "basic/basic_input.69bb504d.yaml",
+      "contentHash": "69bb504d"
+    },
+    "basic_answer": {
+      "filename": "basic/basic_answer.d891dfc7.yaml",
+      "contentHash": "d891dfc7"
+    },
+    "medium_input": {
+      "filename": "medium/medium_input.b1c4e31c.yaml",
+      "contentHash": "b1c4e31c"
+    },
+    "medium_answer": {
+      "filename": "medium/medium_answer.4bb5b179.yaml",
+      "contentHash": "4bb5b179"
+    },
+    "stress_input": {
+      "filename": "stress/stress_input.eb21eb21.yaml",
+      "contentHash": "eb21eb21"
+    },
+    "stress_answer": {
+      "filename": "stress/stress_answer.3e187889.yaml",
+      "contentHash": "3e187889"
+    },
+    "extreme_input": {
+      "filename": "extreme/extreme_input.91aa0180.yaml",
+      "contentHash": "91aa0180"
+    },
+    "extreme_answer": {
+      "filename": "extreme/extreme_answer.cfebe4be.yaml",
+      "contentHash": "cfebe4be"
+    }
+  }
+}

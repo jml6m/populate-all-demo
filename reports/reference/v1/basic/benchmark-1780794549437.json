@@ -1,0 +1,238 @@
+{
+  "metadata": {
+    "fingerprint": "98834e0a7e2b27b0",
+    "runAt": "2026-06-07T01:09:09.397Z",
+    "nodeVersion": "v22.22.3",
+    "platform": "linux",
+    "packageVersion": "0.0.0",
+    "datasets": [
+      "acyclic-control",
+      "basic",
+      "medium",
+      "stress",
+      "extreme"
+    ],
+    "algorithms": [
+      "Naive Recursion",
+      "Map Tracker",
+      "Tarjan SCC Layering",
+      "Two-Pass Wire"
+    ],
+    "probes": [
+      "naive-json",
+      "cycle-flat"
+    ],
+    "manifestGeneratedAt": "2026-06-07T01:09:08.755Z"
+  },
+  "results": [
+    {
+      "algorithmCategory": "Reference Tracking",
+      "algorithmName": "Naive Recursion",
+      "timeComplexity": "O(∞)",
+      "spaceComplexity": "O(∞)",
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 8.097,
+        "probeTimingsMs": {}
+      },
+      "hydration": {
+        "pass": false,
+        "smartCompare": {
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "nodesProcessed": 0,
+          "edgesTraversed": 0
+        },
+        "flatCompare": {
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded"
+        },
+        "runtimeInvariant": {
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "uniqueIds": 0,
+          "uniqueInstances": 0,
+          "edgesTraversed": 0
+        },
+        "doubleVerified": false
+      },
+      "consumerProbes": {
+        "ran": false,
+        "probes": []
+      }
+    },
+    {
+      "algorithmCategory": "Reference Tracking",
+      "algorithmName": "Map Tracker",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": 0.152,
+        "headlineRamMb": 0.049,
+        "hydrationTimeMs": 0.137,
+        "probeTimingsMs": {
+          "naive-json": 0.042,
+          "cycle-flat": 0.015
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "algorithmCategory": "Topological",
+      "algorithmName": "Tarjan SCC Layering",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": 0.246,
+        "headlineRamMb": 0.064,
+        "hydrationTimeMs": 0.229,
+        "probeTimingsMs": {
+          "naive-json": 0.029,
+          "cycle-flat": 0.017
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "algorithmCategory": "Schema-Driven",
+      "algorithmName": "Two-Pass Wire",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": 0.798,
+        "headlineRamMb": 0,
+        "hydrationTimeMs": 0.79,
+        "probeTimingsMs": {
+          "naive-json": 0.026,
+          "cycle-flat": 0.008
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

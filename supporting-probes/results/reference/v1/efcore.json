@@ -1,0 +1,26 @@
+{
+  "findings": {
+    "hydration": {
+      "detail": "Hydration check passed.",
+      "result": "PASS"
+    },
+    "queryGate": {
+      "detail": "No additional queries observed during traversal.",
+      "result": "PASS"
+    },
+    "serialize": {
+      "detail": "JsonException: A possible object cycle was detected. This can either be due to a cycle or if the object depth is larger than the maximum allowed depth of 64. Consider using ReferenceHandler.Preserve on JsonSerializerOptions to support cycles. Path: $.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Id.\n   at System.Text.Json.ThrowHelper.ThrowJsonException_SerializerCycleDetected(Int32 maxDepth)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo\u00601.GetMemberAndWriteJson(Object obj, WriteStack\u0026 state, Utf8JsonWriter writer)\n   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter\u00601.OnTryWrite(Utf8JsonWriter writer, T value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Converters.ListOfTConverter\u00602.OnWriteResume(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonCollectionConverter\u00602.OnTryWrite(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo\u00601.GetMemberAndWriteJson(Object obj, WriteStack\u0026 state, Utf8JsonWriter writer)\n   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter\u00601.OnTryWrite(Utf8JsonWriter writer, T value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Converters.ListOfTConverter\u00602.OnWriteResume(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)",
+      "result": "SERIALIZE_FAIL_CYCLE"
+    },
+    "smartCheck": {
+      "detail": "Identity and dependency closure checks passed.",
+      "result": "PASS"
+    }
+  },
+  "language": "csharp",
+  "library": "EF Core",
+  "libraryVersion": "8.0.6",
+  "outcome": "SERIALIZE_FAIL",
+  "probe": "efcore",
+  "runtimeVersion": "8.0.27"
+}
