@@ -180,10 +180,15 @@ jobs:
           RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
         run: |
           set -euo pipefail
+          rm -rf "supporting-probes/results/reference/$NEXT"
           mkdir -p "supporting-probes/results/reference/$NEXT"
           latest_probes=$(ls -d supporting-probes/results/local/*/ | sort | tail -1)
           cp -r "$latest_probes"* "supporting-probes/results/reference/$NEXT/"
           if [ "$RELEASE_TYPE" = "patch" ]; then
+            if [ ! -d "reports/reference/$NEXT" ]; then
+              echo "❌ Patch mode requires an existing reports/reference/$NEXT directory (run a major release first)."
+              exit 1
+            fi
             echo "✅ Patch mode: updated supporting probe reference outputs in $NEXT."
             exit 0
           fi

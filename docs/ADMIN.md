@@ -138,7 +138,7 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
    `main`, and choose:
    - `release_type=major` for a new canonical major release
    - `release_type=patch` for a probe/data hotfix within the current major
-3. Watch the run log. Successful completion ends with `✅ Pushed release v<N>.0.0 to main`.
+3. Watch the run log. Successful completion ends with `✅ Pushed release v<N>.0.0 to main.` (major) or `✅ Pushed release v<N>.0.<P> to main.` (patch).
 
 ### Tagging the release after the workflow merges
 
