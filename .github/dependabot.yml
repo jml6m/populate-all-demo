@@ -21,6 +21,7 @@ multi-ecosystem-groups:
   all-dependencies:
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
     assignees:
@@ -33,7 +34,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    open-pull-requests-limit: 1
     versioning-strategy: "increase"
 
   # TypeScript supporting probes (typeorm, sequelize, mikroorm, prisma, mongoose)
@@ -42,7 +42,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    open-pull-requests-limit: 1
     versioning-strategy: "increase"
 
   # GitHub Actions workflows under .github/workflows
@@ -51,7 +50,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    open-pull-requests-limit: 1
 
   # Hibernate (Java) supporting probe
   - package-ecosystem: "maven"
@@ -59,7 +57,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    open-pull-requests-limit: 1
 
   # EF Core (.NET) supporting probe
   - package-ecosystem: "nuget"
@@ -67,4 +64,3 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    open-pull-requests-limit: 1
