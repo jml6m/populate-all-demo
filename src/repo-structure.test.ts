@@ -62,10 +62,14 @@ void describe('repo-structure — required docs', () => {
 // are written exclusively by the release workflow.
 //
 // Versioned structure invariant (AGENTS.md §6):
-//   - Versions 1 through (major - 1) are already released → their vK/ dirs
-//     must be present in all three reference directories.
-//   - The current in-development version (vMajor/) must NOT be pre-created.
-//   - All three reference directories must always hold an identical set of
+//   - `package.json.version` reflects the MOST RECENTLY RELEASED version.
+//     `release.yml` bumps from current → next during the release run, so
+//     after v1.0.0 ships, package.json shows "1.0.0" (not "2.0.0").
+//   - Versions 1 through majorVersion are already released → their vK/ dirs
+//     must be present in all reference directories.
+//   - The next major version (v(majorVersion+1)/) must NOT be pre-created;
+//     it will be written by the next release workflow run.
+//   - All reference directories must always hold an identical set of
 //     version subdirectories (no partial releases).
 // ---------------------------------------------------------------------------
 
@@ -113,8 +117,8 @@ void describe('repo-structure — reference directory versioned structure', () =
   };
   const majorVersion = parseInt(pkg.version.split('.')[0]!, 10);
 
-  // All released versions (1 through major-1) must be present in every reference dir.
-  for (let k = 1; k < majorVersion; k++) {
+  // All released versions (1 through majorVersion) must be present in every reference dir.
+  for (let k = 1; k <= majorVersion; k++) {
     for (const refDir of referenceDirs) {
       const label = path.relative(ROOT, refDir);
       void it(`${label}/v${k}/ exists (released at v${k}.0.0)`, () => {
@@ -126,13 +130,14 @@ void describe('repo-structure — reference directory versioned structure', () =
     }
   }
 
-  // The current in-development version's directory must not be pre-created.
+  // The next not-yet-released major version's directory must not be pre-created.
+  const nextMajor = majorVersion + 1;
   for (const refDir of referenceDirs) {
     const label = path.relative(ROOT, refDir);
-    void it(`${label}/v${majorVersion}/ is not pre-created (written by release workflow only)`, () => {
+    void it(`${label}/v${nextMajor}/ is not pre-created (written by release workflow only)`, () => {
       assert.ok(
-        !fs.existsSync(path.join(refDir, `v${majorVersion}`)),
-        `${label}/v${majorVersion}/ must not exist yet — it will be created by the v${majorVersion}.0.0 release workflow, not pre-created manually`
+        !fs.existsSync(path.join(refDir, `v${nextMajor}`)),
+        `${label}/v${nextMajor}/ must not exist yet — it will be created by the v${nextMajor}.0.0 release workflow, not pre-created manually`
       );
     });
   }
@@ -191,11 +196,11 @@ void describe('repo-structure — package.json', () => {
     });
   }
 
-  void it('version follows major-version-only semver (X.0.0)', () => {
+  void it('version follows X.0.Z semver (major + patch only, no minor)', () => {
     assert.match(
       pkg.version,
-      /^\d+\.0\.0$/,
-      `package.json version "${pkg.version}" must be major-version-only (X.0.0); minor/patch releases are not used in this repo`
+      /^\d+\.0\.\d+$/,
+      `package.json version "${pkg.version}" must follow X.0.Z form (e.g., 1.0.0, 1.0.1, 2.0.0). Minor releases are not used in this repo — release.yml supports major (X.0.0 → (X+1).0.0) and patch (X.0.Z → X.0.(Z+1)) only.`
     );
   });
 });
