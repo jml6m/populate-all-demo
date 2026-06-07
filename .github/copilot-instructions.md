@@ -7,7 +7,7 @@
 
 This document defines the operational parameters, architectural standards, and safety protocols for all AI agents working within this repository.
 
-> **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
+> **Single Source of Truth**: `AGENTS.md` is the authoritative reference for coding standards, architecture rules, and project policies in this repository. This file mirrors those rules to provide repository-level context to GitHub Copilot; if anything here conflicts with `AGENTS.md`, follow `AGENTS.md`.
 
 > **Research repo (private during development, public after v1)**: This will be published as a public research repository after the first official release. Until then, contributors should still treat committed `reference/` artifacts as the canonical record of published findings — they are immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
 
@@ -21,7 +21,7 @@ For unsupervised runs, if you attempt to fix an error and the **same** error per
 
 - **STOP** trying to fix it.
 - Revert changes to the last functioning state.
-- Comment out the breaking test/code with `// FIXME: Agent worker failed`.
+- Comment out the breaking test/code with `// FIXME: <reason>; tracked in issue #<id>`.
 - Log the failure and move to the next task.
 
 ### 2. GitHub Issue Awareness
@@ -167,13 +167,13 @@ If a change you make causes the same input to produce different output across re
 
 The following paths are **agent-protected**. Do not modify without explicit instruction from the project admin in the PR's problem statement:
 
-1. **`.github/workflows/release.yml`** (when it exists) — the official release workflow. Requires `release-infra` label on the PR.
+1. **`.github/workflows/release.yml`** — the official release workflow. Requires `release-infra` label on the PR.
 2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
 5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`, `data/reference/v<N>/`** — frozen per §6.
 6. **`package.json` `version` field** — admin only, modified by the release workflow.
-7. **`AGENTS.md`** (this file) — admin approval required for changes.
+7. **`AGENTS.md`** — admin approval required for changes.
 
 ### Interaction Guidelines
 
