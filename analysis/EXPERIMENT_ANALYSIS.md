@@ -17,22 +17,22 @@ The limitations of current hydration strategies are not unique to a single progr
 
 When testing the broader ORM/ODM landscape for cyclic-reference and recursive-population capabilities, severe functional gaps appear across virtually all major data libraries:
 
-| Library / Ecosystem               | Tested Version (`reference/v1`)         | Eager-Loading & Hydration Strategy                                                                                                                                                                                                                             | Recursive Limits (Hydration & Serialization Gaps)                                                                                                                                                                                                                                               | Tracked Issues / Discussions                                                                                                                                                                                    |
-| :-------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Mongoose**<br>_(Node.js)_       | v8.24.0                                 | Relies on explicit `.populate()` chaining. No built-in `populateAll()` [[1]](https://mongoosejs.com/docs/populate.html)                                                                                                                                        | **Hydration Gap:** There is no API to resolve the full schema in a single call. Self-referential schemas have no safe depth limit — each association level must be named explicitly, and nodes beyond the last named level go unfetched.                                                         | [#16074](https://github.com/Automattic/mongoose/issues/16074) — Tracks the community discussion on whether Mongoose should support a schema-driven `populateAll()` that safely traverses schemas of arbitrary depth, including cycles. |
-| **Sequelize**<br>_(Node.js)_      | v6.37.8                                 | `{ include: { all: true, nested: true } }` [[1]](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything) [[2]](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/)                             | **Hydration Gap:** In self-referential models, this method truncates recursive objects at depth 1 to prevent infinite SQL joins.                                                                                                                                                                 | The depth cap reflects a structural SQL constraint: a query cannot self-join a tree of unbounded depth. Sequelize enforces a ceiling rather than letting the query builder recurse without bound.               |
-| **TypeORM**<br>_(Node.js)_        | v0.3.30                                 | `eager: true` via entity decorators [[1]](https://typeorm.io/eager-and-lazy-relations)                                                                                                                                                                         | **Hydration Gap:** Circular eager relations are disallowed at the entity level. `eager: true` cannot be set on both sides of a bidirectional relation; a positive control with only one eager side succeeds.                                                                                    | [#3663](https://github.com/typeorm/typeorm/issues/3663) — Tracks the open question of whether TypeORM should handle bidirectional recursive `eager: true` safely, e.g. by applying a cycle limit at initialization rather than crashing. |
-| **Prisma**<br>_(Node.js)_         | v5.22.0                                 | Explicit `include` mapping [[1]](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)                                                                                                                                                        | **Hydration Gap:** Recursive self-relations require statically declaring every nesting level in the query. The result truncates at the deepest declared level; the Prisma Client type system provides no mechanism for unbounded depth.                                                           | [#3725](https://github.com/prisma/prisma/issues/3725) — Open discussion on first-class recursive relation support in Prisma Client, including whether dynamic or cursor-based depth traversal is feasible within the current type system. |
-| **MikroORM**<br>_(Node.js)_       | v6.6.14                                 | `populate: ['*']` [[1]](https://mikro-orm.io/docs/populating-relations#populating-all-relations)                                                                                                                                                               | **Hydration Gap:** `populate: ['*']` strictly halts at depth 1; deeper traversal requires hardcoded explicit paths. The Identity Map can correctly hydrate cyclic graphs when explicit paths are given — the wildcard limit is a query-API constraint, not a fundamental hydration failure.     | The wildcard depth cap is documented as intentional. Community discussion centers on whether the Identity Map's cycle-safe in-memory wiring makes it safe to enable deeper wildcard traversal. |
-| **SQLAlchemy**<br>_(Python)_      | v2.0.50                                 | `joinedload` with `join_depth` limits, or bulk loading via Identity Map [[1]](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) [[2]](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)                                                    | **Hydration Gap (Partial) & Serialization Gap:** Self-referential schemas require an explicit `join_depth` cap to prevent infinite SQL joins. The Identity Map cleanly wires cyclic objects in memory, but downstream `json.dumps` still errors on the resulting circular references.           | [[1]](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html) — Documents `post_update=True` for circular FK write ordering (a deferred UPDATE approach). Downstream JSON serialization of cyclic objects is treated as application-layer responsibility outside SQLAlchemy's scope. |
-| **Hibernate/Jackson**<br>_(Java)_ | v6.6.0.Final (Hibernate)<br>v2.17.0 (Jackson) | Persistence Context acts as an Identity Map [[1]](https://javadoc.io/doc/com.fasterxml.jackson.core/jackson-databind/2.17.0/com/fasterxml/jackson/databind/ObjectMapper.html) [[2]](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations) | **Serialization Gap:** The Persistence Context resolves memory cycles correctly (e.g. A↔B are wired without duplication). Passing that graph to standard Jackson serialization throws `JsonMappingException` because the serializer has no cycle guard.                                          | [[1]](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion) — Canonical guide on Jackson's annotation-based options. `@JsonIdentityInfo` replaces revisited objects with their ID (full fidelity); `@JsonManagedReference`/`@JsonBackReference`/`@JsonIgnore` suppress the back-reference side (data loss). |
-| **EF Core**<br>_(.NET)_           | v8.0.6                                  | Statically chained `.Include()` / `.ThenInclude()` [[1]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager) [[2]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)                                           | **Hydration Gap (Partial) & Serialization Gap:** Requires statically chained `.ThenInclude()` — no unbounded wildcard. `ChangeTracker` wires cycles safely in memory, but `System.Text.Json` throws `JsonException` upon serializing them.                                                      | Two built-in serialization options are documented in the official guide: `ReferenceHandler.IgnoreCycles` (sets looping references to `null`) and `ReferenceHandler.Preserve` (emits `$id`/`$ref` metadata incompatible with standard JSON consumers) — both trade graph fidelity for safety. |
-| **ActiveRecord**<br>_(Ruby)_      | v8.1.3                                  | Explicit `.includes()` depth limits [[1]](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html) [[2]](https://docs.ruby-lang.org/en/3.3/JSON.html)                                                                                  | **Hydration & Serialization Gaps:** Traversal beyond the declared `.includes()` depth silently falls back to N+1 lazy queries. Built-in `.to_json` triggers `JSON::NestingError` or `SystemStackError` on cyclic objects.                                                                       | Rails convention treats API response shaping as a presentation-layer concern: serialization should be defined explicitly (via `as_json` options or a custom serializer object) rather than derived automatically from recursive ORM relationships. |
+| Library / Ecosystem               | Tested Version ([v1](../supporting-probes/results/reference/v1/)) | Eager-Loading & Hydration Strategy                                                                                                                                                                                                                             | Recursive Limits (Hydration & Serialization Gaps)                                                                                                                                                                                                                                           | Tracked Issues / Discussions                                                                                                                                                                                                                                                                                                               |
+| :-------------------------------- | :---------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mongoose**<br>_(Node.js)_       | v8.24.0                                                           | Relies on explicit `.populate()` chaining. No built-in `populateAll()` [[1]](https://mongoosejs.com/docs/populate.html)                                                                                                                                        | **Hydration Gap:** There is no API to resolve the full schema in a single call. Self-referential schemas have no safe depth limit — each association level must be named explicitly, and nodes beyond the last named level go unfetched.                                                    | [#16074](https://github.com/Automattic/mongoose/issues/16074) — Tracks the community discussion on whether Mongoose should support a schema-driven `populateAll()` that safely traverses schemas of arbitrary depth, including cycles.                                                                                                     |
+| **Sequelize**<br>_(Node.js)_      | v6.37.8                                                           | `{ include: { all: true, nested: true } }` [[1]](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything) [[2]](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/)                             | **Hydration Gap:** In self-referential models, this method truncates recursive objects at depth 1 to prevent infinite SQL joins.                                                                                                                                                            | The depth cap reflects a structural SQL constraint: a query cannot self-join a tree of unbounded depth. Sequelize enforces a ceiling rather than letting the query builder recurse without bound.                                                                                                                                          |
+| **TypeORM**<br>_(Node.js)_        | v0.3.30                                                           | `eager: true` via entity decorators [[1]](https://typeorm.io/eager-and-lazy-relations)                                                                                                                                                                         | **Hydration Gap:** Circular eager relations are disallowed at the entity level. `eager: true` cannot be set on both sides of a bidirectional relation; a positive control with only one eager side succeeds.                                                                                | [#3663](https://github.com/typeorm/typeorm/issues/3663) — Tracks the open question of whether TypeORM should handle bidirectional recursive `eager: true` safely, e.g. by applying a cycle limit at initialization rather than crashing.                                                                                                   |
+| **Prisma**<br>_(Node.js)_         | v5.22.0                                                           | Explicit `include` mapping [[1]](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)                                                                                                                                                        | **Hydration Gap:** Recursive self-relations require statically declaring every nesting level in the query. The result truncates at the deepest declared level; the Prisma Client type system provides no mechanism for unbounded depth.                                                     | [#3725](https://github.com/prisma/prisma/issues/3725) — Open discussion on first-class recursive relation support in Prisma Client, including whether dynamic or cursor-based depth traversal is feasible within the current type system.                                                                                                  |
+| **MikroORM**<br>_(Node.js)_       | v6.6.14                                                           | `populate: ['*']` [[1]](https://mikro-orm.io/docs/populating-relations#populating-all-relations)                                                                                                                                                               | **Hydration Gap:** `populate: ['*']` strictly halts at depth 1; deeper traversal requires hardcoded explicit paths. The Identity Map can correctly hydrate cyclic graphs when explicit paths are given — the wildcard limit is a query-API constraint, not a fundamental hydration failure. | The wildcard depth cap is documented as intentional. Community discussion centers on whether the Identity Map's cycle-safe in-memory wiring makes it safe to enable deeper wildcard traversal.                                                                                                                                             |
+| **SQLAlchemy**<br>_(Python)_      | v2.0.50                                                           | `joinedload` with `join_depth` limits, or bulk loading via Identity Map [[1]](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) [[2]](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)                                                    | **Hydration Gap (Partial) & Serialization Gap:** Self-referential schemas require an explicit `join_depth` cap to prevent infinite SQL joins. The Identity Map cleanly wires cyclic objects in memory, but downstream `json.dumps` still errors on the resulting circular references.       | [[1]](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html) — Documents `post_update=True` for circular FK write ordering (a deferred UPDATE approach). Downstream JSON serialization of cyclic objects is treated as application-layer responsibility outside SQLAlchemy's scope.                                          |
+| **Hibernate/Jackson**<br>_(Java)_ | v6.6.0.Final (Hibernate)<br>v2.17.0 (Jackson)                     | Persistence Context acts as an Identity Map [[1]](https://javadoc.io/doc/com.fasterxml.jackson.core/jackson-databind/2.17.0/com/fasterxml/jackson/databind/ObjectMapper.html) [[2]](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations) | **Serialization Gap:** The Persistence Context resolves memory cycles correctly (e.g. A↔B are wired without duplication). Passing that graph to standard Jackson serialization throws `JsonMappingException` because the serializer has no cycle guard.                                     | [[1]](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion) — Canonical guide on Jackson's annotation-based options. `@JsonIdentityInfo` replaces revisited objects with their ID (full fidelity); `@JsonManagedReference`/`@JsonBackReference`/`@JsonIgnore` suppress the back-reference side (data loss). |
+| **EF Core**<br>_(.NET)_           | v8.0.6                                                            | Statically chained `.Include()` / `.ThenInclude()` [[1]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager) [[2]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)                                           | **Hydration Gap (Partial) & Serialization Gap:** Requires statically chained `.ThenInclude()` — no unbounded wildcard. `ChangeTracker` wires cycles safely in memory, but `System.Text.Json` throws `JsonException` upon serializing them.                                                  | Two built-in serialization options are documented in the official guide: `ReferenceHandler.IgnoreCycles` (sets looping references to `null`) and `ReferenceHandler.Preserve` (emits `$id`/`$ref` metadata incompatible with standard JSON consumers) — both trade graph fidelity for safety.                                               |
+| **ActiveRecord**<br>_(Ruby)_      | v8.1.3                                                            | Explicit `.includes()` depth limits [[1]](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html) [[2]](https://docs.ruby-lang.org/en/3.3/JSON.html)                                                                                  | **Hydration & Serialization Gaps:** Traversal beyond the declared `.includes()` depth silently falls back to N+1 lazy queries. Built-in `.to_json` triggers `JSON::NestingError` or `SystemStackError` on cyclic objects.                                                                   | Rails convention treats API response shaping as a presentation-layer concern: serialization should be defined explicitly (via `as_json` options or a custom serializer object) rather than derived automatically from recursive ORM relationships.                                                                                         |
 
 ### Identity-map ORMs do not solve cyclic serialization
 
 A common assumption is that identity-map ORMs solve the entire cyclic-graph problem. The
-`supporting-probes/results/reference/v1/` evidence shows this is only half true. SQLAlchemy,
+[v1 supporting probes](../supporting-probes/results/reference/v1/) evidence shows this is only half true. SQLAlchemy,
 Hibernate, EF Core, and MikroORM all pass hydration and smart-check identity validation: one
 logical row ID maps to one live in-memory object, even when traversed through cyclic edges.
 
@@ -69,24 +69,24 @@ not investigated here. This experiment focuses specifically on the ORM/ODM popul
 
 Four algorithms are benchmarked, representing distinct approaches to the population problem:
 
-| Algorithm | Approach | Core strategy |
-| --- | --- | --- |
-| **Naive Recursion** | Uncached recursion | Recursive DFS with no cycle guard and no memoization. Included as the failing control to show what goes wrong without any safeguards. |
-| **Map Tracker** | Memoized recursion | Recursive DFS that caches each visited node in a Map so it is never processed twice. Prevents infinite loops but still uses the call stack, which overflows on large graphs. |
+| Algorithm               | Approach                       | Core strategy                                                                                                                                                                                                        |
+| ----------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Naive Recursion**     | Uncached recursion             | Recursive DFS with no cycle guard and no memoization. Included as the failing control to show what goes wrong without any safeguards.                                                                                |
+| **Map Tracker**         | Memoized recursion             | Recursive DFS that caches each visited node in a Map so it is never processed twice. Prevents infinite loops but still uses the call stack, which overflows on large graphs.                                         |
 | **Tarjan SCC Layering** | Iterative topological ordering | Finds every group of mutually-dependent nodes (Strongly Connected Components), collapses them so the graph has no cycles, then wires dependencies level-by-level using a queue — all steps use loops, not recursion. |
-| **Two-Pass Wire** | Iterative two-pass | Pass 1 creates every node object and stores it in a lookup Map. Pass 2 wires the dependency edges by looking up the already-created objects. No recursion, no cycle detection needed. |
+| **Two-Pass Wire**       | Iterative two-pass             | Pass 1 creates every node object and stores it in a lookup Map. Pass 2 wires the dependency edges by looking up the already-created objects. No recursion, no cycle detection needed.                                |
 
 ### Dataset tiers
 
-The experiment uses five dataset tiers, generated by `npm run generate` and stored in the `data/` directory:
+The experiment uses five dataset tiers, generated by `npm run generate` and stored in the [data/](../data/) directory:
 
-| Tier | Graph type | Scale (nodes) | Purpose |
-| --- | --- | --- | --- |
-| `acyclic-control` | DAG where multiple parents can share the same child node (diamond-shaped dependency patterns, no cycles) | ~10 | Acyclic baseline. Hydration succeeds for all algorithms except Naive Recursion, which creates duplicate copies of shared nodes instead of one shared object. Tests memoization correctness independent of cycle handling. |
-| `basic` | Cyclic graph (bidirectional edges, mutual references) | ~10 | Cyclic baseline. Naive Recursion stack-overflows; the remaining three algorithms hydrate successfully. Establishes the consumer-probe outcome pattern for all larger cyclic tiers. |
-| `medium` | Cyclic graph | ~5K | Mid-scale correctness and timing check. |
-| `stress` | Cyclic graph | ~50K | Large-scale test with 50,000 nodes and ~100,000 edges. Exposes Map Tracker's call-stack limit, which is hit on dense graphs even when the cycle guard prevents infinite loops. |
-| `extreme` | Cyclic graph | ~250K | Maximum-scale test, sized to fill roughly 200–250 MB of heap — within the available memory of a typical developer machine. Confirms the surviving algorithms remain viable at the upper end of the tested range. |
+| Tier              | Graph type                                                                                               | Scale (nodes) | Purpose                                                                                                                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `acyclic-control` | DAG where multiple parents can share the same child node (diamond-shaped dependency patterns, no cycles) | ~10           | Acyclic baseline. Hydration succeeds for all algorithms except Naive Recursion, which creates duplicate copies of shared nodes instead of one shared object. Tests memoization correctness independent of cycle handling. |
+| `basic`           | Cyclic graph (bidirectional edges, mutual references)                                                    | ~10           | Cyclic baseline. Naive Recursion stack-overflows; the remaining three algorithms hydrate successfully. Establishes the consumer-probe outcome pattern for all larger cyclic tiers.                                        |
+| `medium`          | Cyclic graph                                                                                             | ~5K           | Mid-scale correctness and timing check.                                                                                                                                                                                   |
+| `stress`          | Cyclic graph                                                                                             | ~50K          | Large-scale test with 50,000 nodes and ~100,000 edges. Exposes Map Tracker's call-stack limit, which is hit on dense graphs even when the cycle guard prevents infinite loops.                                            |
+| `extreme`         | Cyclic graph                                                                                             | ~250K         | Maximum-scale test, sized to fill roughly 200–250 MB of heap — within the available memory of a typical developer machine. Confirms the surviving algorithms remain viable at the upper end of the tested range.          |
 
 ### Two-stage evaluation
 
@@ -95,8 +95,9 @@ Each algorithm is evaluated in two sequential stages:
 **Stage 1 — Hydration:** did the algorithm produce a correct in-memory graph?
 
 Stage 1 uses three independent checks. `HYDRATION PASS` means all three checks passed, even though runtime output intentionally keeps a single pass label:
+
 - **`smartCompare`** — cycle-aware iterative DFS that walks the live object references in the produced graph and compares it node-by-node against the expected answer. No serialization is involved; it navigates JavaScript object references directly.
-- **`flatCompare`** — builds an identity map (object → index), converts the produced graph to an index-based representation, and compares it entry-by-entry against the pre-computed answer file. The answer file is the ground truth generated by `npm run generate`; comparing against it is a structural equality check, not a consumer operation. This also catches bugs that would fool `smartCompare` by affecting how the expected answer is loaded.
+- **`flatCompare`** — builds an identity map (object → index), converts the produced graph to an index-based representation, and compares it entry-by-entry against the pre-computed answer file. The answer file is the ground truth generated by `npm run generate`; comparing against it is a structural equality check, not a consumer operation.
 - **Runtime hydration invariant** — verifies in-memory identity stability and dependency closure on the live object graph (behavioral/runtime trustworthiness), independent of serialization.
 
 Stage 1 checks only in-memory hydration correctness; serialization and downstream consumer viability are still measured separately in Stage 2.
@@ -111,7 +112,7 @@ Two probes are run against each passing hydration result:
 
 - **`naive-json`** — calls `JSON.stringify` on the raw graph. Succeeds on the `acyclic-control` dataset (no circular references). Fails on all cyclic datasets with a circular reference error. Its purpose is to demonstrate that hydration success does not guarantee consumer viability, mirroring the same serialization gap documented across the ecosystem in [§2](#2--a-recognized-challenge-in-the-data-layer-ecosystem).
 
-- **`cycle-flat`** — converts the graph to an index-based flat representation (the `AnswerEntry` format) using an iterative O(V+E) traversal with no recursion. This mirrors the ID-Substitution / Custom Cycle-Aware Serialization strategies described in [Ecosystem Research §2](./ECOSYSTEM_RESEARCH.md#2--the-serialization-boundary). It passes at every graph scale where hydration succeeds.
+- **`cycle-flat`** — converts the graph to an index-based flat representation (the `AnswerEntry` format) using an iterative O(V+E) traversal with no recursion. This mirrors the ID-Substitution / Custom Cycle-Aware Serialization strategies described in [Ecosystem Research §2](./ECOSYSTEM_RESEARCH.md#2--backend-persistence-frameworks). It passes at every graph scale where hydration succeeds.
 
 ### Output scope policy
 
@@ -120,26 +121,26 @@ The runner shows full three-phase detail (Hydration → Consumer probes → Full
 - `acyclic-control` establishes the acyclic baseline (where `naive-json` succeeds and all passing algorithms cleared both comparers).
 - `basic` establishes the cyclic baseline (where `naive-json` fails and `cycle-flat` is the authoritative probe).
 
-Later tiers (`medium`, `stress`, `extreme`) suppress repeated consumer-probe detail because the probe outcome patterns are fully established by these two tiers. Known failures (algorithms that crashed at an earlier cyclic tier) are also omitted from later tiers — they deterministically fail at all larger scales and re-running adds no information.
+Larger tiers (`medium`, `stress`, `extreme`) suppress repeated consumer-probe detail because the probe outcome patterns are fully established by these two tiers. Known failures (algorithms that crashed at an earlier cyclic tier) are also omitted from the runs of the larger tiers — they deterministically fail at all scales and re-running adds no information.
 
 ---
 
 ## §4 — Results
 
-> **Note on figures:** Timing and RAM measurements below are sourced from `reports/reference/v1/*/benchmark-*.json` (tag `v1.0.1`).
+> **Note on figures:** Timing and RAM measurements below are sourced from the `json` files in [/reports/reference/v1](../reports/reference/v1/).
 
 ### Scale Survivability — Stage 1 (Hydration)
 
-| Algorithm | acyclic-control | basic | medium | stress | extreme |
-| --- | --- | --- | --- | --- | --- |
-| Naive Recursion | ❌ Identity mismatch | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow |
-| Map Tracker | ✅ Pass | ✅ Pass | ✅ Pass | ❌ Stack overflow | ❌ Stack overflow |
-| Tarjan SCC Layering | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
-| Two-Pass Wire | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass | ✅ Pass |
+| Algorithm           | acyclic-control      | basic             | medium            | stress            | extreme           |
+| ------------------- | -------------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| Naive Recursion     | ❌ Identity mismatch | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow | ❌ Stack overflow |
+| Map Tracker         | ✅ Pass              | ✅ Pass           | ✅ Pass           | ❌ Stack overflow | ❌ Stack overflow |
+| Tarjan SCC Layering | ✅ Pass              | ✅ Pass           | ✅ Pass           | ✅ Pass           | ✅ Pass           |
+| Two-Pass Wire       | ✅ Pass              | ✅ Pass           | ✅ Pass           | ✅ Pass           | ✅ Pass           |
 
 **Naive Recursion** fails on every tier. On `acyclic-control`, it fails because of how shared nodes are handled: when node D is a dependency of both node B and node C, the algorithm visits D twice and creates two separate copies of it — so B and C end up pointing to different objects that happen to have the same ID, instead of both pointing to the same single object. The comparers detect this duplication and report a mismatch. On all cyclic datasets, the failure is more severe: populating node A requires populating B (which A depends on), and populating B requires populating A (which B depends on). The algorithm calls itself recursively without end, adding a new level to the function call chain on every step until the program's built-in call limit is exceeded and it crashes.
 
-**Map Tracker** is deceptive: it passes through `acyclic-control`, `basic`, and `medium` before failing at `stress`. Adding a `visited` Map prevents the algorithm from entering an infinite loop — when it encounters a node it has already started processing, it returns the cached result. But this does not reduce how deeply the functions call each other. On a 50,000-node graph, following a chain of previously unvisited nodes can push thousands of nested function calls onto the call stack before a cached node is hit. JavaScript enforces a maximum call stack depth (roughly 10,000–15,000 frames), and this limit is exceeded before the algorithm finishes.
+**Map Tracker** is deceptive: it passes through `acyclic-control`, `basic`, and `medium` before failing at `stress`. Adding a `visited` Map prevents the algorithm from entering an infinite loop — when it encounters a node it has already started processing, it returns the cached result. But this does not reduce how deeply the functions call each other. On a 50,000-node graph, following a chain of previously unvisited nodes can push thousands of nested functions onto the call stack before a cached node is hit. JavaScript enforces a maximum call stack depth, and this limit is exceeded before the algorithm finishes.
 
 **Tarjan SCC Layering** and **Two-Pass Wire** pass all five tiers. Both are fully iterative — no recursion, no call-stack dependency.
 
@@ -149,32 +150,32 @@ Consumer probes run only where Stage 1 passed. The pattern is established by the
 
 **acyclic-control (DAG — no cycles):**
 
-| Algorithm | naive-json | cycle-flat |
-| --- | --- | --- |
-| Map Tracker | ✅ Pass | ✅ Pass (output verified) |
-| Tarjan SCC Layering | ✅ Pass | ✅ Pass (output verified) |
-| Two-Pass Wire | ✅ Pass | ✅ Pass (output verified) |
+| Algorithm           | naive-json | cycle-flat                |
+| ------------------- | ---------- | ------------------------- |
+| Map Tracker         | ✅ Pass    | ✅ Pass (output verified) |
+| Tarjan SCC Layering | ✅ Pass    | ✅ Pass (output verified) |
+| Two-Pass Wire       | ✅ Pass    | ✅ Pass (output verified) |
 
 On an acyclic graph, `JSON.stringify` succeeds because there are no circular references. This establishes the acyclic baseline: `naive-json` failures on cyclic tiers are caused by cycles in the hydrated graph, not by algorithmic error.
 
 **basic and all later cyclic tiers (where hydration ✅):**
 
-| Algorithm | naive-json | cycle-flat |
-| --- | --- | --- |
-| Map Tracker | ❌ Circular reference error | ✅ Pass (output verified) |
+| Algorithm           | naive-json                  | cycle-flat                |
+| ------------------- | --------------------------- | ------------------------- |
+| Map Tracker         | ❌ Circular reference error | ✅ Pass (output verified) |
 | Tarjan SCC Layering | ❌ Circular reference error | ✅ Pass (output verified) |
-| Two-Pass Wire | ❌ Circular reference error | ✅ Pass (output verified) |
+| Two-Pass Wire       | ❌ Circular reference error | ✅ Pass (output verified) |
 
 `naive-json` fails uniformly on cyclic datasets because `JSON.stringify` has no cycle guard — it crashes on any graph that contains circular references, regardless of how correctly the algorithm hydrated it. The `cycle-flat` probe passes at every scale, confirming that an iterative index-based approach can safely export the graph at any size.
 
 ### Timing and Memory
 
-| Algorithm | acyclic-control | basic | medium | stress | extreme |
-| --- | --- | --- | --- | --- | --- |
-| Naive Recursion | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Map Tracker | 0.795 ms / 0.081 MB | 0.199 ms / 0.049 MB | 58.604 ms / 0 MB | ❌ | ❌ |
+| Algorithm           | acyclic-control     | basic               | medium                | stress                 | extreme                   |
+| ------------------- | ------------------- | ------------------- | --------------------- | ---------------------- | ------------------------- |
+| Naive Recursion     | ❌                  | ❌                  | ❌                    | ❌                     | ❌                        |
+| Map Tracker         | 0.795 ms / 0.081 MB | 0.199 ms / 0.049 MB | 58.604 ms / 0 MB      | ❌                     | ❌                        |
 | Tarjan SCC Layering | 0.899 ms / 0.099 MB | 0.292 ms / 0.064 MB | 38.036 ms / 10.243 MB | 443.007 ms / 52.639 MB | 3,482.344 ms / 281.093 MB |
-| Two-Pass Wire | 0.298 ms / 0.039 MB | 1.088 ms / 0 MB | 24.678 ms / 0 MB | 528.237 ms / 37.813 MB | 2,174.188 ms / 203.311 MB |
+| Two-Pass Wire       | 0.298 ms / 0.039 MB | 1.088 ms / 0 MB     | 24.678 ms / 0 MB      | 528.237 ms / 37.813 MB | 2,174.188 ms / 203.311 MB |
 
 > Measured on GitHub-hosted `ubuntu-latest`, Node 22.22.3, 4 GB heap (`NODE_OPTIONS='--max-old-space-size=4096'`). Polyglot runtimes used by supporting probes: Python 3.14.5, Ruby 4.0.5, Java 21.0.11 (Temurin), .NET 10.0.300 — see `reports/reference/v1/manifest.json` for the canonical record. Local air-gapped runs on a developer machine may show different absolute numbers; the relative ordering between algorithms is the load-bearing claim, not the millisecond figures.
 
@@ -189,17 +190,17 @@ The headline result is that cycle-safe graph population is a **solved problem**:
 
 ## §5 — Scaling Profile
 
-Both surviving algorithms are O(V+E). The analytical proofs are in [Ecosystem Research §1](./ECOSYSTEM_RESEARCH.md#1--completeness-as-a-global-property).
+Both surviving algorithms are O(V+E). The analytical proofs are in [Ecosystem Research §1](./ECOSYSTEM_RESEARCH.md#1--the-algorithmic-constraints-of-cyclic-data).
 
 The relative resource trends from the measured results above:
 
-| Metric | Two-Pass Wire | Tarjan SCC Layering |
-| --- | --- | --- |
-| 50K → 250K time ratio | 4.1× | 7.9× |
-| 50K → 250K RAM ratio | 5.4× | 5.3× |
-| Head-to-head at 250K | **2,174.188 ms / 203.311 MB** | 3,482.344 ms / 281.093 MB |
-| Speed advantage | **~1.6× faster** | — |
-| RAM advantage | **~1.4× less RAM** | — |
+| Metric                | Two-Pass Wire                 | Tarjan SCC Layering       |
+| --------------------- | ----------------------------- | ------------------------- |
+| 50K → 250K time ratio | 4.1×                          | 7.9×                      |
+| 50K → 250K RAM ratio  | 5.4×                          | 5.3×                      |
+| Head-to-head at 250K  | **2,174.188 ms / 203.311 MB** | 3,482.344 ms / 281.093 MB |
+| Speed advantage       | **~1.6× faster**              | —                         |
+| RAM advantage         | **~1.4× less RAM**            | —                         |
 
 The memory difference is most pronounced at large scales where Tarjan SCC's extra bookkeeping structures (per-node component tracking arrays, condensation DAG edges) grow alongside the main graph. Two-Pass Wire allocates exactly one record per node plus a single lookup Map and nothing else.
 
@@ -212,9 +213,10 @@ Both algorithms are fast enough for production use at any of the tested scales. 
 The benchmark targets a **root-reachable, single-root** object graph — the exact closure materialized from one request. Every node in a `core-valid` dataset must be reachable from the root by following dependency edges. The root is auto-detected from graph structure as the unique in-degree-zero node.
 
 Key constraints:
+
 - **Simple directed graph** — at most one directed edge between any ordered pair of nodes.
 - **Preflight validation** — all admissibility checks run before any timed execution and have no effect on measured complexity, latency, or memory.
 - **`acyclic-control` is a DAG control tier**, not a cyclic benchmark tier.
 - Orphaned nodes, dangling references, and duplicate edges are excluded from the core benchmark (classified as `edge-case-only` or `invalid`).
 
-A full input-validity taxonomy is in [`ECOSYSTEM_RESEARCH.md` §6](./ECOSYSTEM_RESEARCH.md#6--dataset-scope-and-input-validity).
+A full input-validity taxonomy is in [`ECOSYSTEM_RESEARCH.md` Appendix A](./ECOSYSTEM_RESEARCH.md#appendix-a--methodological-boundaries).

@@ -57,7 +57,7 @@ ActiveRecord uses the `.includes()` method for strict tree traversal. If a backe
 
 ### 2.5 — JavaScript ORMs
 
-For the detailed JavaScript ORM comparison matrix (Mongoose, Sequelize, TypeORM, Prisma, MikroORM), see `EXPERIMENT_ANALYSIS.md`.[^10] At a high level, JavaScript ORMs consistently fail at _schema-driven_ full hydration.
+For the detailed JavaScript ORM comparison matrix, see `EXPERIMENT_ANALYSIS.md`.[^10] At a high level, JavaScript ORMs consistently fail at _schema-driven_ full hydration.
 
 ---
 
@@ -86,8 +86,8 @@ Once the data arrives on the client, the frontend ecosystem must decide how to r
 
 > Examples: MobX, RxJS, Vue (Reactive).
 
-**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory (e.g. it is possible to set `post.author = author`). Allows for more complex frontend JavaScript functionality like Observables and Signals.[^15]<br />
-**Trade-off:** Components can safely dot-chain through the hydrated graph `author.posts[0].author.name`. However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
+**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^15]<br />
+**Trade-off:** Components can safely dot-chain through the hydrated graph (`author.posts[0].author.name`). However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
 
 ### 3.3 — Full-stack SSR Boundaries and E2E Integrated Transport
 
@@ -112,16 +112,16 @@ Imagine the simplest possible circular graph containing two objects: **Object A*
 
 ### 1. The Mathematical Proof (Chronological Paradox)
 
-Let’s assign a mathematical variable to the exact moment in time an object is fully created and hydrated.
+Let’s assign a mathematical variable to the exact moment in time an object is created.
 
-- Let `T(A)` = The time Object A is fully hydrated.
-- Let `T(B)` = The time Object B is fully hydrated.
+- Let `T(A)` = The time Object A is created.
+- Let `T(B)` = The time Object B is fully created.
 
-Because Object A requires Object B to be hydrated before A can be fully hydrated, A's hydration time must be strictly greater (later in time) than B's:
+Because Object A requires Object B to exist before A can be created, A's creation time must be strictly greater (later in time) than B's:
 
 > `T(A) > T(B)`
 
-Because Object B requires Object A to be hydrated before B can be fully hydrated, B's hydration time must be strictly greater than A's:
+Because Object B requires Object A to exist before B can be created, B's creation time must be strictly greater than A's:
 
 > `T(B) > T(A)`
 
