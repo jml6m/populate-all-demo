@@ -9,19 +9,19 @@
     "probe:all": "tsx run-probes.ts --suite=all"
   },
   "dependencies": {
-    "@mikro-orm/core": "^6.6.13",
-    "@mikro-orm/sqlite": "^6.6.13",
-    "@prisma/client": "^5.12.0",
-    "mongoose": "^8.0.0",
-    "prisma": "^5.12.0",
+    "@mikro-orm/core": "^7.1.4",
+    "@mikro-orm/sqlite": "^7.1.4",
+    "@prisma/client": "^7.8.0",
+    "mongoose": "^9.6.3",
+    "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "sequelize": "^6.37.0",
-    "sqlite3": "^5.1.7",
-    "typeorm": "^0.3.20"
+    "sqlite3": "^6.0.1",
+    "typeorm": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }
