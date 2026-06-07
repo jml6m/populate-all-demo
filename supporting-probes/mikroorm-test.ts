@@ -12,6 +12,11 @@ class Node {
   dependents = new Collection<Node>(this);
 }
 
+type SerializableNode = {
+  id: string;
+  dependencies: SerializableNode[];
+};
+
 const NodeSchema = new EntitySchema<Node>({
   class: Node,
   properties: {
@@ -30,6 +35,24 @@ const NodeSchema = new EntitySchema<Node>({
     },
   },
 });
+
+function toPlainCycleGraph(roots: Node[]): SerializableNode[] {
+  const byRef = new Map<Node, SerializableNode>();
+
+  const materialize = (node: Node): SerializableNode => {
+    const existing = byRef.get(node);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const plain: SerializableNode = { id: node.id, dependencies: [] };
+    byRef.set(node, plain);
+    plain.dependencies = node.dependencies.getItems().map((dep) => materialize(dep));
+    return plain;
+  };
+
+  return roots.map((node) => materialize(node));
+}
 
 async function run() {
   let queryCount = 0;
@@ -106,7 +129,7 @@ async function run() {
             detail: `Hydration failed: queryGate=${findings.queryGate.result}, smartCheck=${findings.smartCheck.result}.`,
           };
 
-    const serialization = finalizeSerialization(() => JSON.stringify(roots));
+    const serialization = finalizeSerialization(() => JSON.stringify(toPlainCycleGraph(roots)));
     findings.serialize =
       serialization === 'SERIALIZE_PASS'
         ? { result: serialization, detail: 'JSON serialization passed.' }

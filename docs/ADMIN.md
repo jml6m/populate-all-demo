@@ -16,7 +16,7 @@ ruleset configuration.
 - `release-infra` is the only release-related label documented here. It is only
   for PRs that change the release workflow definition itself.
 - Official releases do **not** use a separate label. They are identified by a
-  major-only Git tag in the form `v<N>.0.0`.
+  SemVer tag (`v<N>.0.0` for majors, `v<N>.0.<P>` for patch hotfixes).
 
 ## Reference data layout
 
@@ -95,25 +95,30 @@ git diff --no-renames --name-only --diff-filter=AMDR origin/main...HEAD | grep -
 
 ## Release procedure
 
-Releases are major-only (`v1`, `v2`, `v3`, …). The release workflow is the only
-automated process that may write to the `reference/` trees.
+Releases are major-first (`v1`, `v2`, `v3`, …) with optional patch hotfixes
+(`v1.0.1`, `v1.0.2`, …). The release workflow is the only automated process
+that may write to the `reference/` trees.
 
 ### What the workflow does
 
 `.github/workflows/release.yml` runs on `workflow_dispatch` only. Steps, in order:
 
-1. Computes the next version from `package.json` (e.g. `1.0.0` → release `v2`).
-2. Aborts if any of `reports/reference/v<N>/`, `logs/reference/v<N>/`,
+1. Computes the next version from `package.json` based on `release_type`:
+   - `major` (default): `N.0.0` → `N+1.0.0`, release dir `v<N+1>`
+   - `patch`: `N.0.P` → `N.0.(P+1)`, reuses existing release dir `v<N>`
+2. For `major`, aborts if any of `reports/reference/v<N>/`, `logs/reference/v<N>/`,
    `supporting-probes/results/reference/v<N>/`, or `data/reference/v<N>/`
-   already exist on `main`.
+   already exist on `main`. Patch mode skips this check.
 3. Sets up Node, Python, Ruby, Java 21, and .NET 8 runtimes.
 4. Runs `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run generate`,
    `npm run experiment`, then installs probe deps and runs `npm run probe:all`.
-5. Aborts if the experiment fingerprint matches the previous release's
-   `experiment-run.json` fingerprint (no experiment-relevant changes).
-6. Copies the latest local outputs into the four `reference/v<N>/` trees.
-7. Writes `reports/reference/v<N>/manifest.json` (release evidence).
-8. Bumps `package.json` to `<N>.0.0` via `npm version`.
+5. For `major`, aborts if the experiment fingerprint matches the previous release's
+   `experiment-run.json` fingerprint (no experiment-relevant changes). Patch mode skips this check.
+6. Copies local outputs into reference trees:
+   - `major`: copies reports, logs, probes, and data into new `reference/v<N>/`
+   - `patch`: overwrites `supporting-probes/results/reference/v<N>/` only
+7. Writes/updates `reports/reference/v<N>/manifest.json` (tag, releasedAt, runId, lockfile hashes).
+8. Bumps `package.json` to the computed SemVer via `npm version`.
 9. Commits and pushes directly to `main` using the `RELEASE_PUSH_TOKEN` PAT.
 
 End-to-end runtime is roughly 5–10 minutes including polyglot setup.
@@ -130,7 +135,9 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
    npm test
    ```
 2. On github.com, navigate to **Actions → Release → Run workflow**, select
-   `main`, and confirm.
+   `main`, and choose:
+   - `release_type=major` for a new canonical major release
+   - `release_type=patch` for a probe/data hotfix within the current major
 3. Watch the run log. Successful completion ends with `✅ Pushed release v<N>.0.0 to main`.
 
 ### Tagging the release after the workflow merges
@@ -147,7 +154,20 @@ git tag v<N>.0.0
 git push origin v<N>.0.0
 ```
 
-(Replace `<N>` with the actual major number, e.g. `v1.0.0`.)
+(Replace with the actual release tag, e.g. `v1.0.0` or `v1.0.1`.)
+
+### Patch-release procedure (supporting-probe/doc hotfixes)
+
+Use `release_type=patch` only when fixing interpretation-critical defects
+without changing the experiment fingerprint (for example: supporting-probe
+classification bugs or release-manifest/doc errors tied to published outputs).
+
+- Patch mode reuses the existing major directory (`reference/v<N>/`), updates
+  `supporting-probes/results/reference/v<N>/`, and refreshes
+  `reports/reference/v<N>/manifest.json` metadata (`tag`, `releasedAt`, `runId`,
+  `lockfileHashes`).
+- Patch mode must **not** be used for experiment-definition changes. If the
+  experiment fingerprint should change, run a major release instead.
 
 **github.com UI:**
 
