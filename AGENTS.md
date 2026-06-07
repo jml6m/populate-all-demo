@@ -21,7 +21,7 @@ For unsupervised runs, if you attempt to fix an error and the **same** error per
 
 - **STOP** trying to fix it.
 - Revert changes to the last functioning state.
-- Comment out the breaking test/code with `// FIXME: Agent worker failed`.
+- Comment out the breaking test/code with `// FIXME: <reason>; tracked in issue #<id>`.
 - Log the failure and move to the next task.
 
 ### 2. GitHub Issue Awareness
@@ -167,7 +167,7 @@ If a change you make causes the same input to produce different output across re
 
 The following paths are **agent-protected**. Do not modify without explicit instruction from the project admin in the PR's problem statement:
 
-1. **`.github/workflows/release.yml`** (when it exists) — the official release workflow. Requires `release-infra` label on the PR.
+1. **`.github/workflows/release.yml`** — the official release workflow. Requires `release-infra` label on the PR.
 2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
