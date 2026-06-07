@@ -2,6 +2,15 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: false
+        default: major
+        type: choice
+        options:
+          - major
+          - patch
 
 concurrency:
   group: release
@@ -32,6 +41,8 @@ jobs:
 
       - name: Compute next version
         id: version
+        env:
+          RELEASE_TYPE: ${{ github.event.inputs.release_type || 'major' }}
         run: |
           set -euo pipefail
           current=$(node -p "require('./package.json').version")
@@ -40,15 +51,32 @@ jobs:
             exit 1
           fi
           major=${BASH_REMATCH[1]}
-          next=$((major + 1))
+          minor=${BASH_REMATCH[2]}
+          patch=${BASH_REMATCH[3]}
+          release_type=${RELEASE_TYPE:-major}
+
+          if [ "$release_type" = "patch" ]; then
+            next_major=$major
+            next_patch=$((patch + 1))
+            next_tag="v$major.$minor.$next_patch"
+            next_semver="$major.$minor.$next_patch"
+          else
+            next_major=$((major + 1))
+            next_tag="v$next_major.0.0"
+            next_semver="$next_major.0.0"
+          fi
+
           echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "next_major=$next" >> "$GITHUB_OUTPUT"
-          echo "next_version=v$next" >> "$GITHUB_OUTPUT"
-          echo "next_tag=v$next.0.0" >> "$GITHUB_OUTPUT"
+          echo "next_major=$next_major" >> "$GITHUB_OUTPUT"
+          echo "next_version=v$next_major" >> "$GITHUB_OUTPUT"
+          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "next_semver=$next_semver" >> "$GITHUB_OUTPUT"
           echo "current_major=$major" >> "$GITHUB_OUTPUT"
-          echo "Releasing v$next.0.0 (current is $current)"
+          echo "release_type=$release_type" >> "$GITHUB_OUTPUT"
+          echo "Releasing $next_tag (current is $current, type=$release_type)"
 
       - name: Existence check
+        if: steps.version.outputs.release_type != 'patch'
         env:
           NEXT: ${{ steps.version.outputs.next_version }}
         run: |
@@ -120,6 +148,7 @@ jobs:
         run: npm run probe:all
 
       - name: Fingerprint check vs previous release
+        if: steps.version.outputs.release_type != 'patch'
         env:
           CURRENT_MAJOR: ${{ steps.version.outputs.current_major }}
         run: |
@@ -148,8 +177,30 @@ jobs:
       - name: Copy artifacts to reference/
         env:
           NEXT: ${{ steps.version.outputs.next_version }}
+          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
         run: |
           set -euo pipefail
+          if [ "$RELEASE_TYPE" = "patch" ]; then
+            fail=0
+            for d in \
+              "reports/reference/$NEXT" \
+              "logs/reference/$NEXT" \
+              "supporting-probes/results/reference/$NEXT" \
+              "data/reference/$NEXT"; do
+              if [ ! -d "$d" ]; then
+                echo "❌ Patch mode requires an existing $d directory (run a major release first)."
+                fail=1
+              fi
+            done
+            if [ "$fail" -ne 0 ]; then exit 1; fi
+            rm -rf "reports/reference/$NEXT" "logs/reference/$NEXT" "supporting-probes/results/reference/$NEXT" "data/reference/$NEXT"
+            echo "✅ Patch mode: replacing all reference assets in $NEXT."
+          fi
+
+          mkdir -p "supporting-probes/results/reference/$NEXT"
+          latest_probes=$(ls -d supporting-probes/results/local/*/ | sort | tail -1)
+          cp -r "$latest_probes"* "supporting-probes/results/reference/$NEXT/"
+
           mkdir -p "reports/reference/$NEXT"
           latest_reports=$(ls -d reports/local/*/ | sort | tail -1)
           cp -r "$latest_reports"* "reports/reference/$NEXT/"
@@ -159,10 +210,6 @@ jobs:
           if [ -n "$latest_logs" ]; then
             cp -r "$latest_logs"* "logs/reference/$NEXT/" 2>/dev/null || true
           fi
-
-          mkdir -p "supporting-probes/results/reference/$NEXT"
-          latest_probes=$(ls -d supporting-probes/results/local/*/ | sort | tail -1)
-          cp -r "$latest_probes"* "supporting-probes/results/reference/$NEXT/"
 
           mkdir -p "data/reference/$NEXT"
           cp data/manifest.json "data/reference/$NEXT/manifest.json"
@@ -219,12 +266,9 @@ jobs:
           cat "reports/reference/$NEXT_VERSION/manifest.json"
 
       - name: Bump package version
-        env:
-          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
         run: |
           set -euo pipefail
-          target="${NEXT_TAG#v}"
-          npm version "$target" --no-git-tag-version --force
+          npm version "${{ steps.version.outputs.next_semver }}" --no-git-tag-version --force
       - name: Commit and push
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
@@ -233,7 +277,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json \
+          git add -A package.json package-lock.json \
             "reports/reference/$NEXT_VERSION/" \
             "logs/reference/$NEXT_VERSION/" \
             "supporting-probes/results/reference/$NEXT_VERSION/" \
