@@ -9,7 +9,7 @@ This document defines the operational parameters, architectural standards, and s
 
 > **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
 
-> **Public research repo**: This is a public research repository. The committed `reference/` artifacts are the canonical record of published findings — treat them as immutable historical data. Local/unofficial runs go to gitignored `local/<run-id>/` directories.
+> **Public research repo**: This is a public research repository. The committed `reference/` artifacts are the canonical record of published findings — treat them as immutable historical data. Local/unofficial runs go to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/`, and `supporting-probes/results/local/<run-id>/` directories.
 
 ---
 
