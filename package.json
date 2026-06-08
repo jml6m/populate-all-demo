@@ -13,7 +13,7 @@
     "clean": "node scripts/clean-local.js",
     "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "lint:docs": "lychee --include-fragments --config ./.lychee.toml './**/*.md' && npx --yes markdownlint-cli2@^0.14.0 '**/*.md' '#node_modules' '#supporting-probes/node_modules'",
+    "lint:docs": "lychee --include-fragments --config ./.lychee.toml './**/*.md' && npx --yes markdownlint-cli2@0.14.0 '**/*.md' '#node_modules' '#supporting-probes/node_modules'",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],

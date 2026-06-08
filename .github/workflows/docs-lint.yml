@@ -27,7 +27,7 @@ jobs:
           node-version: ${{ vars.NODE_VERSION }}
 
       - name: Install markdownlint-cli2
-        run: npm install -g markdownlint-cli2@^0.14.0
+        run: npm install -g markdownlint-cli2@0.14.0
 
       - name: Run markdownlint
         run: markdownlint-cli2 '**/*.md' '#node_modules' '#supporting-probes/node_modules'
