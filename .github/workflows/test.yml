@@ -25,6 +25,15 @@ jobs:
       - name: Lint
         run: npm run lint
         continue-on-error: true
+      - name: Lychee link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
+          fail: true
+      - name: Markdownlint
+        run: |
+          npm install -g markdownlint-cli2@^0.14.0
+          markdownlint-cli2 '**/*.md' '#node_modules' '#supporting-probes/node_modules'
 
       - name: Create logs directory
         run: mkdir -p logs/local logs/reference
