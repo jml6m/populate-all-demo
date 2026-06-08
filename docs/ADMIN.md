@@ -13,8 +13,8 @@ This file documents the project-specific release guardrails, not the GitHub.com 
   - PRs that change `.github/workflows/release.yml` must carry the `release-infra` label
 - `docs-lint.yml` should be a required status check on pull requests to `main`. It runs `lychee` (link checking,
   including internal anchor verification) and `markdownlint-cli2` over all committed `.md` files. This catches broken
-  cross-doc links, missing anchors, malformed tables, and other rendering issues that surface on github.com viewports
-  (especially mobile).
+  cross-doc links, missing anchors, malformed tables, and other markdown structural issues that can cause rendering
+  problems on GitHub.
 - `release-infra` is the only release-related label documented here. It is only for PRs that change the release workflow
   definition itself.
 - Official releases do **not** use a separate label. They are identified by a SemVer tag (`v<N>.0.0` for majors,
