@@ -65,7 +65,8 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
 - `npm run lint:docs` — runs lychee link-check + markdownlint over all `.md` files. Mirrors what `docs-lint.yml` runs on
-  PRs.
+  PRs. **Prerequisite:** `lychee` must be installed locally (`brew install lychee` or `cargo install lychee`). In CI,
+  `lycheeverse/lychee-action` installs it automatically.
 - `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`,
   `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults
   to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
