@@ -1,9 +1,7 @@
 ## Description
-
 <!-- Briefly describe the changes introduced by this PR -->
 
 ## Related Issues
-
 <!--
   Use keywords to automatically close issues (e.g. "Closes #1").
   For multiple issues, use the keyword before each issue (e.g. "Closes #1, Fixes #2").
