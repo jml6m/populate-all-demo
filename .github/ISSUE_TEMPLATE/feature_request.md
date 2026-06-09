@@ -1,7 +1,7 @@
 ---
 name: Feature request / Enhancement
 about: Propose a research or infrastructure enhancement for populate-all-demo
-title: '[FEATURE]'
+title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
