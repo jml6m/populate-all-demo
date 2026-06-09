@@ -33,7 +33,7 @@ jobs:
       - name: Markdownlint
         run: |
           npm install -g markdownlint-cli2@0.14.0
-          markdownlint-cli2 '**/*.md' '#node_modules' '#supporting-probes/node_modules'
+          markdownlint-cli2 '**/*.md'
 
       - name: Create logs directory
         run: mkdir -p logs/local logs/reference

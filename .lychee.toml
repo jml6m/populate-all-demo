@@ -22,10 +22,5 @@ exclude_path = [
   "reports/local",
   "logs/local",
   "supporting-probes/results/local",
-]
-
-# External hosts known to be unreliable for HEAD requests; allow GET.
-# (Add specific exclusions here if a real link breaks the build.)
-exclude = [
-  # Empty for now.
+  ".github",
 ]

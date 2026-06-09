@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - '**/*.md'
+      - '.lychee.toml'
+      - '.markdownlint-cli2.yaml'
   workflow_dispatch:
 
 jobs:
@@ -30,4 +34,4 @@ jobs:
         run: npm install -g markdownlint-cli2@0.14.0
 
       - name: Run markdownlint
-        run: markdownlint-cli2 '**/*.md' '#node_modules' '#supporting-probes/node_modules'
+        run: markdownlint-cli2 '**/*.md'

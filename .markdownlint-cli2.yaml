@@ -22,6 +22,7 @@ config:
   MD058: true
 
 ignores:
+  - '.github/**'
   - 'node_modules/**'
   - 'supporting-probes/node_modules/**'
   - 'dist/**'
