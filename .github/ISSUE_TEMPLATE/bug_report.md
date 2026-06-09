@@ -26,8 +26,7 @@ assignees: ''
 **Affected Component**
 - [ ] Experiment runner (`src/`)
 - [ ] Generator (`src/generate.ts`, `src/generate-config.json`)
-- [ ] Supporting probe (specify): typeorm / sequelize / mikroorm / prisma / mongoose / sqlalchemy / activerecord /
-      hibernate / efcore
+- [ ] Supporting probe (specify): typeorm / sequelize / mikroorm / prisma / mongoose / sqlalchemy / activerecord / hibernate / efcore
 - [ ] Release workflow (`.github/workflows/release.yml`)
 - [ ] Other CI workflow (specify path)
 - [ ] Documentation (specify file)
