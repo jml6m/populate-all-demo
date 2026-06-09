@@ -2,6 +2,7 @@
 
 config:
   # Disable rules that are too strict for technical research prose.
+  MD022: false # Do not require blank lines around headings.
   MD013:
     line_length: 120
     code_blocks: false
