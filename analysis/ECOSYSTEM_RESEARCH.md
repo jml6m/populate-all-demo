@@ -50,7 +50,7 @@ Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as a
 
 MikroORM is the only Node-ecosystem ORM tested that ships with a true identity map (its `IdentityMap` is conceptually the same construct as SQLAlchemy's `Session` or Hibernate's Persistence Context). The supporting probe confirms this works as designed: hydration produces a single in-memory instance per row, traversal across cyclic edges resolves to the same shared object, and the `smartCheck` identity assertion passes.
 
-What does not work is naive serialization. Calling `JSON.stringify` on the hydrated cyclic graph immediately raises a `TypeError: Converting circular structure to JSON`. MikroORM's collection wrappers (`Collection.toJSON()`) avoid this by lazily flattening, but that's a wrapper-level affordance, not a property of the entity graph itself — applications that bypass the wrapper or pass entity references directly to a non-Mikro serializer hit the same wall as every other identity-map library.
+What does not work is naive serialization. Calling `JSON.stringify` on the hydrated cyclic graph immediately raises a `TypeError: Converting circular structure to JSON`. MikroORM's collection wrappers (`Collection.toJSON()`) avoid this by lazily flattening, but applications that bypass the wrapper or pass entity references directly to a non-Mikro serializer hit the same wall as every other identity-map library.
 
 The pattern is consistent with §2.1 and §2.2: identity-map hydration is correct and useful at the in-memory layer, but it does not, on its own, produce a graph that is safe to serialize.
 
