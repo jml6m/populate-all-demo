@@ -24,3 +24,11 @@ exclude_path = [
   "supporting-probes/results/local",
   ".github",
 ]
+
+# URLs excluded from checking. Patterns are matched as regexes against the full URL.
+# tsx.is: HTTP/2 protocol incompatibility in CI (link is valid).
+# apollographql.com: docs use JS-rendered anchor IDs that lychee's static parser cannot find.
+exclude = [
+  "https://tsx\\.is/",
+  "https://www\\.apollographql\\.com/",
+]
