@@ -68,7 +68,7 @@ The foundation for cycle-safe full hydration is nothing new — it is a textbook
 
 What is striking is that the enterprise ORM ecosystem has, almost without exception, elected not to make this the default. Every library surveyed above offloads the work to the developer: explicit depth caps in SQLAlchemy (`join_depth`), manual include chains in Hibernate (`join fetch`) and EF Core (`.Include()`), and N+1 fallbacks in ActiveRecord. The identity map — the very data structure that makes cycle-safe in-memory wiring trivially achievable — is present in all four backend ORMs, yet none uses it to provide automatic full hydration out of the box.
 
-The gap between what is algorithmically possible and what ships as an ORM default is a deliberate product decision — and across virtually every library in this survey, that decision has consistently landed on the conservative side. Cycle-safe full hydration remains solved at the theory layer and absent at the defaults layer. For a class of tools whose central promise is to abstract away the the storage layer, not supporting unbounded cyclic graph population is a significant omission.
+The gap between what is algorithmically possible and what ships as an ORM default is a deliberate product decision — and across virtually every library in this survey, that decision has consistently landed on the conservative side. Cycle-safe full hydration remains solved at the theory layer and absent at the defaults layer. For a class of tools whose central promise is to abstract away the storage layer, not supporting unbounded cyclic graph population is a significant omission.
 
 ---
 
@@ -180,7 +180,7 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^1]: [SQLAlchemy — Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
 
-[^2]: [SQL Alchemy - Self-Referential Strategies](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)
+[^2]: [SQLAlchemy — Self-Referential Strategies](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)
 
 [^3]: [SQLAlchemy — Relationship Persistence / `post_update`](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html)
 
