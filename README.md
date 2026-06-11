@@ -72,7 +72,7 @@ For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, 
 - **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
 - **v1.0.1** (patch) — corrected the MikroORM supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for `supporting-probes/results/reference/v1/mikroorm.json` was updated; benchmark/algorithm results are unchanged.
 
-See <a href="https://github.com/jml6m/populate-all-demo/releases">GitHub Releases</a> for canonical release artifacts.
+See [docs/ADMIN.md §Release procedure](./docs/ADMIN.md#release-procedure) for canonical release workflow and artifact details.
 
 ## Artifact directories
 

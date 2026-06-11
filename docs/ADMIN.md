@@ -13,10 +13,13 @@ ruleset configuration.
     `supporting-probes/results/reference/`, or `data/reference/`
   - PRs that change `.github/workflows/release.yml` must carry the
     `release-infra` label
+- `docs-lint.yml` should be a required status check on pull requests to `main`.
+  It runs `lychee` (link checking, including internal anchor verification) and
+  `markdownlint-cli2` over all committed `.md` files. This catches broken
+  cross-doc links, missing anchors, malformed tables, and other markdown
+  structural issues that can cause rendering problems on GitHub.
 - `release-infra` is the only release-related label documented here. It is only
   for PRs that change the release workflow definition itself.
-- Official releases do **not** use a separate label. They are identified by a
-  SemVer tag (`v<N>.0.0` for majors, `v<N>.0.<P>` for patch hotfixes).
 
 ## Reference data layout
 
@@ -68,7 +71,11 @@ npm ci
 npm run lint
 npm run build
 npm test
+npm run lint:docs
 ```
+
+Docs-only pre-PR sanity check: `npm run lint:docs`
+(requires `lychee` — `brew install lychee` or `cargo install lychee`; CI installs it automatically via `lycheeverse/lychee-action`).
 
 Dependency hard reset (root + supporting-probes):
 
@@ -132,6 +139,7 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
 ### Dispatching a release
 
 1. On a fresh local checkout, confirm `main` is in a releasable state:
+
    ```bash
    git checkout main
    git pull --ff-only
@@ -140,6 +148,7 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
    npm run build
    npm test
    ```
+
 2. On github.com, navigate to **Actions → Release → Run workflow**, select
    `main`, and choose:
    - `release_type=major` for a new canonical major release

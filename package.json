@@ -13,11 +13,12 @@
     "clean": "node scripts/clean-local.js",
     "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\"",
+    "lint:docs": "lychee --include-fragments --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Joseph Lewkovich",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "seedrandom": "^3.0.5",

@@ -1,0 +1,29 @@
+# markdownlint-cli2 config. See https://github.com/DavidAnson/markdownlint-cli2 for schema.
+
+config:
+  # Disable rules that are too strict for technical research prose.
+  MD022: false # Do not require blank lines around headings.
+  MD013: false # Do not enforce line length — GitHub renders prose regardless of raw line width.
+  MD024:
+    siblings_only: true
+  MD033: false # Allow inline HTML — used for <br /> in headers and table cells.
+  MD036: false # Allow emphasis-as-heading — used for "Stage 1 — Hydration:" pseudo-headings.
+  MD040: false # Allow code fences without language — file-block syntax convention varies.
+  MD041: true
+  MD025: true
+  MD034: true
+  MD042: true
+  MD051: true
+  MD053: true
+  MD056: true
+  MD058: true
+
+ignores:
+  - '.github/**'
+  - 'node_modules/**'
+  - 'supporting-probes/node_modules/**'
+  - 'dist/**'
+  - 'data/**'
+  - 'reports/local/**'
+  - 'logs/local/**'
+  - 'supporting-probes/results/local/**'

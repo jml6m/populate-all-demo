@@ -8,7 +8,7 @@
 This document defines the operational parameters, architectural standards, and safety protocols for all AI agents working within this repository.
 
 > **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
-
+>
 > **Public research repo**: This is a public research repository. The committed `reference/` artifacts are the canonical record of published findings — treat them as immutable historical data. Local/unofficial runs go to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/`, and `supporting-probes/results/local/<run-id>/` directories.
 
 ---
@@ -52,9 +52,11 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
 - `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
+- `npm run lint:docs` — runs lychee link-check + markdownlint over all `.md` files. Mirrors what `docs-lint.yml` runs on PRs. **Prerequisite:** `lychee` must be installed locally (`brew install lychee` or `cargo install lychee`). In CI, `lycheeverse/lychee-action` installs it automatically.
 - `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
 - `cd supporting-probes && npm ci && npm run probe:all` — run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
 - For Python/Ruby/Java/.NET environment setup and troubleshooting, use the exact commands from `.github/workflows/supporting-probes.yml` (these probes are included in `npm run probe:all` once prerequisites are installed).
+
 ### 4. Code Review & PR Interaction
 
 The agent **MUST** respond to all comments from the **primary reviewer** (the project admin, `@jml6m`) without requiring an explicit `@`-mention. A "Request changes" review on the PR is sufficient signal that every unresolved comment needs action.
