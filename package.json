@@ -14,7 +14,8 @@
     "npm:reinstall": "node scripts/reinstall.js",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:docs": "lychee --include-fragments --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "audit:ci": "npm audit --audit-level=high"
   },
   "keywords": [],
   "author": "Joseph Lewkovich",
