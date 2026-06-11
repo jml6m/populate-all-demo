@@ -24,6 +24,7 @@ multi-ecosystem-groups:
     open-pull-requests-limit: 1
     labels:
       - "dependencies"
+      - "defer-to-later-release"
     assignees:
       - "jml6m"
 

@@ -218,34 +218,6 @@ For failures before the final push step, no repository state is changed on
 commit is already on `main` and re-running will stop at the existence check for
 that version.
 
-## Post-v1 admin actions (one-time)
-
-These actions apply only to the v1 release — not to v2, v3, etc. Once completed,
-this section can be deleted or moved to a historical-record archive at the
-admin's discretion.
-
-- **Flip repository visibility to public.** Settings → General → Danger Zone →
-  Change visibility → Public. Confirm by typing the repo name. After flipping,
-  verify the GitHub-hosted README, ADMIN, and analysis docs render correctly
-  for an anonymous viewer (open in an incognito window).
-- **GitHub Discussions stays disabled by design.** Public intake is Issues only,
-  using `.github/ISSUE_TEMPLATE/bug_report.md` and
-  `.github/ISSUE_TEMPLATE/feature_request.md`.
-- **Verify reference artifacts are intact post-flip.** Visit
-  `reports/reference/v1/`, `logs/reference/v1/`, and
-  `supporting-probes/results/reference/v1/`, and `data/reference/v1/` on
-  `main` from the public URL and confirm the JSON/log files are visible and
-  readable.
-- **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
-  trivial PR (e.g., a typo fix) after the visibility flip and confirm the
-  guard appears in the required-checks list and passes.
-- **Update repository description and topics for public discovery.** Ensure the
-  short description and topics reflect cyclic-graph hydration benchmarks,
-  supporting probes, and reproducibility goals.
-- **Verify issue templates render in the New Issue picker.** Confirm both
-  `bug_report.md` and `feature_request.md` are visible and selectable from the
-  public issue creation flow.
-
 ## Troubleshooting
 
 **Guard fails with "Reference data is immutable"**: A file under one of the
