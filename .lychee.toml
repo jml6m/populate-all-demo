@@ -31,4 +31,7 @@ exclude_path = [
 exclude = [
   "https://tsx\\.is/",
   "https://www\\.apollographql\\.com/",
+  # GitHub /security/advisories paths return 404 to anonymous lychee while the repo is private.
+  # Once the repo flips to public, this entry becomes optional but harmless.
+  "https://github\\.com/jml6m/populate-all-demo/security",
 ]
