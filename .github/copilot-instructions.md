@@ -1,4 +1,4 @@
-﻿# Agent & AI Protocols (All Agents)
+# Agent & AI Protocols (All Agents)
 
 **Project:** populate-all-demo <br />
 **Stack:** TypeScript / Node.js (executed via [tsx](https://tsx.is/)) <br />
@@ -9,7 +9,7 @@ This document defines the operational parameters, architectural standards, and s
 
 > **Single Source of Truth**: `AGENTS.md` is the authoritative reference for coding standards, architecture rules, and project policies in this repository. This file mirrors those rules to provide repository-level context to GitHub Copilot; if anything here conflicts with `AGENTS.md`, follow `AGENTS.md`.
 
-> **Research repo (private during development, public after v1)**: This will be published as a public research repository after the first official release. Until then, contributors should still treat committed `reference/` artifacts as the canonical record of published findings â€” they are immutable historical data â€” see Â§3 and Â§6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
+> **Research repo (private during development, public after v1)**: This will be published as a public research repository after the first official release. Until then, contributors should still treat committed `reference/` artifacts as the canonical record of published findings — they are immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
 
 ---
 
@@ -35,25 +35,25 @@ Before starting work, check the open issues in this repository for related tasks
 
 **STRICTLY PROHIBITED:**
 
-- **Triggering or modifying `.github/workflows/release.yml`** â€” official releases are an admin-only manual flow. Never invoke it, never push commits that change it without an explicit `release-infra` label on the PR (see Â§5).
-- **Modifying any file under `reports/reference/`, `logs/reference/`, `supporting-probes/results/reference/`, or `data/reference/`** â€” these are the canonical published artifacts (see Â§6).
-- **Bumping the `version` field in `package.json`** â€” version bumps happen only inside the official release workflow. Do not edit this field manually for any reason.
+- **Triggering or modifying `.github/workflows/release.yml`** — official releases are an admin-only manual flow. Never invoke it, never push commits that change it without an explicit `release-infra` label on the PR (see §5).
+- **Modifying any file under `reports/reference/`, `logs/reference/`, `supporting-probes/results/reference/`, or `data/reference/`** — these are the canonical published artifacts (see §6).
+- **Bumping the `version` field in `package.json`** — version bumps happen only inside the official release workflow. Do not edit this field manually for any reason.
 - **Modifying any past-version reference directory** (e.g. `reports/reference/v1/` once `v2` exists). Past versions are frozen in source control forever.
 - **Adding new top-level dependencies** to either `package.json` without explicit approval. Dev-only deps require justification in the PR description.
-- `git push` â€” Agents do not push to remote directly.
-- `git commit` â€” Avoid creating commits unless your execution environment explicitly supports agent-authored commits and you have been instructed to do so.
-- `npm publish` â€” This package is not published to the registry.
+- `git push` — Agents do not push to remote directly.
+- `git commit` — Avoid creating commits unless your execution environment explicitly supports agent-authored commits and you have been instructed to do so.
+- `npm publish` — This package is not published to the registry.
 - `npm install <pkg>` without explicit instruction. Use `npm ci` for reproducible installs from the lockfile.
 
 **Standard Commands:**
 
-- `npm ci` â€” reproducible install from `package-lock.json` (preferred over `npm install`).
-- `npm run generate` â€” produce test datasets (writes to `data/`, gitignored).
-- `npm run experiment` / `npm run experiment:force` â€” run benchmarks (writes to `reports/`, gitignored).
-- `npm test` â€” run unit tests (writes trace logs to `logs/`, gitignored).
-- `npm run lint` â€” run ESLint.
-- `cd supporting-probes && npm ci && npm run probe:ts` â€” run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
-- `cd supporting-probes && npm ci && npm run probe:all` â€” run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
+- `npm ci` — reproducible install from `package-lock.json` (preferred over `npm install`).
+- `npm run generate` — produce test datasets (writes to `data/`, gitignored).
+- `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
+- `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
+- `npm run lint` — run ESLint.
+- `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
+- `cd supporting-probes && npm ci && npm run probe:all` — run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
 - For Python/Ruby/Java/.NET environment setup and troubleshooting, use the exact commands from `.github/workflows/supporting-probes.yml` (these probes are included in `npm run probe:all` once prerequisites are installed).
 ### 4. Code Review & PR Interaction
 
@@ -75,12 +75,12 @@ The agent **MUST** respond to all comments from the **primary reviewer** (the pr
 
 #### Known AI Agent Identities
 
-- `copilot-pull-request-reviewer[bot]` â€” GitHub Copilot PR Review
-- `github-actions[bot]` â€” CI/CD automation
+- `copilot-pull-request-reviewer[bot]` — GitHub Copilot PR Review
+- `github-actions[bot]` — CI/CD automation
 
 ### 5. Versioning & Release Policy
 
-This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`, â€¦). There are no minor or patch releases. Each release is a deliberate, manual act by the project admin.
+This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`, …). There are no minor or patch releases. Each release is a deliberate, manual act by the project admin.
 
 - **Agents NEVER bump the version field in `package.json`.** Version bumps happen exclusively inside `.github/workflows/release.yml`, which only the project admin may trigger.
 - **Agents NEVER trigger `release.yml`.**
@@ -91,7 +91,7 @@ This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`
 
 ### 6. Reference Artifact Immutability
 
-The `reference/` directories under `reports/`, `logs/`, `supporting-probes/results/`, and `data/` contain the canonical published results for each tagged release. They are organized by version (`v1/`, `v2/`, â€¦).
+The `reference/` directories under `reports/`, `logs/`, `supporting-probes/results/`, and `data/` contain the canonical published results for each tagged release. They are organized by version (`v1/`, `v2/`, …).
 
 - **Past versions are frozen.** Once `v1/` is committed, no PR may modify any file under `reports/reference/v1/`, `logs/reference/v1/`, or `supporting-probes/results/reference/v1/`. Same rule for every subsequent version.
 - **The current in-development version's reference dir does not yet exist** until the next release workflow runs. Do not pre-create it.
@@ -108,7 +108,7 @@ This is a research repo. **Determinism and reproducibility are core requirements
 - **Stable file ordering.** When iterating directory contents or object keys to write into a committed artifact, sort first. Otherwise hashes drift across OSes.
 - **No environment leakage.** Tests and the experiment runner must produce identical outputs on Linux and Windows given the same seeds and dependency versions. If platform-specific paths or behavior are unavoidable, isolate them and document.
 
-If a change you make causes the same input to produce different output across re-runs, that change is incorrect â€” fix it before opening the PR.
+If a change you make causes the same input to produce different output across re-runs, that change is incorrect — fix it before opening the PR.
 
 ---
 
@@ -118,21 +118,21 @@ If a change you make causes the same input to produce different output across re
 
 - **Strict mode required.** `tsconfig.json` enforces `strict: true`; do not relax this.
 - **No `any`.** If a type is genuinely unknown, use `unknown` and narrow. Use `// eslint-disable-next-line` only with a comment explaining why.
-- **Module system: CommonJS.** `package.json` declares `"type": "commonjs"`. Do not switch to ESM without admin approval â€” it cascades into how `tsx`, the test runner, and Node's `require` interop behave.
+- **Module system: CommonJS.** `package.json` declares `"type": "commonjs"`. Do not switch to ESM without admin approval — it cascades into how `tsx`, the test runner, and Node's `require` interop behave.
 - **Imports: relative paths within `src/`.** No path aliases are configured; do not introduce them in this PR cycle.
 - **No deep relative paths beyond `../../`.** If you find yourself writing `../../../`, the file probably belongs in a different location.
 
 ### 2. Code Organization
 
-- **`src/`** â€” main experiment code (runner, generator, algorithms, utilities, tests colocated).
-- **`scripts/`** â€” Node CLI helpers (no TypeScript build step required; CommonJS only).
-- **`supporting-probes/`** â€” standalone probes in multiple languages. Self-contained `package.json` and lockfile. Probe scripts may be modified during development cycles.
-- **`analysis/`** â€” human-authored research reports (`.md`). Edits to these are allowed during development; they are the prose layer that links to `reference/` artifacts.
-- **`reports/`, `logs/`, `supporting-probes/results/`** â€” output dirs. See Â§6.
+- **`src/`** — main experiment code (runner, generator, algorithms, utilities, tests colocated).
+- **`scripts/`** — Node CLI helpers (no TypeScript build step required; CommonJS only).
+- **`supporting-probes/`** — standalone probes in multiple languages. Self-contained `package.json` and lockfile. Probe scripts may be modified during development cycles.
+- **`analysis/`** — human-authored research reports (`.md`). Edits to these are allowed during development; they are the prose layer that links to `reference/` artifacts.
+- **`reports/`, `logs/`, `supporting-probes/results/`** — output dirs. See §6.
 
 ### 3. Tests
 
-- **Test files live next to source:** `foo.ts` â†’ `foo.test.ts`.
+- **Test files live next to source:** `foo.ts` → `foo.test.ts`.
 - **Use Node's built-in test runner**, invoked via `tsx --test "src/**/*.test.ts"`. Do not introduce Jest, Mocha, Vitest, or any other test framework.
 - **Tests must be deterministic.** No timing-based assertions, no network, no real filesystem outside of `os.tmpdir()` or the project's `local/` dirs.
 - **Trace artifacts** written by tests go to `logs/local/<run-id>/` only.
@@ -140,8 +140,8 @@ If a change you make causes the same input to produce different output across re
 ### Coding Hygiene (Strict)
 
 - **Comments**: Use comments _only_ for complex logic, non-obvious invariants, or pointing at external references (issue numbers, papers). **Do NOT** add metadata comments like `// Refactored`, `// New functionality`, or `// Added by agent`. Use Git history for temporal context.
-- **No `console.log` left behind in committed code** unless it is part of the runner's intentional human-readable output (the runner does print structured progress to stdout â€” that's by design and stays). Test scaffolding `console.log` must be removed before commit.
-- **No new top-level dependencies** without justification in the PR description (see Â§3).
+- **No `console.log` left behind in committed code** unless it is part of the runner's intentional human-readable output (the runner does print structured progress to stdout — that's by design and stays). Test scaffolding `console.log` must be removed before commit.
+- **No new top-level dependencies** without justification in the PR description (see §3).
 
 ---
 
@@ -167,13 +167,13 @@ If a change you make causes the same input to produce different output across re
 
 The following paths are **agent-protected**. Do not modify without explicit instruction from the project admin in the PR's problem statement:
 
-1. **`.github/workflows/release.yml`** â€” the official release workflow. Requires `release-infra` label on the PR.
-2. **All other `.github/workflows/*.yml`** â€” no `ci-change` label is required.
-3. **`.github/CODEOWNERS`** (when it exists) â€” admin only.
-4. **`.github/branch-protection.json`** (when it exists) â€” admin only.
-5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`, `data/reference/v<N>/`** â€” frozen per Â§6.
-6. **`package.json` `version` field** â€” admin only, modified by the release workflow.
-7. **`AGENTS.md`** â€” admin approval required for changes.
+1. **`.github/workflows/release.yml`** — the official release workflow. Requires `release-infra` label on the PR.
+2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
+3. **`.github/CODEOWNERS`** (when it exists) — admin only.
+4. **`.github/branch-protection.json`** (when it exists) — admin only.
+5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`, `data/reference/v<N>/`** — frozen per §6.
+6. **`package.json` `version` field** — admin only, modified by the release workflow.
+7. **`AGENTS.md`** — admin approval required for changes.
 
 ### Interaction Guidelines
 
