@@ -36,25 +36,19 @@ It is tempting to treat "handling cyclic data" as a single problem, but it decom
 
 Probe versions for the current published reference set are recorded per-probe in [`supporting-probes/results/reference/v1/`](../supporting-probes/results/reference/v1/) (each `<probe>.json` carries its `libraryVersion` field).
 
-> _All probe code referenced in this section lives in [`supporting-probes/`](../supporting-probes/) — one file per library — orchestrated by [`run-probes.ts`](../supporting-probes/run-probes.ts). See [`supporting-probes/README.md`](../supporting-probes/README.md) for runtime prerequisites, JSON output schema, and how to reproduce these results locally._
+> _Sandbox probes for every framework in this section live in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage._
 
 For example, when serializers encounter revisited objects, common practice is hard failure or data omission. Some libraries go with their own reference-aware custom format, which is not ideal for sharing data outside of that ecosystem. Most popular backend ORMs tackle the cyclic-graph problem via the two-pass identity map strategy—but usually not in a fully best practice way, leaving the serialization gap unsolved.
 
 ### 2.1 — SQLAlchemy (Python)
 
-> _Sandbox probe: [`supporting-probes/test_sqlalchemy.py`](../supporting-probes/test_sqlalchemy.py). The probe builds the canonical 2-node bidirectional cycle (`a → b → a`), exercises SQLAlchemy's identity-map hydration, and attempts a default JSON serialization pass — emitting the per-probe JSON consumed by the §2 results table._
-
 SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects to ensure each database row is represented by only one object instance.[^1] However, for self-referential relationships, the library requires explicit controls like `join_depth` to prevent infinite recursion during eager loading, as SQL joins do not fully support unbounded tree structures.[^2] While `join_depth` manages these read-path complexities, the write-path uses `post_update=True` to resolve circular foreign key dependencies. This is a two-pass strategy that allows the session to insert rows before their mutually dependent links are available.[^3]
 
 ### 2.2 — Hibernate (Java) and EF Core (.NET)
 
-> _Sandbox probes: [`supporting-probes/Main.java`](../supporting-probes/Main.java) (Hibernate, with [`pom.xml`](../supporting-probes/pom.xml)) and [`supporting-probes/Program.cs`](../supporting-probes/Program.cs) (EF Core, with [`EfCoreTest.csproj`](../supporting-probes/EfCoreTest.csproj)). Each builds the same 2-node cycle, runs an in-memory hydration check, and attempts default-serializer output (Jackson and `System.Text.Json` respectively)._
-
 Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as an identity-map during object construction. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: explicit eager loading, such as EF Core's `Include` or Hibernate's `join fetch`, is required for complete data retrieval.[^4] [^5] Native serialization fails on these objects, so annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are available for mitigation, but as mentioned above, the resulting format is not guaranteed to work end-to-end in transport.[^6] [^7]
 
 ### 2.3 — MikroORM (Node.js)
-
-> _Sandbox probe: [`supporting-probes/mikroorm-test.ts`](../supporting-probes/mikroorm-test.ts). Exercises the `populate: ['*']` wildcard against a 2-node cycle, then attempts `JSON.stringify` on the live entity graph._
 
 MikroORM is the only Node-ecosystem ORM tested that ships with a true identity map (its `IdentityMap` is conceptually the same construct as SQLAlchemy's `Session` or Hibernate's Persistence Context). The supporting probe confirms this works as designed: hydration produces a single in-memory instance per row, traversal across cyclic edges resolves to the same shared object, and the `smartCheck` identity assertion passes.
 
@@ -64,13 +58,9 @@ The pattern is consistent with §2.1 and §2.2: identity-map hydration is correc
 
 ### 2.4 — ActiveRecord (Ruby on Rails)
 
-> _Sandbox probe: [`supporting-probes/test_activerecord.rb`](../supporting-probes/test_activerecord.rb). Demonstrates ActiveRecord's `.includes()` depth-fallback behavior on a cyclic association set._
-
 ActiveRecord uses the `.includes()` method for strict tree traversal. If a backend attempts to traverse a fully cyclic graph beyond the explicitly defined depth, ActiveRecord silently falls back to lazy-loading. This triggers a barrage of N+1 SQL queries to fetch the missing references, often crippling performance.[^8] Ruby's native `.to_json` lacks cycle-detection, resulting in a `JSON::NestingError` or stack overflow when encountering circular references.[^9]
 
 ### 2.5 — JavaScript ORMs
-
-> _Sandbox probes for the JS ORMs covered in this matrix: [`typeorm-test.ts`](../supporting-probes/typeorm-test.ts), [`sequelize-test.ts`](../supporting-probes/sequelize-test.ts), [`prisma-test.ts`](../supporting-probes/prisma-test.ts), [`mongoose-test.ts`](../supporting-probes/mongoose-test.ts) (and [`mikroorm-test.ts`](../supporting-probes/mikroorm-test.ts) — see §2.3). Each follows the same shape: build the cycle, hydrate, attempt default JSON serialization, write the result JSON._
 
 For the detailed JavaScript ORM comparison matrix, see `EXPERIMENT_ANALYSIS.md`.[^10] At a high level, JavaScript ORMs consistently fail at _schema-driven_ full hydration.
 
