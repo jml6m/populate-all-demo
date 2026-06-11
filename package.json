@@ -17,8 +17,8 @@
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Joseph Lewkovich",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "seedrandom": "^3.0.5",
