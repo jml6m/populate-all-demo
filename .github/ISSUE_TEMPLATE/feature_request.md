@@ -1,7 +1,7 @@
 ---
 name: Feature request / Enhancement
 about: Propose a research or infrastructure enhancement for populate-all-demo
-title: "[FEATURE] "
+title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
@@ -23,14 +23,14 @@ What problem does this solve, or what research question does it open?
 ## Proposed File Modifications
 
 ### Existing Files
-- [ ] 
+- [ ]
 
 ### New Files
-- [ ] 
+- [ ]
 
 ## Acceptance Criteria
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]
 
 ## Testing Checklist
 - [ ] Unit tests pass (`npm test`)

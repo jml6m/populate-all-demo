@@ -8,8 +8,8 @@
 This document defines the operational parameters, architectural standards, and safety protocols for all AI agents working within this repository.
 
 > **Single Source of Truth**: This document is the authoritative reference for all coding standards, architecture rules, and project policies in this repository. If there is a conflict between this document and any other file, `AGENTS.md` takes precedence.
-
-> **Research repo (private during development, public after v1)**: This will be published as a public research repository after the first official release. Until then, contributors should still treat committed `reference/` artifacts as the canonical record of published findings — they are immutable historical data — see §3 and §6 for the exact constraints. Reproducibility, idempotency, and clear documentation are the top priorities.
+>
+> **Public research repo**: This is a public research repository. The committed `reference/` artifacts are the canonical record of published findings — treat them as immutable historical data. Local/unofficial runs go to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/`, and `supporting-probes/results/local/<run-id>/` directories.
 
 ---
 
@@ -52,9 +52,11 @@ Before starting work, check the open issues in this repository for related tasks
 - `npm run experiment` / `npm run experiment:force` — run benchmarks (writes to `reports/`, gitignored).
 - `npm test` — run unit tests (writes trace logs to `logs/`, gitignored).
 - `npm run lint` — run ESLint.
+- `npm run lint:docs` — runs lychee link-check + markdownlint over all `.md` files. Mirrors what `docs-lint.yml` runs on PRs. **Prerequisite:** `lychee` must be installed locally (`brew install lychee` or `cargo install lychee`). In CI, `lycheeverse/lychee-action` installs it automatically.
 - `cd supporting-probes && npm ci && npm run probe:ts` — run the TypeScript probe suite (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`). Note: `mongoose` requires a reachable MongoDB instance via `MONGODB_URI` (defaults to `mongodb://127.0.0.1:27017/supporting_probe_mongoose`).
 - `cd supporting-probes && npm ci && npm run probe:all` — run the full supporting-probe suite (TypeScript + Python + Ruby + Java + .NET probes).
 - For Python/Ruby/Java/.NET environment setup and troubleshooting, use the exact commands from `.github/workflows/supporting-probes.yml` (these probes are included in `npm run probe:all` once prerequisites are installed).
+
 ### 4. Code Review & PR Interaction
 
 The agent **MUST** respond to all comments from the **primary reviewer** (the project admin, `@jml6m`) without requiring an explicit `@`-mention. A "Request changes" review on the PR is sufficient signal that every unresolved comment needs action.
@@ -80,7 +82,7 @@ The agent **MUST** respond to all comments from the **primary reviewer** (the pr
 
 ### 5. Versioning & Release Policy
 
-This repo uses **major-version-only** semver releases (`1.0.0`, `2.0.0`, `3.0.0`, …). There are no minor or patch releases. Each release is a deliberate, manual act by the project admin.
+This repo uses major releases (`1.0.0`, `2.0.0`, …) with optional patch hotfixes (`1.0.1`, `1.0.2`, …). Each release is a deliberate, manual act by the project admin.
 
 - **Agents NEVER bump the version field in `package.json`.** Version bumps happen exclusively inside `.github/workflows/release.yml`, which only the project admin may trigger.
 - **Agents NEVER trigger `release.yml`.**
@@ -171,7 +173,7 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
-5. **`reports/reference/v<N>/`, `logs/reference/v<N>/`, `supporting-probes/results/reference/v<N>/`, `data/reference/v<N>/`** — frozen per §6.
+5. **`reports/reference/v1/` + `v2/` (and newer), `logs/reference/v1/` + `v2/` (and newer), `supporting-probes/results/reference/v1/` + `v2/` (and newer), `data/reference/v1/` + `v2/` (and newer)** — frozen per §6.
 6. **`package.json` `version` field** — admin only, modified by the release workflow.
 7. **`AGENTS.md`** (this file) — admin approval required for changes.
 

@@ -1,0 +1,34 @@
+# Lychee link-checker config. See https://lychee.cli.rs/usage/config/ for full schema.
+
+# Check internal anchors (e.g., [text](./FILE.md#section)).
+include_fragments = true
+
+# Treat these as success even when the remote returns these codes.
+accept = [200, 206, 429]
+
+# Polite to remote hosts.
+max_concurrency = 8
+max_retries = 2
+retry_wait_time = 3
+timeout = 20
+
+# Don't follow links inside code fences or auto-detect URLs in inline code.
+# (Code-block links are usually examples, not real anchors.)
+exclude_path = [
+  "node_modules",
+  "supporting-probes/node_modules",
+  "dist",
+  "data",
+  "reports/local",
+  "logs/local",
+  "supporting-probes/results/local",
+  ".github",
+]
+
+# URLs excluded from checking. Patterns are matched as regexes against the full URL.
+# tsx.is: HTTP/2 protocol incompatibility in CI (link is valid).
+# apollographql.com: docs use JS-rendered anchor IDs that lychee's static parser cannot find.
+exclude = [
+  "https://tsx\\.is/",
+  "https://www\\.apollographql\\.com/",
+]
