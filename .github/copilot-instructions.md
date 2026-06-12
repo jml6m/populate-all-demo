@@ -1,4 +1,4 @@
-﻿# Agent & AI Protocols (All Agents)
+# Agent & AI Protocols (All Agents)
 
 **Project:** populate-all-demo <br />
 **Stack:** TypeScript / Node.js (executed via [tsx](https://tsx.is/)) <br />
