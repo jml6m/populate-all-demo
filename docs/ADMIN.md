@@ -173,13 +173,7 @@ git push origin v<N>.0.0
 
 ### Patch-release procedure (supporting-probe/doc hotfixes)
 
-Use `release_type=patch` only when fixing interpretation-critical defects
-without changing the experiment fingerprint (for example: supporting-probe
-classification bugs or release-manifest/doc errors tied to published outputs).
-
-Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe
-serialization classification behavior while preserving the same benchmark
-algorithm/dataset outcomes.
+Use `release_type=patch` only when fixing interpretation-critical defects without changing the experiment fingerprint. Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe serialization classification behavior while preserving the same benchmark algorithm/dataset outcomes.
 
 - Patch mode reuses the existing major directory (`reference/v<N>/`) and
   replaces all release assets in place (`reports/`, `logs/`,
