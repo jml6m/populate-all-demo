@@ -1,24 +1,23 @@
 ---
 name: Bug report
 about: Report a defect in the experiment runner, supporting probes, or release infrastructure
-title: "[BUG] "
+title: '[BUG] '
 labels: bug
 assignees: ''
 ---
 
-**Overview**
-A clear and concise description of the failure.
+**Overview** A clear and concise description of the failure.
 
 **Environment**
 - **Repo SHA / branch:** (e.g., `main` HEAD `abc1234`, or release tag `v1.0.0`)
 - **Node version:** (e.g., v22.17.1)
 - **OS:** (e.g., GitHub Actions Ubuntu / macOS local / Windows local / WSL)
-- **Polyglot toolchain (if probe-related):** Python ___, Ruby ___, Java ___, .NET ___
+- **Polyglot toolchain (if probe-related):** Python <version>, Ruby <version>, Java <version>, .NET <version>
 
 **Reproduction Steps**
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 **Expected Behavior**
 
@@ -36,6 +35,7 @@ A clear and concise description of the failure.
 - **Failing test/probe:** (e.g., `src/runner.test.ts`, `mongoose-test.ts`)
 - **Command run:** (e.g., `npm test`, `npm run probe:all`)
 - **Error output:**
+
 ```
 paste here
 ```

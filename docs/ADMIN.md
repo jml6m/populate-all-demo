@@ -13,10 +13,13 @@ ruleset configuration.
     `supporting-probes/results/reference/`, or `data/reference/`
   - PRs that change `.github/workflows/release.yml` must carry the
     `release-infra` label
+- `docs-lint.yml` should be a required status check on pull requests to `main`.
+  It runs `lychee` (link checking, including internal anchor verification) and
+  `markdownlint-cli2` over all committed `.md` files. This catches broken
+  cross-doc links, missing anchors, malformed tables, and other markdown
+  structural issues that can cause rendering problems on GitHub.
 - `release-infra` is the only release-related label documented here. It is only
   for PRs that change the release workflow definition itself.
-- Official releases do **not** use a separate label. They are identified by a
-  SemVer tag (`v<N>.0.0` for majors, `v<N>.0.<P>` for patch hotfixes).
 
 ## Reference data layout
 
@@ -68,6 +71,16 @@ npm ci
 npm run lint
 npm run build
 npm test
+npm run lint:docs
+```
+
+Docs-only pre-PR sanity check: `npm run lint:docs`
+(requires `lychee` — `brew install lychee` or `cargo install lychee`; CI installs it automatically via `lycheeverse/lychee-action`).
+
+Dependency hard reset (root + supporting-probes):
+
+```bash
+npm run npm:reinstall
 ```
 
 Run all supporting probes locally (silent by default):
@@ -126,6 +139,7 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
 ### Dispatching a release
 
 1. On a fresh local checkout, confirm `main` is in a releasable state:
+
    ```bash
    git checkout main
    git pull --ff-only
@@ -134,6 +148,7 @@ End-to-end runtime is roughly 5–10 minutes including polyglot setup.
    npm run build
    npm test
    ```
+
 2. On github.com, navigate to **Actions → Release → Run workflow**, select
    `main`, and choose:
    - `release_type=major` for a new canonical major release
@@ -161,6 +176,10 @@ git push origin v<N>.0.0
 Use `release_type=patch` only when fixing interpretation-critical defects
 without changing the experiment fingerprint (for example: supporting-probe
 classification bugs or release-manifest/doc errors tied to published outputs).
+
+Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe
+serialization classification behavior while preserving the same benchmark
+algorithm/dataset outcomes.
 
 - Patch mode reuses the existing major directory (`reference/v<N>/`) and
   replaces all release assets in place (`reports/`, `logs/`,
@@ -198,25 +217,6 @@ For failures before the final push step, no repository state is changed on
 `main`; re-run after fixing the cause. If the push step succeeds, the release
 commit is already on `main` and re-running will stop at the existence check for
 that version.
-
-## Post-v1 admin actions (one-time)
-
-These actions apply only to the v1 release — not to v2, v3, etc. Once completed,
-this section can be deleted or moved to a historical-record archive at the
-admin's discretion.
-
-- **Flip repository visibility to public.** Settings → General → Danger Zone →
-  Change visibility → Public. Confirm by typing the repo name. After flipping,
-  verify the GitHub-hosted README, ADMIN, and analysis docs render correctly
-  for an anonymous viewer (open in an incognito window).
-- **Verify reference artifacts are intact post-flip.** Visit
-  `reports/reference/v1/`, `logs/reference/v1/`, and
-  `supporting-probes/results/reference/v1/`, and `data/reference/v1/` on
-  `main` from the public URL and confirm the JSON/log files are visible and
-  readable.
-- **Confirm `repo-config-guard.yml` still runs as a required check.** Open a
-  trivial PR (e.g., a typo fix) after the visibility flip and confirm the
-  guard appears in the required-checks list and passes.
 
 ## Troubleshooting
 
