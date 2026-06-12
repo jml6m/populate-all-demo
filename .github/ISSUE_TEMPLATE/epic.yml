@@ -6,12 +6,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        ### ðŸ§­ Epic Guidelines (For Agents & Developers)
+        ### 🧭 Epic Guidelines (For Agents & Developers)
         - **When to use:** Use an Epic when the work naturally breaks down into **3 or more** distinct sub-issues, or spans multiple repositories/functional areas.
         - **How to use:** 
           1. Create this Parent Epic first.
           2. Draft and create the child issues.
-          3. Update the Task List below with the # references to the child issues so GitHub creates the progress tracker (e.g.,  / 6).
+          3. Update the Task List below with the # references to the child issues so GitHub creates the progress tracker (e.g., 0 / 6).
   - type: textarea
     id: description
     attributes:
