@@ -173,20 +173,8 @@ git push origin v<N>.0.0
 
 ### Patch-release procedure (supporting-probe/doc hotfixes)
 
-Use `release_type=patch` only when fixing interpretation-critical defects
-without changing the experiment fingerprint (for example: supporting-probe
-classification bugs, release-manifest/doc errors tied to published outputs, or
-repository markdown that should have been part of the previously tagged
-snapshot).
+Use `release_type=patch` only when fixing interpretation-critical defects without changing the experiment fingerprint. Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe serialization classification behavior while preserving the same benchmark algorithm/dataset outcomes.
 
-Example: `v1.0.1` was dispatched as a patch release to correct supporting-probe
-serialization classification behavior while preserving the same benchmark
-algorithm/dataset outcomes.
-
-- A patch release republishes the repository snapshot at a new tag, so updated
-  committed `.md` files on `main` become part of the new tagged source tree
-  even though the workflow still reuses the same major `reference/v<N>/`
-  directory.
 - Patch mode reuses the existing major directory (`reference/v<N>/`) and
   replaces all release assets in place (`reports/`, `logs/`,
   `supporting-probes/results/`, and `data/` under `reference/v<N>/`), then
@@ -194,18 +182,6 @@ algorithm/dataset outcomes.
   `releasedAt`, `runId`, `lockfileHashes`).
 - Patch mode must **not** be used for experiment-definition changes. If the
   experiment fingerprint should change, run a major release instead.
-- If you suspect a prior tag shipped older markdown by accident, audit the delta
-  before dispatching the patch release:
-
-  ```bash
-  git checkout main
-  git pull --ff-only
-  git diff --name-status <old-tag>..main -- '*.md'
-  ```
-
-  Review the changed files, merge any remaining markdown fixes to `main`, then
-  run the patch release so the corrected `.md` snapshot is captured under the
-  new tag.
 
 **github.com UI:**
 
