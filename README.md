@@ -72,6 +72,10 @@ For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, 
 - **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
 - **v1.0.1** (patch) — corrected the MikroORM supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for `supporting-probes/results/reference/v1/mikroorm.json` was updated; benchmark/algorithm results are unchanged.
 
+Patch releases may also be used to republish the repository's tagged markdown
+snapshot when interpretation-critical `.md` fixes land after a prior tag,
+provided the experiment fingerprint itself is not meant to change.
+
 See [docs/ADMIN.md §Release procedure](./docs/ADMIN.md#release-procedure) for canonical release workflow and artifact details.
 
 ## Artifact directories
