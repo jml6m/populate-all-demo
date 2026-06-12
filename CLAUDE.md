@@ -35,7 +35,7 @@ Task-specific protocols live in **[.grok/rules/](./.grok/rules/)** and apply to 
 
 ## Conventions
 
-Follow the author's standing coding conventions: comments only where they earn their place (no changelog-style "updated/refactored" comments); targeted edits over full-file rewrites. Per AGENTS.md, agents never bump the `package.json` version, never trigger or modify `release.yml` (it requires a `release-infra` label), and never publish to npm — this package is intentionally not on the registry. Reference artifacts under `reference/` are frozen. Include a one-line `git commit -m "..."` when delivering a changeset.
+Follow the author's standing coding conventions: comments only where they earn their place (no changelog-style "updated/refactored" comments); targeted edits over full-file rewrites. Per AGENTS.md, agents never bump the `package.json` version, never trigger or modify `release.yml` (it requires a `release-infra` label), and never publish to npm — this package is intentionally not on the registry. Reference artifacts under `reference/` are frozen. Only create commits/pushes when explicitly instructed and the environment supports it (see `.grok/rules/session-validation.md`).
 
 ## Before handing work back
 

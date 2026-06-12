@@ -69,10 +69,20 @@ for (const file of trackedFiles()) {
   }
   if (!isValidUtf8(buf)) issues.push('invalid UTF-8 byte sequence');
 
+  let sawCrlf = false;
+  let sawLoneCr = false;
   for (let i = 0; i < buf.length; i++) {
     const b = buf[i];
     if (b === 0x0d) {
-      if (!allowCrlf) issues.push(buf[i + 1] === 0x0a ? 'CRLF line endings' : 'lone CR (0x0D)');
+      if (!allowCrlf) {
+        if (buf[i + 1] === 0x0a) {
+          if (!sawCrlf) issues.push('CRLF line endings');
+          sawCrlf = true;
+        } else {
+          if (!sawLoneCr) issues.push('lone CR (0x0D)');
+          sawLoneCr = true;
+        }
+      }
       continue;
     }
     if ((b < 0x20 && !ALLOWED_CTRL.has(b)) || b === 0x7f) {
