@@ -17,7 +17,7 @@ Task-specific protocols live in **[.grok/rules/](./.grok/rules/)** and apply to 
 
 - `populate-all-demo` — a public research repo benchmarking deterministic, stack-safe object-graph hydration (traversing directed cyclic graphs without depth boundaries) across approaches and datasets.
 - CommonJS TypeScript (`"type": "commonjs"`), executed via [tsx](https://tsx.is/); strict mode, no `any`.
-- `src/` holds the runner, generator, algorithms, and colocated `*.test.ts` tests. `scripts/` holds CommonJS Node CLI helpers. `supporting-probes/` is a self-contained multi-language probe suite.
+- `src/` holds the runner, generator, algorithms, and colocated `*.test.ts` tests. `scripts/` holds Node CLI helpers (CJS `.js` and ESM `.mjs`). `supporting-probes/` is a self-contained multi-language probe suite.
 - **Determinism is a hard requirement.** Seeded RNG only, stable ordering, no wall-clock fields in fingerprints — see AGENTS.md §7.
 
 ## Commands
@@ -27,7 +27,7 @@ Task-specific protocols live in **[.grok/rules/](./.grok/rules/)** and apply to 
 | `npm test` | Node's built-in test runner via `tsx --test "src/**/*.test.ts"`. Run after every change. |
 | `npm run lint` | ESLint over `src/**/*.ts`, then the encoding gate. |
 | `npm run lint:encoding` | Fails on non-UTF-8 / BOM / CRLF / control chars in tracked files. |
-| `npm run audit:ci` | Fails only on critical/high advisories (moderate/low ignored). |
+| `npm run audit:ci` | Fails only on critical/high advisories (moderate/low ignored). Separate from `lint`; also run by `npm:reinstall` and CI. |
 | `npm run generate` / `generate:force` | Produce test datasets (writes to gitignored `data/`). |
 | `npm run experiment` / `experiment:force` | Run benchmarks (writes to gitignored `reports/`). |
 | `npm run npm:reinstall` | Clean reinstall, then the audit gate. |
@@ -35,7 +35,7 @@ Task-specific protocols live in **[.grok/rules/](./.grok/rules/)** and apply to 
 
 ## Conventions
 
-Follow the author's standing coding conventions: comments only where they earn their place (no changelog-style "updated/refactored" comments); targeted edits over full-file rewrites. Per AGENTS.md, agents never bump the `package.json` version, never trigger or modify `release.yml` (it requires a `release-infra` label), and never publish to npm — this package is intentionally not on the registry. Reference artifacts under `reference/` are frozen. Only create commits/pushes when explicitly instructed and the environment supports it (see `.grok/rules/session-validation.md`).
+Follow the author's standing coding conventions: comments only where they earn their place (no changelog-style "updated/refactored" comments); targeted edits over full-file rewrites. Per AGENTS.md, agents never bump the `package.json` version, never trigger or modify `release.yml` (it requires a `release-infra` label), and never publish to npm — this package is intentionally not on the registry. Reference artifacts under `reference/` are frozen. For commit/push guidance, follow AGENTS.md — do not commit or push unless it directs you to.
 
 ## Before handing work back
 

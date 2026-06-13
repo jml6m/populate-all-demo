@@ -14,6 +14,8 @@ Run in order. Stop and fix failures before handing work back.
 | 4. Tests | `npm test` | **Always** — `tsx --test` suite passes. |
 | 5. Determinism | Re-run the touched generation/experiment path | When runner/generator/algorithm code changed — same seed must yield identical output (AGENTS.md §7). |
 
+`npm run lint` runs ESLint + the encoding gate (steps 1–2). Step 3 (`npm run audit:ci`) is a separate command — it is also run by `npm run npm:reinstall` and enforced in CI.
+
 ## Reporting policy
 
 In the final response, include a short **Validation** section listing each command and pass/fail, e.g.:
