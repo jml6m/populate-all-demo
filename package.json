@@ -12,10 +12,12 @@
     "experiment:force": "cross-env POPULATE_ALL_FORCE=1 NODE_OPTIONS='--max-old-space-size=4096' tsx src/runner.ts",
     "clean": "node scripts/clean-local.js",
     "npm:reinstall": "node scripts/reinstall.js",
-    "lint": "eslint \"src/**/*.ts\"",
+    "git:pull": "node scripts/git-pull-all.mjs",
+    "lint": "eslint \"src/**/*.ts\" && npm run lint:encoding",
+    "lint:encoding": "node scripts/check-encoding.mjs",
     "lint:docs": "lychee --include-fragments --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "audit:ci": "npm audit --audit-level=high"
+    "audit:ci": "node scripts/audit-ci.mjs"
   },
   "keywords": [],
   "author": "Joseph Lewkovich",

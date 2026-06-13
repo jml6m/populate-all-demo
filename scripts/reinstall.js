@@ -28,3 +28,10 @@ try {
 } catch (error) {
   process.exit(1);
 }
+
+// Run the critical/high audit gate after the dependency refresh.
+try {
+  execSync('npm run audit:ci', { stdio: 'inherit', cwd: rootDir });
+} catch (error) {
+  process.exit(1);
+}
