@@ -11,7 +11,7 @@ This repo is a deterministic benchmark of object-graph hydration. Tests protect 
 
 ## Layered validation
 
-1. **Every task** — `npm test` + `npm run lint` (ESLint + encoding gate) + `npm run audit:ci` (audit gate, separate from lint). Never skip these.
+1. **Every task** — `npm test` + `npm run lint` (ESLint + encoding gate) + `npm run audit:ci` (audit gate, gates production deps only; dev-only reported, not gated). Never skip these.
 2. **Algorithm / runner changes** — add or extend a colocated test for the changed behavior; confirm the experiment fingerprint still behaves as intended (AGENTS.md §7).
 3. **Generator / config changes** — verify a regenerated dataset is byte-stable across re-runs with the same seed.
 

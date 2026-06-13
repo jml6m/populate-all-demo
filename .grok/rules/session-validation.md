@@ -10,7 +10,7 @@ Run in order. Stop and fix failures before handing work back.
 |------|---------|---------------|
 | 1. Encoding | `npm run lint:encoding` | **Always** — no BOM / CRLF / non-UTF-8 / control chars. |
 | 2. Lint | `npm run lint` | **Always** — ESLint clean (also runs the encoding gate). |
-| 3. Audit | `npm run audit:ci` | **Always** — zero critical/high advisories. |
+| 3. Audit | `npm run audit:ci` | **Always** — zero critical/high in production deps (dev-only advisories reported, not gated). |
 | 4. Tests | `npm test` | **Always** — `tsx --test` suite passes. |
 | 5. Determinism | Re-run the touched generation/experiment path | When runner/generator/algorithm code changed — same seed must yield identical output (AGENTS.md §7). |
 

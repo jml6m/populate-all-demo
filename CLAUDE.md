@@ -27,7 +27,7 @@ Task-specific protocols live in **[.grok/rules/](./.grok/rules/)** and apply to 
 | `npm test` | Node's built-in test runner via `tsx --test "src/**/*.test.ts"`. Run after every change. |
 | `npm run lint` | ESLint over `src/**/*.ts`, then the encoding gate. |
 | `npm run lint:encoding` | Fails on non-UTF-8 / BOM / CRLF / control chars in tracked files. |
-| `npm run audit:ci` | Fails only on critical/high advisories (moderate/low ignored). Separate from `lint`; also run by `npm:reinstall` and CI. |
+| `npm run audit:ci` | Hard-fails on critical/high in **production** deps (dev-only/moderate/low reported, not gated). Separate from `lint`; also run by `npm:reinstall` and CI. |
 | `npm run generate` / `generate:force` | Produce test datasets (writes to gitignored `data/`). |
 | `npm run experiment` / `experiment:force` | Run benchmarks (writes to gitignored `reports/`). |
 | `npm run npm:reinstall` | Clean reinstall, then the audit gate. |
