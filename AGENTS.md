@@ -145,6 +145,12 @@ If a change you make causes the same input to produce different output across re
 - **No `console.log` left behind in committed code** unless it is part of the runner's intentional human-readable output (the runner does print structured progress to stdout — that's by design and stays). Test scaffolding `console.log` must be removed before commit.
 - **No new top-level dependencies** without justification in the PR description (see §3).
 
+### CLI Table Output
+
+- The runner's human-readable stdout tables (`src/runner.ts`) must fit the active terminal: measure **display width** (not `.length`), truncate with an explicit ellipsis, and never hardcode `colWidths` or silently clip borders. Resolve width via explicit override → `stdout.columns` (TTY) → `$COLUMNS` → a clamped default.
+- The console table is a **view layer only**. Canonical, full-precision numbers live in the committed JSON/`reference/` artifacts (see §6) — never round or truncate in a way that loses data from the stored results. This is the same data-vs-presentation separation the determinism rules (§7) already require.
+- Reference implementation: `x-app-skeleton/src/utils/logTable.js` + its `log-table-requirements.md`; new repos get it via the `@jml6m/skeletor` `log-table` layer.
+
 ---
 
 ## Configuration (SSoT)
