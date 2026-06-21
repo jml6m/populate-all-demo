@@ -182,3 +182,13 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 - **No Hardcoded Secrets:** Never hardcode secrets, API keys, or tokens. (This repo currently has none, and that is the desired state.)
 - **No Network Calls in Core Code:** The experiment runner, generator, and TypeScript probes must not make outbound network calls. The non-Node probes may connect to a local SQLite/MongoDB only as defined by their existing scripts.
 - **No Telemetry:** Do not add analytics, telemetry, or any phone-home behavior anywhere in the codebase.
+
+## Branch & ref hygiene
+
+- **Auto-delete on merge** is enabled — merged PR branches are removed automatically; don't rely on them persisting.
+- **Branch naming**: short-lived topic branches off `main`, prefixed by intent — `feat/`, `fix/`, `chore/`, `docs/`. Open a PR into `main`; **squash-merge** keeps `main` linear (the repo ruleset enforces no force-push / no deletion on `main`).
+- **Tag/ref retention**: release tags `v*` are **permanent and immutable** — never delete or move a published tag; they pin the frozen `reference/` artifact sets to a version. Fix a mistake with a new tag, never by moving one. Non-release refs are disposable.
+- **Periodic stale-branch sweep** (manual, report-only — never auto-delete beyond the merge cleanup):
+  - List remote branches by last commit, newest last:
+    `git for-each-ref --sort=committerdate --format='%(committerdate:short) %(refname:short)' refs/remotes/origin`
+  - Cross-reference against open PRs (`gh pr list --state open`) and delete only stale, merged, PR-less branches deliberately.
