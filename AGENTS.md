@@ -192,3 +192,7 @@ The following paths are **agent-protected**. Do not modify without explicit inst
   - List remote branches by last commit, newest last:
     `git for-each-ref --sort=committerdate --format='%(committerdate:short) %(refname:short)' refs/remotes/origin`
   - Cross-reference against open PRs (`gh pr list --state open`) and delete only stale, merged, PR-less branches deliberately.
+
+## Documentation conventions
+
+- **Linkable paths must be clickable links.** Any in-repo path mentioned in a Markdown file must be written as a clickable link to the target (e.g. `[src/runner.ts](./src/runner.ts)`), not as bare inline code. Command examples and illustrative / non-existent paths are exempt. The existing [`docs-lint`](./.github/workflows/docs-lint.yml) job (lychee + markdownlint) validates that the links resolve.
