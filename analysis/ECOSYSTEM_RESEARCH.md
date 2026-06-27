@@ -50,11 +50,11 @@ Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as a
 
 ### 2.3 — MikroORM (Node.js)
 
-MikroORM is the only Node-ecosystem ORM tested that ships with a true identity map (its `IdentityMap` is conceptually the same construct as SQLAlchemy's `Session` or Hibernate's Persistence Context). The supporting probe confirms this works as designed: hydration produces a single in-memory instance per row, traversal across cyclic edges resolves to the same shared object, and the `smartCheck` identity assertion passes.
+MikroORM is the only Node-ecosystem ORM tested that ships with a true identity map (its `IdentityMap` is conceptually the same construct as SQLAlchemy's `Session` or Hibernate's Persistence Context). It does not, however, offer schema-driven full population: the `populate: ['*']` wildcard halts at depth 1, so traversing a cyclic graph to arbitrary depth requires hardcoding the explicit path at every level — the same hydration gap seen across the ecosystem. Given those explicit paths, the identity map works as designed: the supporting probe confirms hydration produces a single in-memory instance per row, traversal across cyclic edges resolves to the same shared object, and the `smartCheck` identity assertion passes.
 
-What does not work is naive serialization. Calling `JSON.stringify` on the hydrated cyclic graph immediately raises a `TypeError: Converting circular structure to JSON`. MikroORM's collection wrappers (`Collection.toJSON()`) avoid this by lazily flattening, but applications that bypass the wrapper or pass entity references directly to a non-Mikro serializer hit the same wall as every other identity-map library.
+Serialization is the second gap. Calling `JSON.stringify` on the hydrated cyclic graph immediately raises a `TypeError: Converting circular structure to JSON`. MikroORM's collection wrappers (`Collection.toJSON()`) avoid this by lazily flattening, but applications that bypass the wrapper or pass entity references directly to a non-Mikro serializer hit the same wall as every other identity-map library.
 
-The pattern is consistent with §2.1 and §2.2: identity-map hydration is correct and useful at the in-memory layer, but it does not, on its own, produce a graph that is safe to serialize.
+The pattern is consistent with §2.1 and §2.2: the identity map hydrates correctly once explicit paths are supplied, but the library neither populates the full graph from the schema alone nor produces a graph that is safe to serialize.
 
 ### 2.4 — ActiveRecord (Ruby on Rails)
 
@@ -128,7 +128,7 @@ Imagine the simplest possible circular graph containing two objects: **Object A*
 Let’s assign a mathematical variable to the exact moment in time an object is created.
 
 - Let `T(A)` = The time Object A is created.
-- Let `T(B)` = The time Object B is fully created.
+- Let `T(B)` = The time Object B is created.
 
 Because Object A requires Object B to exist before A can be created, A's creation time must be strictly greater (later in time) than B's:
 
