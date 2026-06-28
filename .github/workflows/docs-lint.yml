@@ -8,6 +8,8 @@ on:
       - '**/*.md'
       - '.lychee.toml'
       - '.markdownlint-cli2.yaml'
+      - '.github/workflows/*.yml'
+      - '.github/workflows/*.yaml'
   workflow_dispatch:
 
 jobs:
