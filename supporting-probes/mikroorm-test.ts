@@ -56,7 +56,7 @@ function toPlainCycleGraph(roots: Node[]): SerializableNode[] {
 
 async function run() {
   let queryCount = 0;
-  const expectedAdj = { a: ['b'], b: ['a'] };
+  const expectedAdj = { a: ['b'], b: ['c'], c: [] };
   const findings: {
     hydration: { result: 'PASS' | 'FAIL'; detail: string };
     queryGate: { result: 'PASS' | 'FAIL' | 'NOT_APPLICABLE'; detail: string; extraQueries?: number };
@@ -90,14 +90,16 @@ async function run() {
     a.id = 'a';
     const b = new Node();
     b.id = 'b';
+    const c = new Node();
+    c.id = 'c';
 
     a.dependencies.add(b);
-    b.dependencies.add(a);
+    b.dependencies.add(c);
 
-    await orm.em.persistAndFlush([a, b]);
+    await orm.em.persistAndFlush([a, b, c]);
     orm.em.clear();
 
-    const roots = await orm.em.find(Node, { id: { $in: ['a', 'b'] } }, { populate: ['dependencies.dependencies'], orderBy: { id: 'asc' } });
+    const roots = await orm.em.find(Node, { id: { $in: ['a'] } }, { populate: ['*'], orderBy: { id: 'asc' } });
 
     const queriesAfterHydration = queryCount;
 

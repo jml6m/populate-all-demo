@@ -107,7 +107,7 @@ def deep_sort(value)
 end
 
 def run
-  expected_adj = { 'a' => ['b'], 'b' => ['a'] }
+  expected_adj = { 'a' => ['b'], 'b' => ['c'], 'c' => [] }
   query_count = 0
 
   findings = {
@@ -125,10 +125,11 @@ def run
     ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
       a = Node.create!(name: 'a')
       b = Node.create!(name: 'b')
+      c = Node.create!(name: 'c')
       a.dependencies << b
-      b.dependencies << a
+      b.dependencies << c
 
-      roots = Node.includes(dependencies: :dependencies).where(name: %w[a b]).order(:name).to_a
+      roots = Node.where(name: %w[a]).order(:name).to_a
       queries_after_hydration = query_count
 
       roots.each do |root|

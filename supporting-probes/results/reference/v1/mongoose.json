@@ -13,7 +13,7 @@
       "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
-      "detail": "id \"b\" maps to multiple in-memory instances",
+      "detail": "dependency closure mismatch at \"a\"",
       "result": "FAIL"
     }
   },
@@ -22,5 +22,5 @@
   "libraryVersion": "8.24.0",
   "outcome": "HYDRATION_FAIL",
   "probe": "mongoose",
-  "runtimeVersion": "v22.22.3"
+  "runtimeVersion": "v22.23.0"
 }

@@ -26,6 +26,7 @@ const NodeSchema = new EntitySchema<Node>({
       target: 'Node',
       joinTable: { name: 'node_dependencies' },
       inverseSide: 'dependents',
+      eager: true,
       cascade: true,
     },
     dependents: {
@@ -59,7 +60,7 @@ function toCycleSafeProjection(roots: Node[]) {
 
 async function run() {
   const logger = new QueryCounterLogger();
-  const expectedAdj = { a: ['b'], b: ['a'] };
+  const expectedAdj = { a: ['b'], b: ['c'], c: [] };
 
   const findings: {
     hydration: { result: 'PASS' | 'FAIL'; detail: string };
@@ -88,15 +89,12 @@ async function run() {
 
     const a = repo.create({ name: 'a', dependencies: [] });
     const b = repo.create({ name: 'b', dependencies: [] });
+    const c = repo.create({ name: 'c', dependencies: [] });
     a.dependencies = [b];
-    b.dependencies = [a];
-    await repo.save([a, b]);
+    b.dependencies = [c];
+    await repo.save([a, b, c]);
 
-    const roots = await repo.find({
-      where: [{ name: 'a' }, { name: 'b' }],
-      relations: { dependencies: { dependencies: true } },
-      order: { name: 'ASC' },
-    });
+    const roots = await repo.find({ where: [{ name: 'a' }], order: { name: 'ASC' } });
 
     const queriesAfterHydration = logger.queryCount;
 

@@ -5,13 +5,13 @@ import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts
 
 type PrismaNode = {
   name: string;
-  dependencies: PrismaNode[];
+  dependencies?: PrismaNode[];
 };
 
 const prisma = new PrismaClient({ log: [{ emit: 'event', level: 'query' }] });
 
 async function run() {
-  const expectedAdj = { a: ['b'], b: ['a'] };
+  const expectedAdj = { a: ['b'], b: ['c'], c: [] };
   let queryCount = 0;
   const findings: {
     hydration: { result: 'PASS' | 'FAIL'; detail: string };
@@ -34,20 +34,21 @@ async function run() {
 
     await prisma.node.create({ data: { name: 'a' } });
     await prisma.node.create({ data: { name: 'b' } });
+    await prisma.node.create({ data: { name: 'c' } });
     await prisma.node.update({ where: { name: 'a' }, data: { dependencies: { connect: { name: 'b' } } } });
-    await prisma.node.update({ where: { name: 'b' }, data: { dependencies: { connect: { name: 'a' } } } });
+    await prisma.node.update({ where: { name: 'b' }, data: { dependencies: { connect: { name: 'c' } } } });
 
     const roots = (await prisma.node.findMany({
-      where: { name: { in: ['a', 'b'] } },
-      include: { dependencies: { include: { dependencies: true } } },
+      where: { name: { in: ['a'] } },
       orderBy: { name: 'asc' },
     })) as PrismaNode[];
 
     const queriesAfterHydration = queryCount;
 
     for (const root of roots) {
-      for (const dep of root.dependencies) {
-        void dep.dependencies.length;
+      const rootDeps = root.dependencies ?? [];
+      for (const dep of rootDeps) {
+        void (dep.dependencies ?? []).length;
       }
     }
 
@@ -59,7 +60,7 @@ async function run() {
 
     const graphCheck = smartCheck(roots, expectedAdj, {
       getId: (node) => node.name,
-      getDeps: (node) => node.dependencies,
+      getDeps: (node) => node.dependencies ?? [],
     });
     findings.smartCheck = graphCheck.pass
       ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }

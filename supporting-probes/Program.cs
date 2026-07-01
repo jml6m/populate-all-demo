@@ -9,7 +9,8 @@ using System.Text.Json;
 var expectedAdj = new Dictionary<string, HashSet<string>>
 {
     ["a"] = new() { "b" },
-    ["b"] = new() { "a" },
+    ["b"] = new() { "c" },
+    ["c"] = new(),
 };
 
 var findings = new Findings
@@ -36,15 +37,14 @@ try
 
     var a = new Node { Name = "a" };
     var b = new Node { Name = "b" };
+    var c = new Node { Name = "c" };
     a.Dependencies.Add(b);
-    b.Dependencies.Add(a);
-    db.Nodes.AddRange(a, b);
+    b.Dependencies.Add(c);
+    db.Nodes.AddRange(a, b, c);
     db.SaveChanges();
 
     var roots = db.Nodes
-        .Where(n => n.Name == "a" || n.Name == "b")
-        .Include(n => n.Dependencies)
-        .ThenInclude(n => n.Dependencies)
+        .Where(n => n.Name == "a")
         .OrderBy(n => n.Name)
         .ToList();
 
@@ -266,6 +266,10 @@ public class ProbeDbContext(DbContextOptions<ProbeDbContext> options) : DbContex
         modelBuilder.Entity<Node>()
             .HasMany(n => n.Dependencies)
             .WithMany(n => n.Dependents);
+
+        modelBuilder.Entity<Node>()
+            .Navigation(n => n.Dependencies)
+            .AutoInclude();
 
         modelBuilder.Entity<Node>().HasIndex(n => n.Name).IsUnique();
     }

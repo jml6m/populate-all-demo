@@ -8,6 +8,10 @@ type NodeDoc = {
   dependencies: Array<NodeDoc | mongoose.Types.ObjectId>;
 };
 
+function isHydratedNode(value: NodeDoc | mongoose.Types.ObjectId): value is NodeDoc {
+  return typeof value === 'object' && value !== null && 'name' in value && 'dependencies' in value;
+}
+
 const NodeSchema = new Schema({
   name: { type: String, required: true, unique: true },
   dependencies: [{ type: Schema.Types.ObjectId, ref: 'Node' }],
@@ -17,7 +21,7 @@ const NodeModel = model('Node', NodeSchema);
 
 async function run() {
   const uri = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/supporting_probe_mongoose';
-  const expectedAdj = { a: ['b'], b: ['a'] };
+  const expectedAdj = { a: ['b'], b: ['c'], c: [] };
   let queryCount = 0;
   const findings: {
     hydration: { result: 'PASS' | 'FAIL'; detail: string };
@@ -41,21 +45,22 @@ async function run() {
 
     const a = await NodeModel.create({ name: 'a', dependencies: [] });
     const b = await NodeModel.create({ name: 'b', dependencies: [] });
+    const c = await NodeModel.create({ name: 'c', dependencies: [] });
     a.dependencies = [b._id];
-    b.dependencies = [a._id];
+    b.dependencies = [c._id];
     await a.save();
     await b.save();
 
-    const roots = (await NodeModel.find({ name: { $in: ['a', 'b'] } })
-      .populate({ path: 'dependencies', populate: { path: 'dependencies' } })
+    const roots = (await NodeModel.find({ name: { $in: ['a'] } })
       .sort({ name: 1 })
       .exec()) as unknown as NodeDoc[];
 
     const queriesAfterHydration = queryCount;
 
     for (const root of roots) {
-      for (const dep of root.dependencies as NodeDoc[]) {
-        void (dep.dependencies as NodeDoc[]).length;
+      const rootDeps = root.dependencies.filter((dep) => isHydratedNode(dep));
+      for (const dep of rootDeps) {
+        void dep.dependencies.filter((next) => isHydratedNode(next)).length;
       }
     }
 
@@ -67,7 +72,7 @@ async function run() {
 
     const graphCheck = smartCheck(roots, expectedAdj, {
       getId: (node) => node.name,
-      getDeps: (node) => node.dependencies as NodeDoc[],
+      getDeps: (node) => node.dependencies.filter((dep) => isHydratedNode(dep)),
     });
     findings.smartCheck = graphCheck.pass
       ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }

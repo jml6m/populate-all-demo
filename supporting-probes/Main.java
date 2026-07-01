@@ -22,7 +22,7 @@ public final class Main {
   private static final AtomicInteger QUERY_COUNT = new AtomicInteger(0);
 
   public static void main(String[] args) throws Exception {
-    var expectedAdj = Map.of("a", Set.of("b"), "b", Set.of("a"));
+    var expectedAdj = Map.of("a", Set.of("b"), "b", Set.of("c"), "c", Set.<String>of());
     var findings = createDefaultFindings();
 
     var configuration = new Configuration();
@@ -38,22 +38,21 @@ public final class Main {
         var tx = session.beginTransaction();
         var a = new Node("a");
         var b = new Node("b");
+        var c = new Node("c");
         a.getDependencies().add(b);
-        b.getDependencies().add(a);
+        b.getDependencies().add(c);
         session.persist(a);
         session.persist(b);
+        session.persist(c);
         tx.commit();
       }
 
       List<Node> roots;
       try (var session = sessionFactory.openSession()) {
         roots = session.createQuery(
-            "select distinct n from Node n " +
-                "left join fetch n.dependencies d " +
-                "left join fetch d.dependencies " +
-                "where n.name in (:names)",
+            "select n from Node n where n.name in (:names)",
             Node.class)
-          .setParameter("names", List.of("a", "b"))
+          .setParameter("names", List.of("a"))
           .getResultList();
       }
 
@@ -279,7 +278,7 @@ public final class Main {
     @Column(unique = true, nullable = false)
     private String name;
 
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "node_dependencies",
       joinColumns = @JoinColumn(name = "node_id"),
       inverseJoinColumns = @JoinColumn(name = "dependency_id"))

@@ -1,20 +1,21 @@
 {
   "findings": {
     "hydration": {
-      "detail": "Hydration failed: queryGate=PASS, smartCheck=FAIL.",
+      "detail": "Hydration failed: queryGate=FAIL, smartCheck=PASS.",
       "result": "FAIL"
     },
     "queryGate": {
-      "detail": "No additional queries observed during traversal.",
-      "result": "PASS"
+      "detail": "Expected 0 additional queries during traversal, observed 2.",
+      "extraQueries": 2,
+      "result": "FAIL"
     },
     "serialize": {
-      "detail": "/opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/core.rb:216:in 'ActiveRecord::Base.connected_to_stack': stack level too deep (SystemStackError)\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/core.rb:159:in 'ActiveRecord::Base.current_role'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/connection_handling.rb:346:in 'ActiveRecord::ConnectionHandling#connection_pool'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/connection_handling.rb:372:in 'ActiveRecord::ConnectionHandling#schema_cache'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/type_caster/connection.rb:17:in 'ActiveRecord::TypeCaster::Connection#type_for_attribute'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/arel/table.rb:107:in 'Arel::Table#type_for_attribute'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/table_metadata.rb:15:in 'ActiveRecord::TableMetadata#type'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/relation/predicate_builder.rb:59:in 'ActiveRecord::PredicateBuilder#build'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activerecord-8.1.3/lib/active_record/relation/predicate_builder.rb:54:in 'ActiveRecord::PredicateBuilder#[]'\n\t ... 9216 levels...\n\tfrom test_activerecord.rb:166:in 'block in Object#run'\n\tfrom /opt/hostedtoolcache/Ruby/4.0.5/x64/lib/ruby/gems/4.0.0/gems/activesupport-8.1.3/lib/active_support/notifications.rb:260:in 'ActiveSupport::Notifications.subscribed'\n\tfrom test_activerecord.rb:125:in 'Object#run'\n\tfrom test_activerecord.rb:206:in '<main>'\n",
-      "result": "SERIALIZE_FAIL_OTHER"
+      "detail": "JSON serialization passed.",
+      "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
-      "detail": "id \"b\" maps to multiple in-memory instances",
-      "result": "FAIL"
+      "detail": "Identity and dependency closure checks passed.",
+      "result": "PASS"
     }
   },
   "language": "ruby",
@@ -22,5 +23,5 @@
   "libraryVersion": "8.1.3",
   "outcome": "HYDRATION_FAIL",
   "probe": "activerecord",
-  "runtimeVersion": "4.0.5"
+  "runtimeVersion": "3.2.3"
 }

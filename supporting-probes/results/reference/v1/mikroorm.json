@@ -9,8 +9,8 @@
       "result": "PASS"
     },
     "serialize": {
-      "detail": "JSON serialization failed with SERIALIZE_FAIL_CYCLE.",
-      "result": "SERIALIZE_FAIL_CYCLE"
+      "detail": "JSON serialization passed.",
+      "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
       "detail": "Identity and dependency closure checks passed.",
@@ -20,7 +20,7 @@
   "language": "typescript",
   "library": "MikroORM",
   "libraryVersion": "6.6.14",
-  "outcome": "SERIALIZE_FAIL",
+  "outcome": "PASS",
   "probe": "mikroorm",
-  "runtimeVersion": "v22.22.3"
+  "runtimeVersion": "v22.23.0"
 }

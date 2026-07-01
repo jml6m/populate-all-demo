@@ -6,7 +6,7 @@ from collections import deque
 
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, Integer, String, Table, create_engine, event
-from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
 
@@ -29,6 +29,7 @@ class Node(Base):
         primaryjoin=id == node_dependencies.c.node_id,
         secondaryjoin=id == node_dependencies.c.dependency_id,
         backref='dependents',
+        lazy='selectin',
     )
 
 
@@ -106,7 +107,7 @@ def write_result(result):
 
 
 def run():
-    expected_adj = {'a': ['b'], 'b': ['a']}
+    expected_adj = {'a': ['b'], 'b': ['c'], 'c': []}
     query_count = 0
 
     findings = {
@@ -130,15 +131,15 @@ def run():
         with Session() as session:
             a = Node(name='a')
             b = Node(name='b')
+            c = Node(name='c')
             a.dependencies.append(b)
-            b.dependencies.append(a)
-            session.add_all([a, b])
+            b.dependencies.append(c)
+            session.add_all([a, b, c])
             session.commit()
 
             roots = (
                 session.query(Node)
-                .options(selectinload(Node.dependencies).selectinload(Node.dependencies))
-                .filter(Node.name.in_(['a', 'b']))
+                .filter(Node.name.in_(['a']))
                 .order_by(Node.name.asc())
                 .all()
             )

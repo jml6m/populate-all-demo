@@ -13,7 +13,7 @@ class Node extends Model {
 
 async function run() {
   let queryCount = 0;
-  const expectedAdj = { a: ['b'], b: ['a'] };
+  const expectedAdj = { a: ['b'], b: ['c'], c: [] };
   const findings: {
     hydration: { result: 'PASS' | 'FAIL'; detail: string };
     queryGate: { result: 'PASS' | 'FAIL' | 'NOT_APPLICABLE'; detail: string; extraQueries?: number };
@@ -50,19 +50,20 @@ async function run() {
 
     const a = await Node.create({ name: 'a' });
     const b = await Node.create({ name: 'b' });
+    const c = await Node.create({ name: 'c' });
     await (a as Node & { setDependencies(dependencies: Node[]): Promise<void> }).setDependencies([b]);
-    await (b as Node & { setDependencies(dependencies: Node[]): Promise<void> }).setDependencies([a]);
+    await (b as Node & { setDependencies(dependencies: Node[]): Promise<void> }).setDependencies([c]);
 
     const roots = await Node.findAll({
-      where: { name: ['a', 'b'] },
-      include: [{ association: 'dependencies', include: [{ association: 'dependencies' }] }],
+      where: { name: ['a'] },
       order: [['name', 'ASC']],
     });
 
     const queriesAfterHydration = queryCount;
 
     for (const root of roots) {
-      for (const dep of (root as Node).dependencies) {
+      const rootDeps = Array.isArray((root as Node).dependencies) ? (root as Node).dependencies : [];
+      for (const dep of rootDeps) {
         void dep.dependencies.length;
       }
     }
@@ -75,7 +76,7 @@ async function run() {
 
     const graphCheck = smartCheck(roots as Node[], expectedAdj, {
       getId: (node) => node.name,
-      getDeps: (node) => node.dependencies,
+      getDeps: (node) => (Array.isArray(node.dependencies) ? node.dependencies : []),
     });
     findings.smartCheck = graphCheck.pass
       ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
