@@ -43,7 +43,7 @@ Probe versions for the current published reference set are recorded per-probe in
 
 > _Sandbox probes for every framework in this section live in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage._
 
-`graph_1` conclusions are documentation-driven in this patch cycle: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations. `graph_2` conclusions are backed by the updated sandbox probes published in [`supporting-probes/results/reference/v1/`](../supporting-probes/results/reference/v1/).
+`graph_1` conclusions are documentation-driven in this patch cycle: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations. `graph_2` conclusions are backed by the sandbox probes; canonical published snapshots under `supporting-probes/results/reference/v<N>/` are written only by the release workflow.
 
 ### 2.1 — SQLAlchemy (Python)
 
