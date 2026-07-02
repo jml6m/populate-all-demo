@@ -1,19 +1,19 @@
 {
   "findings": {
     "hydration": {
-      "detail": "RangeError: Maximum call stack size exceeded",
+      "detail": "Hydration failed: queryGate=PASS, smartCheck=FAIL.",
       "result": "FAIL"
     },
     "queryGate": {
-      "detail": "RangeError: Maximum call stack size exceeded",
-      "result": "FAIL"
+      "detail": "No additional queries observed during traversal.",
+      "result": "PASS"
     },
     "serialize": {
-      "detail": "RangeError: Maximum call stack size exceeded",
-      "result": "SERIALIZE_FAIL_OTHER"
+      "detail": "Direct JSON serialization passed. Cycle-safe baseline serialization also passed.",
+      "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
-      "detail": "RangeError: Maximum call stack size exceeded",
+      "detail": "id \"b\" maps to multiple in-memory instances",
       "result": "FAIL"
     }
   },
@@ -22,5 +22,5 @@
   "libraryVersion": "0.3.30",
   "outcome": "HYDRATION_FAIL",
   "probe": "typeorm",
-  "runtimeVersion": "v22.23.0"
+  "runtimeVersion": "v22.22.3"
 }
