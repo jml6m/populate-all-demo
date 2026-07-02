@@ -347,50 +347,41 @@ function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string):
   });
 }
 
-function readOutcomeCell(filePath: string, key: 'outcome' | 'hydration' | 'queryGate' | 'smartCheck' | 'serialize'): string {
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const parsed = JSON.parse(raw) as {
-    outcome: string;
-    findings: {
-      hydration: { result: string };
-      queryGate: { result: string };
-      smartCheck: { result: string };
-      serialize: { result: string };
-    };
+type ParsedProbeResult = {
+  outcome: string;
+  findings: {
+    hydration: { result: string };
+    queryGate: { result: string };
+    smartCheck: { result: string };
+    serialize: { result: string };
   };
+};
 
-  switch (key) {
-    case 'outcome':
-      return parsed.outcome;
-    case 'hydration':
-      return parsed.findings.hydration.result;
-    case 'queryGate':
-      return parsed.findings.queryGate.result;
-    case 'smartCheck':
-      return parsed.findings.smartCheck.result;
-    case 'serialize':
-      return parsed.findings.serialize.result;
-    default:
-      return 'UNKNOWN';
-  }
+function readProbeResult(filePath: string): ParsedProbeResult {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  return JSON.parse(raw) as ParsedProbeResult;
 }
 
 function printSummary(runId: string, probes: ProbeConfig[]): void {
   const headers = ['probe', 'outcome', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
-    const outcome = readOutcomeCell(filePath, 'outcome');
+    const parsed = readProbeResult(filePath);
+    const hydrationFailed = parsed.findings.hydration.result === 'FAIL';
+    const hydrationCell = hydrationFailed ? 'ACYCLIC_FAIL' : 'ACYCLIC_PASS';
+    const serializeCell = hydrationFailed ? 'SERIALIZE_SKIPPED' : parsed.findings.serialize.result;
+    const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
       outcome === 'PROBE_LAUNCH_FAIL'
         ? `${outcome} (probe did not launch)`
-        : outcome;
+        : hydrationCell;
     return [
       probe.name,
       outcomeCell,
-      readOutcomeCell(filePath, 'hydration'),
-      readOutcomeCell(filePath, 'queryGate'),
-      readOutcomeCell(filePath, 'smartCheck'),
-      readOutcomeCell(filePath, 'serialize'),
+      hydrationCell,
+      parsed.findings.queryGate.result,
+      parsed.findings.smartCheck.result,
+      serializeCell,
     ];
   });
 

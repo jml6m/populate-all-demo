@@ -16,6 +16,8 @@ For the acyclic case, probes intentionally avoid query-time explicit depth/path 
 
 `probe:ts` is the recommended local developer command. `probe:all` is the canonical full-suite command used by CI and the future release flow.
 
+The orchestrator summary table normalizes hydration/outcome into acyclic-case labels (`ACYCLIC_PASS` / `ACYCLIC_FAIL`). `serialize` is reported as `SERIALIZE_SKIPPED` whenever hydration fails.
+
 ## Prerequisites
 
 - `probe:ts`: Node.js
