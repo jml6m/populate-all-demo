@@ -34,8 +34,8 @@ Because every object already exists in `M`, the target is always a valid referen
 
 For this report revision, backend comparison is scoped to two schema-driven hydration questions only:
 
-1. Can the library fully populate a **cyclic** self-referential graph from schema/default configuration alone (`graph_1 = A -> B -> A`)?
-2. Can the library fully populate an **acyclic** self-referential graph from schema/default configuration alone (`graph_2 = A -> B -> C`)?
+1. Can the library fully populate a **cyclic** self-referential graph from schema/default configuration alone (`A -> B -> A`)?
+2. Can the library fully populate an **acyclic** self-referential graph from schema/default configuration alone (`A -> B -> C`)?
 
 Query-level explicit depth/path declarations are out of scope for this section.
 
@@ -43,34 +43,34 @@ Probe versions for the current published reference set are recorded per-probe in
 
 > _Sandbox probes for every framework in this section live in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage._
 
-`graph_1` conclusions are documentation-driven in this patch cycle: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations. `graph_2` conclusions are backed by the sandbox probes; canonical published snapshots under `supporting-probes/results/reference/v<N>/` are written only by the release workflow.
+Conclusions for the cyclic case are documentation-driven in this patch cycle: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations. Conclusions for the acyclic case are backed by sandbox probes; canonical published snapshots under `supporting-probes/results/reference/v<N>/` are written only by the release workflow.
 
 ### 2.1 — SQLAlchemy (Python)
 
-SQLAlchemy's `Session` maintains an identity map, but schema-only unbounded recursive hydration is not provided for self-referential relationships; depth controls remain explicit (`join_depth`, loader options).[^1] [^2] In the `graph_2` probe, topology is reachable, but traversal still triggers additional lazy-load queries (`queryGate=FAIL`), so it does not satisfy full schema-driven population under this project's definition ([sqlalchemy.json](../supporting-probes/results/reference/v1/sqlalchemy.json)).
+SQLAlchemy's `Session` maintains an identity map, but schema-only unbounded recursive hydration is not provided for self-referential relationships; depth controls remain explicit (`join_depth`, loader options).[^1] [^2] In the acyclic-case probe, topology is reachable, but traversal still triggers additional lazy-load queries (`queryGate=FAIL`), so it does not satisfy full schema-driven population under this project's definition.
 
 ### 2.2 — Hibernate (Java) and EF Core (.NET)
 
-Hibernate's Persistence Context and EF Core's `ChangeTracker` are both identity maps, but they diverge under schema-driven rules. Hibernate passes `graph_2` with eager association defaults in the probe ([hibernate.json](../supporting-probes/results/reference/v1/hibernate.json)). EF Core's schema-driven `AutoInclude` on self-references is rejected by built-in cycle detection (`InvalidOperationException`), so `graph_2` fails in probe output ([efcore.json](../supporting-probes/results/reference/v1/efcore.json)).[^4] [^5]
+Hibernate's Persistence Context and EF Core's `ChangeTracker` are both identity maps, but they diverge under schema-driven rules. Hibernate passes the acyclic case with eager association defaults in the probe. EF Core's schema-driven `AutoInclude` on self-references is rejected by built-in cycle detection (`InvalidOperationException`), so the acyclic case fails in probe output.[^4] [^5]
 
 ### 2.3 — MikroORM (Node.js)
 
-MikroORM remains "No" for schema-driven cyclic full hydration in `graph_1`, but it is one of the two libraries that passes the schema-driven acyclic `graph_2` probe under this definition (hydration + serialization pass in [mikroorm.json](../supporting-probes/results/reference/v1/mikroorm.json)).
+MikroORM remains "No" for schema-driven cyclic full hydration in the cyclic case, but it is one of the two libraries that passes the schema-driven acyclic probe under this definition (hydration + serialization pass).
 
 ### 2.4 — ActiveRecord (Ruby on Rails)
 
-ActiveRecord requires explicit `.includes(...)` depth for eager recursion and therefore does not satisfy schema-driven cyclic full hydration.[^8] In `graph_2`, it resolves topology but relies on additional lazy-load queries during traversal (`queryGate=FAIL`), so it is also "No" for schema-driven acyclic full hydration in this project's strict sense ([activerecord.json](../supporting-probes/results/reference/v1/activerecord.json)).
+ActiveRecord requires explicit `.includes(...)` depth for eager recursion and therefore does not satisfy schema-driven cyclic full hydration.[^8] In the acyclic case, it resolves topology but relies on additional lazy-load queries during traversal (`queryGate=FAIL`), so it is also "No" for schema-driven acyclic full hydration in this project's strict sense.
 
 ### 2.5 — JavaScript ORMs
 
-For the detailed JavaScript ORM comparison matrix, see `EXPERIMENT_ANALYSIS.md`.[^10] In the updated `graph_2` probes, only MikroORM passes schema-driven acyclic full hydration; TypeORM, Sequelize, Prisma, and Mongoose fail without explicit query path declarations.
+For the detailed JavaScript ORM comparison matrix, see [`EXPERIMENT_ANALYSIS.md`](./EXPERIMENT_ANALYSIS.md).[^10] In the updated acyclic-case probes, only MikroORM passes schema-driven acyclic full hydration; TypeORM, Sequelize, Prisma, and Mongoose fail without explicit query path declarations.
 
 ### 2.6 — The Industry Gap
 
 The updated evidence reinforces a narrower but clearer industry gap:
 
-- **Schema-driven cyclic full hydration (`graph_1`)** is unsupported across all surveyed libraries.
-- **Schema-driven acyclic full hydration (`graph_2`)** is supported only by a minority in this probe set (MikroORM and Hibernate).
+- **Schema-driven cyclic full hydration (`A -> B -> A`)** is unsupported across all surveyed libraries.
+- **Schema-driven acyclic full hydration (`A -> B -> C`)** is supported only by a minority in this probe set (MikroORM and Hibernate).
 
 The most important shortcoming is not just cyclic support; several mainstream libraries in this study do not provide schema-driven full hydration even for the acyclic self-referential case, forcing explicit path declarations or lazy-load fallback query bursts.
 
@@ -186,19 +186,11 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^2]: [SQLAlchemy — Self-Referential Strategies](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)
 
-[^3]: [SQLAlchemy — Relationship Persistence / `post_update`](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html)
-
 [^4]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
 
 [^5]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
 
-[^6]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
-
-[^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
-
 [^8]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
-
-[^9]: [JavaScript Object Notation (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
 
 [^10]: [EXPERIMENT_ANALYSIS §2](./EXPERIMENT_ANALYSIS.md#2--a-recognized-challenge-in-the-data-layer-ecosystem)
 

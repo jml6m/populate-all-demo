@@ -4,10 +4,10 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 ## Hydration scenarios under test
 
-- `graph_1` (documentation-driven in this patch cycle): `A -> B -> A` (schema-driven cyclic full population)
-- `graph_2` (implemented in probe code): `A -> B -> C` (schema-driven acyclic full population)
+- Cyclic self-reference case (documentation-driven in this patch cycle): `A -> B -> A` (schema-driven cyclic full population)
+- Acyclic self-reference case (implemented in probe code): `A -> B -> C` (schema-driven acyclic full population)
 
-For `graph_2`, probes intentionally avoid query-time explicit depth/path declarations; they exercise schema/default behavior only.
+For the acyclic case, probes intentionally avoid query-time explicit depth/path declarations; they exercise schema/default behavior only.
 
 ## Commands
 
