@@ -51,7 +51,7 @@ SQLAlchemy's `Session` maintains an identity map, but schema-only unbounded recu
 
 ### 2.2 — Hibernate (Java) and EF Core (.NET)
 
-Hibernate's Persistence Context and EF Core's `ChangeTracker` are both identity maps, but they diverge under schema-driven rules. Hibernate passes the acyclic case with eager association defaults in the probe. EF Core's schema-driven `AutoInclude` on self-references is rejected by built-in cycle detection (`InvalidOperationException`), so the acyclic case fails in probe output.[^4] [^5]
+Hibernate's Persistence Context and EF Core's `ChangeTracker` are both identity maps, but they diverge under schema-driven rules. Hibernate passes the acyclic case with eager association defaults in the probe: it materializes rows and resolves associations through the persistence context rather than emitting one recursive JOIN. EF Core's schema-driven `AutoInclude` on a self-referential navigation is instead rejected at query-compile time by its unbounded-include-cycle guard (`InvalidOperationException`) — a configuration limit independent of the data (it fails identically on an empty table), not a runtime fault — so the acyclic case fails in probe output.[^4] [^5]
 
 ### 2.3 — MikroORM (Node.js)
 
@@ -63,7 +63,7 @@ ActiveRecord requires explicit `.includes(...)` depth for eager recursion and th
 
 ### 2.5 — JavaScript ORMs
 
-For the detailed JavaScript ORM comparison matrix, see [`EXPERIMENT_ANALYSIS.md`](./EXPERIMENT_ANALYSIS.md).[^10] In the updated acyclic-case probes, only MikroORM passes schema-driven acyclic full hydration; TypeORM, Sequelize, Prisma, and Mongoose fail without explicit query path declarations.
+For the detailed JavaScript ORM comparison matrix, see [`EXPERIMENT_ANALYSIS.md`](./EXPERIMENT_ANALYSIS.md).[^10] In the updated acyclic-case probes, only MikroORM passes schema-driven acyclic full hydration. Sequelize, Prisma, and Mongoose under-hydrate — the root loads but its relations do not, failing `smartCheck` — whereas TypeORM fails one step earlier: its `eager: true` self-relation query is not even constructible, overflowing at query construction (`RangeError`) independent of the data.
 
 ### 2.6 — The Industry Gap
 
@@ -73,6 +73,14 @@ The updated evidence reinforces a narrower but clearer industry gap:
 - **Schema-driven acyclic full hydration (`A -> B -> C`)** is supported only by a minority in this probe set (MikroORM and Hibernate).
 
 The most important shortcoming is not just cyclic support; several mainstream libraries in this study do not provide schema-driven full hydration even for the acyclic self-referential case, forcing explicit path declarations or lazy-load fallback query bursts.
+
+Among the libraries that fall short, the shortfall takes three distinct forms, in increasing order of how early the library gives up:
+
+- **Under-hydration** (Sequelize, Prisma, Mongoose): the root loads but its relations do not, absent an explicit `populate` / `include`.
+- **Lazy traversal / N+1** (SQLAlchemy, ActiveRecord): the topology resolves, but only by firing a query per edge during traversal.
+- **Query not constructible** (TypeORM, EF Core): the schema-level eager mechanism cannot be compiled for a self-referential relation at all — it fails at query construction, independent of the data.
+
+Only MikroORM and Hibernate materialize the full acyclic closure from schema defaults, resolving associations through an identity map rather than a single recursive JOIN.
 
 ---
 
