@@ -29,8 +29,9 @@ public final class Main {
 
   public static void main(String[] args) throws Exception {
     var expectedAdj = Map.of("a", Set.of("b"), "b", Set.of("c"), "c", Set.<String>of());
-    var findings = createDefaultFindings();
+    var findings = pendingFindings();
     Map<String, Object> metrics = null;
+    String verdictReason = null;
 
     var configuration = new Configuration();
     configuration.setProperty(AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver");
@@ -40,7 +41,12 @@ public final class Main {
     configuration.setProperty(AvailableSettings.STATEMENT_INSPECTOR, QueryInspector.class.getName());
     configuration.addAnnotatedClass(Node.class);
 
-    try (var sessionFactory = configuration.buildSessionFactory()) {
+    org.hibernate.SessionFactory sessionFactory = null;
+    boolean setupOk = true;
+
+    // ---- Setup (infrastructure — a failure here is an environment problem, not a research result) ----
+    try {
+      sessionFactory = configuration.buildSessionFactory();
       try (var session = sessionFactory.openSession()) {
         var tx = session.beginTransaction();
         var a = new Node("a");
@@ -53,74 +59,41 @@ public final class Main {
         session.persist(c);
         tx.commit();
       }
+    } catch (Exception setupError) {
+      setupOk = false;
+      var detail = errDetail(setupError);
+      findings.hydration = mapOf("detail", "probe setup failed: " + detail, "result", "FAIL");
+      verdictReason = "probe setup failed -- " + detail;
+    }
 
-      List<Node> roots;
-      try (var session = sessionFactory.openSession()) {
-        roots = session.createQuery(
-            "select n from Node n where n.name in (:names)",
-            Node.class)
-          .setParameter("names", List.of("a"))
-          .getResultList();
-      }
-
-      int queriesAfterHydration = QUERY_COUNT.get();
-
-      for (var root : roots) {
-        for (var dep : root.getDependencies()) {
-          dep.getDependencies().size();
-        }
-      }
-
-      int extraQueries = QUERY_COUNT.get() - queriesAfterHydration;
-      if (extraQueries == 0) {
-        findings.queryGate = mapOf("detail", "No additional queries observed during traversal.", "result", "PASS");
-      } else {
-        findings.queryGate = mapOf(
-          "detail", "Expected 0 additional queries during traversal, observed " + extraQueries + ".",
-          "extraQueries", extraQueries,
-          "result", "FAIL"
-        );
-      }
-
-      var graphCheck = smartCheck(roots, expectedAdj);
-      metrics = mapOf(
-        "reached", graphCheck.get("reached"),
-        "expected", expectedAdj.size(),
-        "edges", graphCheck.get("edges"),
-        "extraQueries", extraQueries,
-        "identityStable", !String.valueOf(graphCheck.get("reason")).contains("multiple in-memory instances")
-      );
-      if (Boolean.TRUE.equals(graphCheck.get("pass"))) {
-        findings.smartCheck = mapOf("detail", "Identity and dependency closure checks passed.", "result", "PASS");
-      } else {
-        findings.smartCheck = mapOf("detail", graphCheck.get("reason"), "result", "FAIL");
-      }
-
-      if ("PASS".equals(findings.queryGate.get("result")) && "PASS".equals(findings.smartCheck.get("result"))) {
-        findings.hydration = mapOf("detail", "Hydration check passed.", "result", "PASS");
-      } else {
-        findings.hydration = mapOf(
-          "detail", "Hydration failed: queryGate=" + findings.queryGate.get("result") + ", smartCheck=" + findings.smartCheck.get("result") + ".",
-          "result", "FAIL"
-        );
-      }
-
+    // ---- Stage 1: the operation under research — schema-driven fetch of root `a` ----
+    if (setupOk) {
+      List<Node> roots = null;
       try {
-        new ObjectMapper().writeValueAsString(roots);
-        findings.serialize = mapOf("detail", "JSON serialization passed.", "result", "SERIALIZE_PASS");
-      } catch (Exception e) {
-        var msg = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase(Locale.ROOT);
-        var serialization = (msg.contains("cycle") || msg.contains("circular") || msg.contains("recursion"))
-          ? "SERIALIZE_FAIL_CYCLE"
-          : "SERIALIZE_FAIL_OTHER";
-        findings.serialize = mapOf("detail", stackDetail(e), "result", serialization);
+        try (var session = sessionFactory.openSession()) {
+          roots = session.createQuery(
+              "select n from Node n where n.name in (:names)",
+              Node.class)
+            .setParameter("names", List.of("a"))
+            .getResultList();
+        }
+        findings.fetch = mapOf("detail", "Schema-driven fetch returned " + roots.size() + " root row(s).", "result", "OK");
+      } catch (Exception fetchError) {
+        var detail = errDetail(fetchError);
+        findings.fetch = mapOf("detail", detail, "result", "ERROR");
+        findings.hydration = mapOf("detail", "fetch did not return a graph", "result", "FAIL");
+        markGatesNotRun(findings, "not reached -- the schema-driven fetch threw before returning a graph");
+        verdictReason = "schema-driven fetch threw -- " + detail;
       }
-    } catch (Exception e) {
-      var detail = stackDetail(e);
-      findings.hydration = mapOf("detail", detail, "result", "FAIL");
-      findings.queryGate = mapOf("detail", detail, "result", "FAIL");
-      findings.smartCheck = mapOf("detail", detail, "result", "FAIL");
-      findings.serialize = mapOf("detail", detail, "result", "SERIALIZE_FAIL_OTHER");
+
+      // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
+      if (roots != null) {
+        metrics = evaluateGraph(roots, findings, expectedAdj);
+      }
+    }
+
+    if (sessionFactory != null) {
+      sessionFactory.close();
     }
 
     var result = new TreeMap<String, Object>();
@@ -134,7 +107,65 @@ public final class Main {
 
     var outputPath = writeResult(result, "hibernate");
 
-    printReport("hibernate", "Hibernate", hibernateVersionFromPom(), STRATEGY, findings, outputPath, metrics);
+    printReport("hibernate", "Hibernate", hibernateVersionFromPom(), STRATEGY, findings, outputPath, metrics, verdictReason);
+  }
+
+  private static Map<String, Object> evaluateGraph(List<Node> roots, Findings findings, Map<String, Set<String>> expectedAdj) {
+    // queryGate: traversal must not trigger further SQL if hydration was complete.
+    int queriesAfterHydration = QUERY_COUNT.get();
+    for (var root : roots) {
+      for (var dep : root.getDependencies()) {
+        dep.getDependencies().size();
+      }
+    }
+    int extraQueries = QUERY_COUNT.get() - queriesAfterHydration;
+    if (extraQueries == 0) {
+      findings.queryGate = mapOf("detail", "No additional queries observed during traversal.", "result", "PASS");
+    } else {
+      findings.queryGate = mapOf(
+        "detail", "Expected 0 additional queries during traversal, observed " + extraQueries + ".",
+        "extraQueries", extraQueries,
+        "result", "FAIL"
+      );
+    }
+
+    // smartCheck: identity + dependency-closure of the reachable graph.
+    var graphCheck = smartCheck(roots, expectedAdj);
+    if (Boolean.TRUE.equals(graphCheck.get("pass"))) {
+      findings.smartCheck = mapOf("detail", "Identity and dependency closure checks passed.", "result", "PASS");
+    } else {
+      findings.smartCheck = mapOf("detail", graphCheck.get("reason"), "result", "FAIL");
+    }
+
+    // hydration rollup: full hydration = complete closure with no extra queries.
+    if ("PASS".equals(findings.queryGate.get("result")) && "PASS".equals(findings.smartCheck.get("result"))) {
+      findings.hydration = mapOf("detail", "Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).", "result", "PASS");
+    } else {
+      findings.hydration = mapOf(
+        "detail", "Full hydration not achieved: queryGate=" + findings.queryGate.get("result") + ", smartCheck=" + findings.smartCheck.get("result") + ".",
+        "result", "FAIL"
+      );
+    }
+
+    // serialize: independent of smartCheck; needs only a materialized graph.
+    try {
+      new ObjectMapper().writeValueAsString(roots);
+      findings.serialize = mapOf("detail", "JSON serialization passed.", "result", "SERIALIZE_PASS");
+    } catch (Exception e) {
+      var msg = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase(Locale.ROOT);
+      var serialization = (msg.contains("cycle") || msg.contains("circular") || msg.contains("recursion"))
+        ? "SERIALIZE_FAIL_CYCLE"
+        : "SERIALIZE_FAIL_OTHER";
+      findings.serialize = mapOf("detail", stackDetail(e), "result", serialization);
+    }
+
+    return mapOf(
+      "reached", graphCheck.get("reached"),
+      "expected", expectedAdj.size(),
+      "edges", graphCheck.get("edges"),
+      "extraQueries", extraQueries,
+      "identityStable", !String.valueOf(graphCheck.get("reason")).contains("multiple in-memory instances")
+    );
   }
 
   private static String rule(String label) {
@@ -157,13 +188,10 @@ public final class Main {
       return new String[] { "ACYCLIC_PASS", "full hydration succeeded; serialization " + findings.serialize.get("result") };
     }
 
-    boolean exceptionRaised =
-      "FAIL".equals(findings.queryGate.get("result")) &&
-      "FAIL".equals(findings.smartCheck.get("result")) &&
-      String.valueOf(findings.hydration.get("detail")).equals(String.valueOf(findings.smartCheck.get("detail"))) &&
-      String.valueOf(findings.smartCheck.get("detail")).equals(String.valueOf(findings.queryGate.get("detail")));
-    if (exceptionRaised) {
-      return new String[] { "ACYCLIC_FAIL", "probe raised before traversal -- " + firstLine(findings.hydration.get("detail")) };
+    // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.
+    if ("NOT_RUN".equals(findings.smartCheck.get("result"))) {
+      var reason = firstLine(findings.hydration.get("detail"));
+      return new String[] { "ACYCLIC_FAIL", reason.isEmpty() ? "hydration did not complete" : reason };
     }
     if ("FAIL".equals(findings.smartCheck.get("result"))) {
       return new String[] { "ACYCLIC_FAIL", "smartCheck failed -- " + firstLine(findings.smartCheck.get("detail")) };
@@ -176,7 +204,7 @@ public final class Main {
 
   private static String observedLine(Map<String, Object> metrics) {
     if (metrics == null) {
-      return "observed : n/a -- probe raised before the traversal stage";
+      return "observed : no graph hydrated -- traversal/identity/serialization gates were not run";
     }
     var parts = new ArrayList<String>();
     parts.add("reached " + metrics.get("reached") + "/" + metrics.get("expected") + " expected nodes from root [a]");
@@ -189,18 +217,22 @@ public final class Main {
   }
 
   private static void printReport(String probe, String library, String libraryVersion, String strategy,
-      Findings findings, String jsonPath, Map<String, Object> metrics) {
+      Findings findings, String jsonPath, Map<String, Object> metrics, String verdictReason) {
     var verdict = deriveVerdict(findings);
+    var reason = verdictReason != null ? verdictReason : verdict[1];
     System.out.println();
     System.out.println(rule(probe + " | " + library + " v" + libraryVersion));
     System.out.println("scenario : " + SCENARIO);
     System.out.println("strategy : " + strategy);
     System.out.println(observedLine(metrics));
-    System.out.println("  hydration  : " + String.format("%-4s", findings.hydration.get("result")) + "  " + firstLine(findings.hydration.get("detail")));
-    System.out.println("  queryGate  : " + String.format("%-4s", findings.queryGate.get("result")) + "  " + firstLine(findings.queryGate.get("detail")));
-    System.out.println("  smartCheck : " + String.format("%-4s", findings.smartCheck.get("result")) + "  " + firstLine(findings.smartCheck.get("detail")));
-    System.out.println("  serialize  : " + findings.serialize.get("result") + "  " + firstLine(findings.serialize.get("detail")));
-    System.out.println("VERDICT  : " + verdict[0] + " -- " + verdict[1]);
+    if (findings.fetch != null) {
+      System.out.println("  fetch      : " + String.format("%-7s", findings.fetch.get("result")) + "  " + firstLine(findings.fetch.get("detail")));
+    }
+    System.out.println("  hydration  : " + String.format("%-7s", findings.hydration.get("result")) + "  " + firstLine(findings.hydration.get("detail")));
+    System.out.println("  queryGate  : " + String.format("%-7s", findings.queryGate.get("result")) + "  " + firstLine(findings.queryGate.get("detail")));
+    System.out.println("  smartCheck : " + String.format("%-7s", findings.smartCheck.get("result")) + "  " + firstLine(findings.smartCheck.get("detail")));
+    System.out.println("  serialize  : " + String.format("%-7s", findings.serialize.get("result")) + "  " + firstLine(findings.serialize.get("detail")));
+    System.out.println("VERDICT  : " + verdict[0] + " -- " + reason);
     System.out.println("json     : " + jsonPath);
   }
 
@@ -224,13 +256,26 @@ public final class Main {
     return allPassed ? "PASS" : "MIXED";
   }
 
-  private static Findings createDefaultFindings() {
+  private static Findings pendingFindings() {
     var findings = new Findings();
-    findings.hydration = mapOf("detail", "", "result", "FAIL");
-    findings.queryGate = mapOf("detail", "", "result", "FAIL");
-    findings.smartCheck = mapOf("detail", "", "result", "FAIL");
-    findings.serialize = mapOf("detail", "", "result", "SERIALIZE_FAIL_OTHER");
+    var detail = "not run -- a prerequisite stage did not complete";
+    findings.fetch = mapOf("detail", detail, "result", "NOT_RUN");
+    findings.hydration = mapOf("detail", detail, "result", "FAIL");
+    findings.queryGate = mapOf("detail", detail, "result", "NOT_RUN");
+    findings.smartCheck = mapOf("detail", detail, "result", "NOT_RUN");
+    findings.serialize = mapOf("detail", detail, "result", "SERIALIZE_NOT_RUN");
     return findings;
+  }
+
+  private static void markGatesNotRun(Findings findings, String reason) {
+    findings.queryGate = mapOf("detail", reason, "result", "NOT_RUN");
+    findings.smartCheck = mapOf("detail", reason, "result", "NOT_RUN");
+    findings.serialize = mapOf("detail", reason, "result", "SERIALIZE_NOT_RUN");
+  }
+
+  private static String errDetail(Throwable error) {
+    var message = error.getMessage() == null ? "" : error.getMessage();
+    return error.getClass().getSimpleName() + ": " + message;
   }
 
   private static String hibernateVersionFromPom() {
@@ -380,6 +425,7 @@ public final class Main {
   }
 
   private static final class Findings {
+    private LinkedHashMap<String, Object> fetch;
     private LinkedHashMap<String, Object> hydration;
     private LinkedHashMap<String, Object> queryGate;
     private LinkedHashMap<String, Object> smartCheck;
@@ -387,6 +433,7 @@ public final class Main {
 
     private Map<String, Object> toMap() {
       var map = new TreeMap<String, Object>();
+      map.put("fetch", fetch);
       map.put("hydration", hydration);
       map.put("queryGate", queryGate);
       map.put("serialize", serialize);

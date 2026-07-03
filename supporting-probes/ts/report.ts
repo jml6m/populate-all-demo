@@ -39,6 +39,8 @@ export interface ProbeReportInput {
   jsonPath: string;
   /** Omitted when the probe threw before reaching the traversal stage. */
   metrics?: ProbeMetrics;
+  /** Precise, probe-authored verdict reason. Falls back to a reason derived from findings. */
+  verdictReason?: string;
 }
 
 function rule(label: string): string {
@@ -56,6 +58,11 @@ export function deriveVerdict(findings: ProbeFindings): { verdict: 'ACYCLIC_PASS
     return findings.serialize.result === 'SERIALIZE_PASS'
       ? { verdict: 'ACYCLIC_PASS', reason: 'schema-driven full hydration + serialization succeeded' }
       : { verdict: 'ACYCLIC_PASS', reason: `full hydration succeeded; serialization ${findings.serialize.result}` };
+  }
+
+  // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.
+  if (findings.smartCheck.result === 'NOT_RUN') {
+    return { verdict: 'ACYCLIC_FAIL', reason: firstLine(findings.hydration.detail) || 'hydration did not complete' };
   }
 
   const exceptionRaised =
@@ -77,7 +84,7 @@ export function deriveVerdict(findings: ProbeFindings): { verdict: 'ACYCLIC_PASS
 
 function observedLine(metrics?: ProbeMetrics): string {
   if (!metrics) {
-    return 'observed : n/a -- probe raised before the traversal stage';
+    return 'observed : no graph hydrated -- traversal/identity/serialization gates were not run';
   }
   const parts = [`reached ${metrics.reached}/${metrics.expected} expected nodes from root [a]`, `${metrics.edges} edges`];
   parts.push(metrics.identityStable === false ? 'identity BROKEN (duplicate instances)' : 'identity stable');
@@ -89,17 +96,22 @@ function observedLine(metrics?: ProbeMetrics): string {
 
 export function printProbeReport(input: ProbeReportInput): void {
   const f = input.findings;
-  const { verdict, reason } = deriveVerdict(f);
+  const derived = deriveVerdict(f);
+  const verdict = derived.verdict;
+  const reason = input.verdictReason ?? derived.reason;
 
   console.log('');
   console.log(rule(`${input.probe} | ${input.library} v${input.libraryVersion}`));
   console.log(`scenario : ${ACYCLIC_SCENARIO}`);
   console.log(`strategy : ${input.strategy}`);
   console.log(observedLine(input.metrics));
-  console.log(`  hydration  : ${f.hydration.result.padEnd(4)}  ${firstLine(f.hydration.detail)}`);
-  console.log(`  queryGate  : ${f.queryGate.result.padEnd(4)}  ${firstLine(f.queryGate.detail)}`);
-  console.log(`  smartCheck : ${f.smartCheck.result.padEnd(4)}  ${firstLine(f.smartCheck.detail)}`);
-  console.log(`  serialize  : ${f.serialize.result}  ${firstLine(f.serialize.detail)}`);
+  if (f.fetch) {
+    console.log(`  fetch      : ${f.fetch.result.padEnd(7)}  ${firstLine(f.fetch.detail)}`);
+  }
+  console.log(`  hydration  : ${f.hydration.result.padEnd(7)}  ${firstLine(f.hydration.detail)}`);
+  console.log(`  queryGate  : ${f.queryGate.result.padEnd(7)}  ${firstLine(f.queryGate.detail)}`);
+  console.log(`  smartCheck : ${f.smartCheck.result.padEnd(7)}  ${firstLine(f.smartCheck.detail)}`);
+  console.log(`  serialize  : ${f.serialize.result.padEnd(7)}  ${firstLine(f.serialize.detail)}`);
   console.log(`VERDICT  : ${verdict} -- ${reason}`);
   console.log(`json     : ${input.jsonPath}`);
 }

@@ -350,6 +350,7 @@ function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string):
 type ParsedProbeResult = {
   outcome: string;
   findings: {
+    fetch?: { result: string };
     hydration: { result: string };
     queryGate: { result: string };
     smartCheck: { result: string };
@@ -363,13 +364,14 @@ function readProbeResult(filePath: string): ParsedProbeResult {
 }
 
 function printSummary(runId: string, probes: ProbeConfig[]): void {
-  const headers = ['probe', 'outcome', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
+  const headers = ['probe', 'outcome', 'fetch', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
     const parsed = readProbeResult(filePath);
     const hydrationFailed = parsed.findings.hydration.result === 'FAIL';
     const hydrationCell = hydrationFailed ? 'ACYCLIC_FAIL' : 'ACYCLIC_PASS';
     const serializeCell = hydrationFailed ? 'SERIALIZE_SKIPPED' : parsed.findings.serialize.result;
+    const fetchCell = parsed.findings.fetch?.result ?? 'n/a';
     const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
       outcome === 'PROBE_LAUNCH_FAIL'
@@ -378,6 +380,7 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
     return [
       probe.name,
       outcomeCell,
+      fetchCell,
       hydrationCell,
       parsed.findings.queryGate.result,
       parsed.findings.smartCheck.result,

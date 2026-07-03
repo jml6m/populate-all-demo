@@ -13,28 +13,25 @@ var expectedAdj = new Dictionary<string, HashSet<string>>
     ["c"] = new(),
 };
 
-var findings = new Findings
-{
-    Hydration = new Dictionary<string, object?> { ["detail"] = string.Empty, ["result"] = "FAIL" },
-    QueryGate = new Dictionary<string, object?> { ["detail"] = string.Empty, ["result"] = "FAIL" },
-    SmartCheck = new Dictionary<string, object?> { ["detail"] = string.Empty, ["result"] = "FAIL" },
-    Serialize = new Dictionary<string, object?> { ["detail"] = string.Empty, ["result"] = "SERIALIZE_FAIL_OTHER" },
-};
-
+var findings = PendingFindings();
 (int reached, int expected, int edges, int extraQueries, bool identityStable)? metrics = null;
+string? verdictReason = null;
 
+var counter = new QueryCounterInterceptor();
+using var connection = new SqliteConnection("DataSource=:memory:");
+ProbeDbContext? db = null;
+var setupOk = true;
+
+// ---- Setup (infrastructure — a failure here is an environment problem, not a research result) ----
 try
 {
-    var counter = new QueryCounterInterceptor();
-    using var connection = new SqliteConnection("DataSource=:memory:");
     connection.Open();
-
     var options = new DbContextOptionsBuilder<ProbeDbContext>()
         .UseSqlite(connection)
         .AddInterceptors(counter)
         .Options;
 
-    using var db = new ProbeDbContext(options);
+    db = new ProbeDbContext(options);
     db.Database.EnsureCreated();
 
     var a = new Node { Name = "a" };
@@ -44,68 +41,41 @@ try
     b.Dependencies.Add(c);
     db.Nodes.AddRange(a, b, c);
     db.SaveChanges();
+}
+catch (Exception setupError)
+{
+    setupOk = false;
+    var detail = ErrDetail(setupError);
+    findings.Hydration = new Dictionary<string, object?> { ["detail"] = $"probe setup failed: {detail}", ["result"] = "FAIL" };
+    verdictReason = $"probe setup failed -- {detail}";
+}
 
-    var roots = db.Nodes
-        .Where(n => n.Name == "a")
-        .OrderBy(n => n.Name)
-        .ToList();
-
-    var queriesAfterHydration = counter.QueryCount;
-
-    foreach (var root in roots)
-    {
-        foreach (var dep in root.Dependencies)
-        {
-            _ = dep.Dependencies.Count;
-        }
-    }
-
-    var extraQueries = counter.QueryCount - queriesAfterHydration;
-    findings.QueryGate = extraQueries == 0
-        ? new Dictionary<string, object?> { ["detail"] = "No additional queries observed during traversal.", ["result"] = "PASS" }
-        : new Dictionary<string, object?>
-        {
-            ["detail"] = $"Expected 0 additional queries during traversal, observed {extraQueries}.",
-            ["extraQueries"] = extraQueries,
-            ["result"] = "FAIL",
-        };
-
-    var graphCheck = SmartCheck(roots, expectedAdj);
-    metrics = (graphCheck.reached, expectedAdj.Count, graphCheck.edges, extraQueries, !graphCheck.reason.Contains("multiple in-memory instances"));
-    findings.SmartCheck = graphCheck.pass
-        ? new Dictionary<string, object?> { ["detail"] = "Identity and dependency closure checks passed.", ["result"] = "PASS" }
-        : new Dictionary<string, object?> { ["detail"] = graphCheck.reason, ["result"] = "FAIL" };
-
-    findings.Hydration = (string)findings.QueryGate["result"]! == "PASS" && (string)findings.SmartCheck["result"]! == "PASS"
-        ? new Dictionary<string, object?> { ["detail"] = "Hydration check passed.", ["result"] = "PASS" }
-        : new Dictionary<string, object?>
-        {
-            ["detail"] = $"Hydration failed: queryGate={findings.QueryGate["result"]}, smartCheck={findings.SmartCheck["result"]}.",
-            ["result"] = "FAIL",
-        };
-
+// ---- Stage 1: the operation under research — schema-driven fetch of root `a` ----
+if (setupOk && db is not null)
+{
+    List<Node>? roots = null;
     try
     {
-        JsonSerializer.Serialize(roots);
-        findings.Serialize = new Dictionary<string, object?> { ["detail"] = "JSON serialization passed.", ["result"] = "SERIALIZE_PASS" };
+        roots = db.Nodes.Where(n => n.Name == "a").OrderBy(n => n.Name).ToList();
+        findings.Fetch = new Dictionary<string, object?> { ["detail"] = $"Schema-driven fetch returned {roots.Count} root row(s).", ["result"] = "OK" };
     }
-    catch (Exception ex)
+    catch (Exception fetchError)
     {
-        var msg = ex.Message.ToLowerInvariant();
-        var serialization = (msg.Contains("cycle") || msg.Contains("circular") || msg.Contains("recursion"))
-            ? "SERIALIZE_FAIL_CYCLE"
-            : "SERIALIZE_FAIL_OTHER";
-        findings.Serialize = new Dictionary<string, object?> { ["detail"] = FormatExceptionDetail(ex), ["result"] = serialization };
+        var detail = ErrDetail(fetchError);
+        findings.Fetch = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "ERROR" };
+        findings.Hydration = new Dictionary<string, object?> { ["detail"] = "fetch did not return a graph", ["result"] = "FAIL" };
+        MarkGatesNotRun(findings, "not reached -- the schema-driven fetch threw before returning a graph");
+        verdictReason = $"schema-driven fetch threw -- {detail}";
+    }
+
+    // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
+    if (roots is not null)
+    {
+        metrics = EvaluateGraph(roots, findings, counter, expectedAdj);
     }
 }
-catch (Exception ex)
-{
-    var detail = FormatExceptionDetail(ex);
-    findings.Hydration = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "FAIL" };
-    findings.QueryGate = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "FAIL" };
-    findings.SmartCheck = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "FAIL" };
-    findings.Serialize = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "SERIALIZE_FAIL_OTHER" };
-}
+
+db?.Dispose();
 
 var efVersion = typeof(DbContext).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]
     ?? typeof(DbContext).Assembly.GetName().Version?.ToString()
@@ -120,6 +90,7 @@ var result = new Dictionary<string, object?>
     ["runtimeVersion"] = Environment.Version.ToString(),
     ["findings"] = new Dictionary<string, object?>
     {
+        ["fetch"] = findings.Fetch,
         ["hydration"] = findings.Hydration,
         ["queryGate"] = findings.QueryGate,
         ["smartCheck"] = findings.SmartCheck,
@@ -137,7 +108,85 @@ PrintReport(
     "db.Nodes.Where(n=>n.Name==\"a\") <- .AutoInclude() on Dependencies navigation (schema default)",
     findings,
     outputPath,
-    metrics);
+    metrics,
+    verdictReason);
+
+static Findings PendingFindings()
+{
+    const string detail = "not run -- a prerequisite stage did not complete";
+    return new Findings
+    {
+        Fetch = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "NOT_RUN" },
+        Hydration = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "FAIL" },
+        QueryGate = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "NOT_RUN" },
+        SmartCheck = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "NOT_RUN" },
+        Serialize = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "SERIALIZE_NOT_RUN" },
+    };
+}
+
+static void MarkGatesNotRun(Findings findings, string reason)
+{
+    findings.QueryGate = new Dictionary<string, object?> { ["detail"] = reason, ["result"] = "NOT_RUN" };
+    findings.SmartCheck = new Dictionary<string, object?> { ["detail"] = reason, ["result"] = "NOT_RUN" };
+    findings.Serialize = new Dictionary<string, object?> { ["detail"] = reason, ["result"] = "SERIALIZE_NOT_RUN" };
+}
+
+static string ErrDetail(Exception ex) => $"{ex.GetType().Name}: {ex.Message}";
+
+static (int reached, int expected, int edges, int extraQueries, bool identityStable) EvaluateGraph(
+    List<Node> roots, Findings findings, QueryCounterInterceptor counter, Dictionary<string, HashSet<string>> expectedAdj)
+{
+    // queryGate: traversal must not trigger further SQL if hydration was complete.
+    var queriesAfterHydration = counter.QueryCount;
+    foreach (var root in roots)
+    {
+        foreach (var dep in root.Dependencies)
+        {
+            _ = dep.Dependencies.Count;
+        }
+    }
+    var extraQueries = counter.QueryCount - queriesAfterHydration;
+    findings.QueryGate = extraQueries == 0
+        ? new Dictionary<string, object?> { ["detail"] = "No additional queries observed during traversal.", ["result"] = "PASS" }
+        : new Dictionary<string, object?>
+        {
+            ["detail"] = $"Expected 0 additional queries during traversal, observed {extraQueries}.",
+            ["extraQueries"] = extraQueries,
+            ["result"] = "FAIL",
+        };
+
+    // smartCheck: identity + dependency-closure of the reachable graph.
+    var graphCheck = SmartCheck(roots, expectedAdj);
+    findings.SmartCheck = graphCheck.pass
+        ? new Dictionary<string, object?> { ["detail"] = "Identity and dependency closure checks passed.", ["result"] = "PASS" }
+        : new Dictionary<string, object?> { ["detail"] = graphCheck.reason, ["result"] = "FAIL" };
+
+    // hydration rollup: full hydration = complete closure with no extra queries.
+    findings.Hydration = Equals(findings.QueryGate["result"], "PASS") && Equals(findings.SmartCheck["result"], "PASS")
+        ? new Dictionary<string, object?> { ["detail"] = "Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).", ["result"] = "PASS" }
+        : new Dictionary<string, object?>
+        {
+            ["detail"] = $"Full hydration not achieved: queryGate={findings.QueryGate["result"]}, smartCheck={findings.SmartCheck["result"]}.",
+            ["result"] = "FAIL",
+        };
+
+    // serialize: independent of smartCheck; needs only a materialized graph.
+    try
+    {
+        JsonSerializer.Serialize(roots);
+        findings.Serialize = new Dictionary<string, object?> { ["detail"] = "JSON serialization passed.", ["result"] = "SERIALIZE_PASS" };
+    }
+    catch (Exception ex)
+    {
+        var msg = ex.Message.ToLowerInvariant();
+        var serialization = (msg.Contains("cycle") || msg.Contains("circular") || msg.Contains("recursion"))
+            ? "SERIALIZE_FAIL_CYCLE"
+            : "SERIALIZE_FAIL_OTHER";
+        findings.Serialize = new Dictionary<string, object?> { ["detail"] = FormatExceptionDetail(ex), ["result"] = serialization };
+    }
+
+    return (graphCheck.reached, expectedAdj.Count, graphCheck.edges, extraQueries, !graphCheck.reason.Contains("multiple in-memory instances"));
+}
 
 // Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
 static string BuildOutcome(Findings findings)
@@ -263,7 +312,8 @@ static void PrintReport(
     string strategy,
     Findings findings,
     string jsonPath,
-    (int reached, int expected, int edges, int extraQueries, bool identityStable)? metrics)
+    (int reached, int expected, int edges, int extraQueries, bool identityStable)? metrics,
+    string? verdictReason)
 {
     const int ruleWidth = 64;
     const string scenario = "acyclic A->B->C | schema-driven full hydration (no query-time include paths)";
@@ -289,14 +339,11 @@ static void PrintReport(
                 : ("ACYCLIC_PASS", $"full hydration succeeded; serialization {f.Serialize["result"]}");
         }
 
-        var exceptionRaised =
-            Equals(f.QueryGate["result"], "FAIL") &&
-            Equals(f.SmartCheck["result"], "FAIL") &&
-            Equals(f.Hydration["detail"]?.ToString(), f.SmartCheck["detail"]?.ToString()) &&
-            Equals(f.SmartCheck["detail"]?.ToString(), f.QueryGate["detail"]?.ToString());
-        if (exceptionRaised)
+        // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.
+        if (Equals(f.SmartCheck["result"], "NOT_RUN"))
         {
-            return ("ACYCLIC_FAIL", $"probe raised before traversal -- {FirstLine(f.Hydration["detail"])}");
+            var cause = FirstLine(f.Hydration["detail"]);
+            return ("ACYCLIC_FAIL", string.IsNullOrEmpty(cause) ? "hydration did not complete" : cause);
         }
         if (Equals(f.SmartCheck["result"], "FAIL"))
         {
@@ -313,7 +360,7 @@ static void PrintReport(
     {
         if (m is null)
         {
-            return "observed : n/a -- probe raised before the traversal stage";
+            return "observed : no graph hydrated -- traversal/identity/serialization gates were not run";
         }
         var v = m.Value;
         var parts = new List<string>
@@ -326,24 +373,27 @@ static void PrintReport(
         return "observed : " + string.Join("; ", parts);
     }
 
-    var (verdict, reason) = DeriveVerdict(findings);
-    string Pad(object? result) => (result?.ToString() ?? string.Empty).PadRight(4);
+    var (verdict, derivedReason) = DeriveVerdict(findings);
+    var reason = verdictReason ?? derivedReason;
+    string Pad(object? result) => (result?.ToString() ?? string.Empty).PadRight(7);
 
     Console.WriteLine();
     Console.WriteLine(Rule($"{probe} | {library} v{libraryVersion}", ruleWidth));
     Console.WriteLine($"scenario : {scenario}");
     Console.WriteLine($"strategy : {strategy}");
     Console.WriteLine(ObservedLine(metrics));
+    Console.WriteLine($"  fetch      : {Pad(findings.Fetch["result"])}  {FirstLine(findings.Fetch["detail"])}");
     Console.WriteLine($"  hydration  : {Pad(findings.Hydration["result"])}  {FirstLine(findings.Hydration["detail"])}");
     Console.WriteLine($"  queryGate  : {Pad(findings.QueryGate["result"])}  {FirstLine(findings.QueryGate["detail"])}");
     Console.WriteLine($"  smartCheck : {Pad(findings.SmartCheck["result"])}  {FirstLine(findings.SmartCheck["detail"])}");
-    Console.WriteLine($"  serialize  : {findings.Serialize["result"]}  {FirstLine(findings.Serialize["detail"])}");
+    Console.WriteLine($"  serialize  : {Pad(findings.Serialize["result"])}  {FirstLine(findings.Serialize["detail"])}");
     Console.WriteLine($"VERDICT  : {verdict} -- {reason}");
     Console.WriteLine($"json     : {jsonPath}");
 }
 
 internal sealed class Findings
 {
+    public required Dictionary<string, object?> Fetch { get; set; }
     public required Dictionary<string, object?> Hydration { get; set; }
     public required Dictionary<string, object?> QueryGate { get; set; }
     public required Dictionary<string, object?> SmartCheck { get; set; }
