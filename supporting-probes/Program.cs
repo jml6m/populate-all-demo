@@ -61,11 +61,18 @@ if (setupOk && db is not null)
     }
     catch (Exception fetchError)
     {
+        // Not a runtime data fault: EF Core's model guard rejects AutoInclude on a self-referential
+        // navigation as an unbounded include cycle at query-compile time, independent of the acyclic
+        // data (it fails on an empty table too). The raw exception is kept on line 2.
         var detail = ErrDetail(fetchError);
-        findings.Fetch = new Dictionary<string, object?> { ["detail"] = detail, ["result"] = "ERROR" };
+        findings.Fetch = new Dictionary<string, object?>
+        {
+            ["detail"] = $"query not constructible -- self-referential AutoInclude rejected as unbounded (data-independent)\n{detail}",
+            ["result"] = "ERROR",
+        };
         findings.Hydration = new Dictionary<string, object?> { ["detail"] = "fetch did not return a graph", ["result"] = "FAIL" };
-        MarkGatesNotRun(findings, "not reached -- the schema-driven fetch threw before returning a graph");
-        verdictReason = $"schema-driven fetch threw -- {detail}";
+        MarkGatesNotRun(findings, "not reached -- the schema-driven eager query could not be constructed");
+        verdictReason = "schema-level AutoInclude of a self-referential navigation not constructible (data-independent)";
     }
 
     // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----

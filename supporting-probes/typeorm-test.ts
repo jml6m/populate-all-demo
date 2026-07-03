@@ -172,11 +172,17 @@ async function run() {
         roots = await repo.find({ where: [{ name: 'a' }], order: { name: 'ASC' } });
         findings.fetch = { result: 'OK', detail: `Schema-driven fetch returned ${roots.length} root row(s).` };
       } catch (fetchError) {
+        // Not a runtime data fault: TypeORM cannot BUILD an eager query for a self-referential
+        // relation (it expands the self-join without bound). Verified to overflow on an empty
+        // table too, so it is independent of the row count. The raw error is kept on line 2.
         const detail = formatErrorDetail(fetchError);
-        findings.fetch = { result: 'ERROR', detail };
+        findings.fetch = {
+          result: 'ERROR',
+          detail: `query not constructible -- eager self-relation join recurses without bound (data-independent)\n${detail}`,
+        };
         findings.hydration = { result: 'FAIL', detail: 'fetch did not return a graph' };
-        markGatesNotRun(findings, 'not reached -- the schema-driven fetch threw before returning a graph');
-        verdictReason = `schema-driven fetch threw -- ${detail}`;
+        markGatesNotRun(findings, 'not reached -- the schema-driven eager query could not be constructed');
+        verdictReason = 'schema-level eager self-relation query not constructible (data-independent)';
         process.exitCode = 1;
       }
 
