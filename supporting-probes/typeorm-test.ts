@@ -3,8 +3,10 @@ import { DataSource, EntitySchema, Logger } from 'typeorm';
 import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { printProbeReport } from './ts/report';
 
 const verbose = process.env.PROBE_VERBOSE === '1';
+const STRATEGY = "repo.find({ where:{ name:'a' } }) <- schema relation eager:true (self-referential m:n)";
 
 type Node = {
   id: number;
@@ -156,26 +158,43 @@ async function run() {
       findings,
     });
 
-    console.log('typeorm-test');
-    console.log('hydration:', findings.hydration.result === 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL');
-    console.log('queryGate:', findings.queryGate);
-    console.log('smartCheck:', findings.smartCheck);
-    console.log('serialization:', findings.serialize.result);
-    console.log('json:', outputPath);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.typeorm.probe,
+      library: PROBE_IDENTITIES.typeorm.library,
+      libraryVersion: getNodePackageVersion('typeorm'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+      metrics: {
+        reached: graphCheck.uniqueIds,
+        expected: Object.keys(expectedAdj).length,
+        edges: graphCheck.edgesTraversed,
+        extraQueries,
+        identityStable: !graphCheck.reason?.includes('multiple in-memory instances'),
+      },
+    });
   } catch (error) {
-    findings.hydration = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.queryGate = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.smartCheck = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail: formatErrorDetail(error) };
+    const detail = formatErrorDetail(error);
+    findings.hydration = { result: 'FAIL', detail };
+    findings.queryGate = { result: 'FAIL', detail };
+    findings.smartCheck = { result: 'FAIL', detail };
+    findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
-    writeProbeResult({
+    const outputPath = writeProbeResult({
       ...PROBE_IDENTITIES.typeorm,
       libraryVersion: getNodePackageVersion('typeorm'),
       runtimeVersion: process.version,
       findings,
     });
 
-    console.error('typeorm-test failed:', error);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.typeorm.probe,
+      library: PROBE_IDENTITIES.typeorm.library,
+      libraryVersion: getNodePackageVersion('typeorm'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+    });
     process.exitCode = 1;
   } finally {
     if (dataSource.isInitialized) {

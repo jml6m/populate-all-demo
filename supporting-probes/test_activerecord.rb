@@ -78,6 +78,62 @@ def smart_check(roots, expected_adj)
   [true, nil, by_name.length, visited.length, edges]
 end
 
+RULE_WIDTH = 64
+SCENARIO = 'acyclic A->B->C | schema-driven full hydration (no query-time include paths)'.freeze
+STRATEGY = "Node.where(name:'a') <- has_and_belongs_to_many, no .includes (schema default, lazy)".freeze
+
+def rule_line(label)
+  prefix = "== #{label} "
+  prefix + ('=' * [0, RULE_WIDTH - prefix.length].max)
+end
+
+def first_line(detail)
+  line = (detail || '').split("\n").first.to_s.strip
+  line.length > 100 ? "#{line[0, 99]}..." : line
+end
+
+def derive_verdict(findings)
+  if findings[:hydration][:result] == 'PASS'
+    return ['ACYCLIC_PASS', 'schema-driven full hydration + serialization succeeded'] if findings[:serialize][:result] == 'SERIALIZE_PASS'
+
+    return ['ACYCLIC_PASS', "full hydration succeeded; serialization #{findings[:serialize][:result]}"]
+  end
+
+  exception_raised = findings[:queryGate][:result] == 'FAIL' &&
+                     findings[:smartCheck][:result] == 'FAIL' &&
+                     findings[:hydration][:detail] == findings[:smartCheck][:detail] &&
+                     findings[:smartCheck][:detail] == findings[:queryGate][:detail]
+  return ['ACYCLIC_FAIL', "probe raised before traversal -- #{first_line(findings[:hydration][:detail])}"] if exception_raised
+  return ['ACYCLIC_FAIL', "smartCheck failed -- #{first_line(findings[:smartCheck][:detail])}"] if findings[:smartCheck][:result] == 'FAIL'
+  return ['ACYCLIC_FAIL', "topology resolved but queryGate failed -- #{first_line(findings[:queryGate][:detail])}"] if findings[:queryGate][:result] == 'FAIL'
+
+  ['ACYCLIC_FAIL', 'hydration failed']
+end
+
+def observed_line(metrics)
+  return 'observed : n/a -- probe raised before the traversal stage' unless metrics
+
+  parts = ["reached #{metrics[:reached]}/#{metrics[:expected]} expected nodes from root [a]", "#{metrics[:edges]} edges"]
+  parts << (metrics[:identityStable] == false ? 'identity BROKEN (duplicate instances)' : 'identity stable')
+  parts << "#{metrics[:extraQueries]} extra queries" unless metrics[:extraQueries].nil?
+  "observed : #{parts.join('; ')}"
+end
+
+def print_report(probe, library, library_version, strategy, findings, json_path, metrics)
+  verdict, reason = derive_verdict(findings)
+  puts
+  puts rule_line("#{probe} | #{library} v#{library_version}")
+  puts "scenario : #{SCENARIO}"
+  puts "strategy : #{strategy}"
+  puts observed_line(metrics)
+  puts "  hydration  : #{findings[:hydration][:result].ljust(4)}  #{first_line(findings[:hydration][:detail])}"
+  puts "  queryGate  : #{findings[:queryGate][:result].ljust(4)}  #{first_line(findings[:queryGate][:detail])}"
+  puts "  smartCheck : #{findings[:smartCheck][:result].ljust(4)}  #{first_line(findings[:smartCheck][:detail])}"
+  puts "  serialize  : #{findings[:serialize][:result]}  #{first_line(findings[:serialize][:detail])}"
+  puts "VERDICT  : #{verdict} -- #{reason}"
+  puts "json     : #{json_path}"
+end
+
 def write_result(result)
   run_id = ENV['PROBE_RUN_ID']&.strip
   if run_id.nil? || run_id.empty?
@@ -112,6 +168,7 @@ end
 def run
   expected_adj = { 'a' => ['b'], 'b' => ['c'], 'c' => [] }
   query_count = 0
+  metrics = nil
 
   findings = {
     hydration: { result: 'FAIL', detail: '' },
@@ -148,7 +205,14 @@ def run
                                { result: 'FAIL', extraQueries: extra_queries, detail: "Expected 0 additional queries during traversal, observed #{extra_queries}." }
                              end
 
-      graph_ok, reason, = smart_check(roots, expected_adj)
+      graph_ok, reason, reached, _visited, edges = smart_check(roots, expected_adj)
+      metrics = {
+        reached: reached,
+        expected: expected_adj.length,
+        edges: edges,
+        extraQueries: extra_queries,
+        identityStable: !(reason || '').include?('multiple in-memory instances')
+      }
       findings[:smartCheck] = if graph_ok
                                 { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
                               else
@@ -199,12 +263,7 @@ def run
 
   output_path = write_result(result)
 
-  puts 'test_activerecord'
-  puts "hydration: #{findings[:hydration][:result] == 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL'}"
-  puts "queryGate: #{findings[:queryGate]}"
-  puts "smartCheck: #{findings[:smartCheck]}"
-  puts "serialization: #{findings[:serialize][:result]}"
-  puts "json: #{output_path}"
+  print_report('activerecord', 'ActiveRecord', ActiveRecord::VERSION::STRING, STRATEGY, findings, output_path, metrics)
 end
 
 run

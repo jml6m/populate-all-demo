@@ -2,8 +2,10 @@ import { DataTypes, Model, Sequelize } from 'sequelize';
 import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { printProbeReport } from './ts/report';
 
 const verbose = process.env.PROBE_VERBOSE === '1';
+const STRATEGY = "Node.findAll({ where:{ name:'a' } }) <- belongsToMany, no query-time include (schema default)";
 
 class Node extends Model {
   declare id: number;
@@ -103,12 +105,21 @@ async function run() {
       findings,
     });
 
-    console.log('sequelize-test');
-    console.log('hydration:', findings.hydration.result === 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL');
-    console.log('queryGate:', findings.queryGate);
-    console.log('smartCheck:', findings.smartCheck);
-    console.log('serialization:', findings.serialize.result);
-    console.log('json:', outputPath);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.sequelize.probe,
+      library: PROBE_IDENTITIES.sequelize.library,
+      libraryVersion: getNodePackageVersion('sequelize'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+      metrics: {
+        reached: graphCheck.uniqueIds,
+        expected: Object.keys(expectedAdj).length,
+        edges: graphCheck.edgesTraversed,
+        extraQueries,
+        identityStable: !graphCheck.reason?.includes('multiple in-memory instances'),
+      },
+    });
   } catch (error) {
     const detail = formatErrorDetail(error);
     findings.hydration = { result: 'FAIL', detail };
@@ -116,14 +127,21 @@ async function run() {
     findings.smartCheck = { result: 'FAIL', detail };
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
-    writeProbeResult({
+    const outputPath = writeProbeResult({
       ...PROBE_IDENTITIES.sequelize,
       libraryVersion: getNodePackageVersion('sequelize'),
       runtimeVersion: process.version,
       findings,
     });
 
-    console.error('sequelize-test failed:', error);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.sequelize.probe,
+      library: PROBE_IDENTITIES.sequelize.library,
+      libraryVersion: getNodePackageVersion('sequelize'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+    });
     process.exitCode = 1;
   } finally {
     await sequelize.close();

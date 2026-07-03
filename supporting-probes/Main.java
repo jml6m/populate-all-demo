@@ -23,10 +23,14 @@ import java.util.regex.Pattern;
 
 public final class Main {
   private static final AtomicInteger QUERY_COUNT = new AtomicInteger(0);
+  private static final int RULE_WIDTH = 64;
+  private static final String SCENARIO = "acyclic A->B->C | schema-driven full hydration (no query-time include paths)";
+  private static final String STRATEGY = "select n from Node n where n.name='a' <- @ManyToMany(fetch=EAGER) (schema default)";
 
   public static void main(String[] args) throws Exception {
     var expectedAdj = Map.of("a", Set.of("b"), "b", Set.of("c"), "c", Set.<String>of());
     var findings = createDefaultFindings();
+    Map<String, Object> metrics = null;
 
     var configuration = new Configuration();
     configuration.setProperty(AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver");
@@ -79,6 +83,13 @@ public final class Main {
       }
 
       var graphCheck = smartCheck(roots, expectedAdj);
+      metrics = mapOf(
+        "reached", graphCheck.get("reached"),
+        "expected", expectedAdj.size(),
+        "edges", graphCheck.get("edges"),
+        "extraQueries", extraQueries,
+        "identityStable", !String.valueOf(graphCheck.get("reason")).contains("multiple in-memory instances")
+      );
       if (Boolean.TRUE.equals(graphCheck.get("pass"))) {
         findings.smartCheck = mapOf("detail", "Identity and dependency closure checks passed.", "result", "PASS");
       } else {
@@ -123,12 +134,74 @@ public final class Main {
 
     var outputPath = writeResult(result, "hibernate");
 
-    System.out.println("java Main");
-    System.out.println("hydration: " + ("PASS".equals(findings.hydration.get("result")) ? "HYDRATION PASS" : "HYDRATION FAIL"));
-    System.out.println("queryGate: " + findings.queryGate);
-    System.out.println("smartCheck: " + findings.smartCheck);
-    System.out.println("serialization: " + findings.serialize.get("result"));
-    System.out.println("json: " + outputPath);
+    printReport("hibernate", "Hibernate", hibernateVersionFromPom(), STRATEGY, findings, outputPath, metrics);
+  }
+
+  private static String rule(String label) {
+    var prefix = "== " + label + " ";
+    var fill = Math.max(0, RULE_WIDTH - prefix.length());
+    return prefix + "=".repeat(fill);
+  }
+
+  private static String firstLine(Object detail) {
+    var text = detail == null ? "" : String.valueOf(detail);
+    var line = text.split("\\R", 2)[0].trim();
+    return line.length() > 100 ? line.substring(0, 99) + "..." : line;
+  }
+
+  private static String[] deriveVerdict(Findings findings) {
+    if ("PASS".equals(findings.hydration.get("result"))) {
+      if ("SERIALIZE_PASS".equals(findings.serialize.get("result"))) {
+        return new String[] { "ACYCLIC_PASS", "schema-driven full hydration + serialization succeeded" };
+      }
+      return new String[] { "ACYCLIC_PASS", "full hydration succeeded; serialization " + findings.serialize.get("result") };
+    }
+
+    boolean exceptionRaised =
+      "FAIL".equals(findings.queryGate.get("result")) &&
+      "FAIL".equals(findings.smartCheck.get("result")) &&
+      String.valueOf(findings.hydration.get("detail")).equals(String.valueOf(findings.smartCheck.get("detail"))) &&
+      String.valueOf(findings.smartCheck.get("detail")).equals(String.valueOf(findings.queryGate.get("detail")));
+    if (exceptionRaised) {
+      return new String[] { "ACYCLIC_FAIL", "probe raised before traversal -- " + firstLine(findings.hydration.get("detail")) };
+    }
+    if ("FAIL".equals(findings.smartCheck.get("result"))) {
+      return new String[] { "ACYCLIC_FAIL", "smartCheck failed -- " + firstLine(findings.smartCheck.get("detail")) };
+    }
+    if ("FAIL".equals(findings.queryGate.get("result"))) {
+      return new String[] { "ACYCLIC_FAIL", "topology resolved but queryGate failed -- " + firstLine(findings.queryGate.get("detail")) };
+    }
+    return new String[] { "ACYCLIC_FAIL", "hydration failed" };
+  }
+
+  private static String observedLine(Map<String, Object> metrics) {
+    if (metrics == null) {
+      return "observed : n/a -- probe raised before the traversal stage";
+    }
+    var parts = new ArrayList<String>();
+    parts.add("reached " + metrics.get("reached") + "/" + metrics.get("expected") + " expected nodes from root [a]");
+    parts.add(metrics.get("edges") + " edges");
+    parts.add(Boolean.FALSE.equals(metrics.get("identityStable")) ? "identity BROKEN (duplicate instances)" : "identity stable");
+    if (metrics.get("extraQueries") != null) {
+      parts.add(metrics.get("extraQueries") + " extra queries");
+    }
+    return "observed : " + String.join("; ", parts);
+  }
+
+  private static void printReport(String probe, String library, String libraryVersion, String strategy,
+      Findings findings, String jsonPath, Map<String, Object> metrics) {
+    var verdict = deriveVerdict(findings);
+    System.out.println();
+    System.out.println(rule(probe + " | " + library + " v" + libraryVersion));
+    System.out.println("scenario : " + SCENARIO);
+    System.out.println("strategy : " + strategy);
+    System.out.println(observedLine(metrics));
+    System.out.println("  hydration  : " + String.format("%-4s", findings.hydration.get("result")) + "  " + firstLine(findings.hydration.get("detail")));
+    System.out.println("  queryGate  : " + String.format("%-4s", findings.queryGate.get("result")) + "  " + firstLine(findings.queryGate.get("detail")));
+    System.out.println("  smartCheck : " + String.format("%-4s", findings.smartCheck.get("result")) + "  " + firstLine(findings.smartCheck.get("detail")));
+    System.out.println("  serialize  : " + findings.serialize.get("result") + "  " + firstLine(findings.serialize.get("detail")));
+    System.out.println("VERDICT  : " + verdict[0] + " -- " + verdict[1]);
+    System.out.println("json     : " + jsonPath);
   }
 
   // Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
@@ -238,7 +311,7 @@ public final class Main {
 
       var prior = byName.get(node.getName());
       if (prior != null && prior != node) {
-        return mapOf("pass", false, "reason", "id \"" + node.getName() + "\" maps to multiple in-memory instances");
+        return mapOf("pass", false, "reason", "id \"" + node.getName() + "\" maps to multiple in-memory instances", "reached", byName.size(), "edges", edges);
       }
 
       byName.put(node.getName(), node);
@@ -248,7 +321,7 @@ public final class Main {
       }
       var expected = expectedAdj.getOrDefault(node.getName(), Set.of());
       if (!actual.equals(expected)) {
-        return mapOf("pass", false, "reason", "dependency closure mismatch at \"" + node.getName() + "\"");
+        return mapOf("pass", false, "reason", "dependency closure mismatch at \"" + node.getName() + "\"", "reached", byName.size(), "edges", edges);
       }
 
       for (var dep : node.getDependencies()) {
@@ -258,10 +331,10 @@ public final class Main {
     }
 
     if (byName.size() != expectedAdj.size()) {
-      return mapOf("pass", false, "reason", "reachable ids mismatch: got " + byName.size() + ", expected " + expectedAdj.size());
+      return mapOf("pass", false, "reason", "reachable ids mismatch: got " + byName.size() + ", expected " + expectedAdj.size(), "reached", byName.size(), "edges", edges);
     }
 
-    return mapOf("pass", true, "reason", null);
+    return mapOf("pass", true, "reason", null, "reached", byName.size(), "edges", edges);
   }
 
   public static class QueryInspector implements StatementInspector {

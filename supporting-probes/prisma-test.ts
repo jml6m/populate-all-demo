@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
 import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import { printProbeReport } from './ts/report';
+
+const STRATEGY = "node.findMany({ where:{ name:'a' } }) <- relation via schema, no nested include";
 
 type PrismaNode = {
   name: string;
@@ -87,12 +90,21 @@ async function run() {
       findings,
     });
 
-    console.log('prisma-test');
-    console.log('hydration:', findings.hydration.result === 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL');
-    console.log('queryGate:', findings.queryGate);
-    console.log('smartCheck:', findings.smartCheck);
-    console.log('serialization:', findings.serialize.result);
-    console.log('json:', outputPath);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.prisma.probe,
+      library: PROBE_IDENTITIES.prisma.library,
+      libraryVersion: getNodePackageVersion('@prisma/client'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+      metrics: {
+        reached: graphCheck.uniqueIds,
+        expected: Object.keys(expectedAdj).length,
+        edges: graphCheck.edgesTraversed,
+        extraQueries,
+        identityStable: !graphCheck.reason?.includes('multiple in-memory instances'),
+      },
+    });
   } catch (error) {
     const detail = formatErrorDetail(error);
     findings.hydration = { result: 'FAIL', detail };
@@ -100,14 +112,21 @@ async function run() {
     findings.smartCheck = { result: 'FAIL', detail };
     findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
 
-    writeProbeResult({
+    const outputPath = writeProbeResult({
       ...PROBE_IDENTITIES.prisma,
       libraryVersion: getNodePackageVersion('@prisma/client'),
       runtimeVersion: process.version,
       findings,
     });
 
-    console.error('prisma-test failed:', error);
+    printProbeReport({
+      probe: PROBE_IDENTITIES.prisma.probe,
+      library: PROBE_IDENTITIES.prisma.library,
+      libraryVersion: getNodePackageVersion('@prisma/client'),
+      strategy: STRATEGY,
+      findings,
+      jsonPath: outputPath,
+    });
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect();

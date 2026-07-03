@@ -21,6 +21,8 @@ var findings = new Findings
     Serialize = new Dictionary<string, object?> { ["detail"] = string.Empty, ["result"] = "SERIALIZE_FAIL_OTHER" },
 };
 
+(int reached, int expected, int edges, int extraQueries, bool identityStable)? metrics = null;
+
 try
 {
     var counter = new QueryCounterInterceptor();
@@ -69,6 +71,7 @@ try
         };
 
     var graphCheck = SmartCheck(roots, expectedAdj);
+    metrics = (graphCheck.reached, expectedAdj.Count, graphCheck.edges, extraQueries, !graphCheck.reason.Contains("multiple in-memory instances"));
     findings.SmartCheck = graphCheck.pass
         ? new Dictionary<string, object?> { ["detail"] = "Identity and dependency closure checks passed.", ["result"] = "PASS" }
         : new Dictionary<string, object?> { ["detail"] = graphCheck.reason, ["result"] = "FAIL" };
@@ -127,12 +130,14 @@ var result = new Dictionary<string, object?>
 result["outcome"] = BuildOutcome(findings);
 var outputPath = WriteResult(result, "efcore");
 
-Console.WriteLine("dotnet Program.cs");
-Console.WriteLine($"hydration: {(Equals(findings.Hydration["result"], "PASS") ? "HYDRATION PASS" : "HYDRATION FAIL")}");
-Console.WriteLine($"queryGate: {JsonSerializer.Serialize(findings.QueryGate)}");
-Console.WriteLine($"smartCheck: {JsonSerializer.Serialize(findings.SmartCheck)}");
-Console.WriteLine($"serialization: {findings.Serialize["result"]}");
-Console.WriteLine($"json: {outputPath}");
+PrintReport(
+    "efcore",
+    "EF Core",
+    efVersion,
+    "db.Nodes.Where(n=>n.Name==\"a\") <- .AutoInclude() on Dependencies navigation (schema default)",
+    findings,
+    outputPath,
+    metrics);
 
 // Keep this rollup logic in sync with supporting-probes/ts/result-builder.ts::buildOutcome.
 static string BuildOutcome(Findings findings)
@@ -214,11 +219,12 @@ static string FormatExceptionDetail(Exception ex)
     return $"{ex.GetType().Name}: {ex.Message}{Environment.NewLine}{stackTop}".TrimEnd();
 }
 
-static (bool pass, string reason) SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> expectedAdj)
+static (bool pass, string reason, int reached, int edges) SmartCheck(List<Node> roots, Dictionary<string, HashSet<string>> expectedAdj)
 {
     var stack = new Stack<Node>(roots);
     var visited = new HashSet<Node>();
     var byName = new Dictionary<string, Node>();
+    var edges = 0;
 
     while (stack.Count > 0)
     {
@@ -227,7 +233,7 @@ static (bool pass, string reason) SmartCheck(List<Node> roots, Dictionary<string
 
         if (byName.TryGetValue(node.Name, out var prior) && !ReferenceEquals(prior, node))
         {
-            return (false, $"id \"{node.Name}\" maps to multiple in-memory instances");
+            return (false, $"id \"{node.Name}\" maps to multiple in-memory instances", byName.Count, edges);
         }
 
         byName[node.Name] = node;
@@ -235,18 +241,105 @@ static (bool pass, string reason) SmartCheck(List<Node> roots, Dictionary<string
         var expected = expectedAdj.TryGetValue(node.Name, out var deps) ? deps : new HashSet<string>();
         if (!actual.SetEquals(expected))
         {
-            return (false, $"dependency closure mismatch at \"{node.Name}\"");
+            return (false, $"dependency closure mismatch at \"{node.Name}\"", byName.Count, edges);
         }
 
         foreach (var dep in node.Dependencies)
         {
+            edges += 1;
             stack.Push(dep);
         }
     }
 
     return byName.Count != expectedAdj.Count
-        ? (false, $"reachable ids mismatch: got {byName.Count}, expected {expectedAdj.Count}")
-        : (true, string.Empty);
+        ? (false, $"reachable ids mismatch: got {byName.Count}, expected {expectedAdj.Count}", byName.Count, edges)
+        : (true, string.Empty, byName.Count, edges);
+}
+
+static void PrintReport(
+    string probe,
+    string library,
+    string libraryVersion,
+    string strategy,
+    Findings findings,
+    string jsonPath,
+    (int reached, int expected, int edges, int extraQueries, bool identityStable)? metrics)
+{
+    const int ruleWidth = 64;
+    const string scenario = "acyclic A->B->C | schema-driven full hydration (no query-time include paths)";
+
+    static string Rule(string label, int width)
+    {
+        var prefix = $"== {label} ";
+        return prefix + new string('=', Math.Max(0, width - prefix.Length));
+    }
+
+    static string FirstLine(object? detail)
+    {
+        var line = (detail?.ToString() ?? string.Empty).Split('\n')[0].Trim();
+        return line.Length > 100 ? line[..99] + "..." : line;
+    }
+
+    static (string verdict, string reason) DeriveVerdict(Findings f)
+    {
+        if (Equals(f.Hydration["result"], "PASS"))
+        {
+            return Equals(f.Serialize["result"], "SERIALIZE_PASS")
+                ? ("ACYCLIC_PASS", "schema-driven full hydration + serialization succeeded")
+                : ("ACYCLIC_PASS", $"full hydration succeeded; serialization {f.Serialize["result"]}");
+        }
+
+        var exceptionRaised =
+            Equals(f.QueryGate["result"], "FAIL") &&
+            Equals(f.SmartCheck["result"], "FAIL") &&
+            Equals(f.Hydration["detail"]?.ToString(), f.SmartCheck["detail"]?.ToString()) &&
+            Equals(f.SmartCheck["detail"]?.ToString(), f.QueryGate["detail"]?.ToString());
+        if (exceptionRaised)
+        {
+            return ("ACYCLIC_FAIL", $"probe raised before traversal -- {FirstLine(f.Hydration["detail"])}");
+        }
+        if (Equals(f.SmartCheck["result"], "FAIL"))
+        {
+            return ("ACYCLIC_FAIL", $"smartCheck failed -- {FirstLine(f.SmartCheck["detail"])}");
+        }
+        if (Equals(f.QueryGate["result"], "FAIL"))
+        {
+            return ("ACYCLIC_FAIL", $"topology resolved but queryGate failed -- {FirstLine(f.QueryGate["detail"])}");
+        }
+        return ("ACYCLIC_FAIL", "hydration failed");
+    }
+
+    static string ObservedLine((int reached, int expected, int edges, int extraQueries, bool identityStable)? m)
+    {
+        if (m is null)
+        {
+            return "observed : n/a -- probe raised before the traversal stage";
+        }
+        var v = m.Value;
+        var parts = new List<string>
+        {
+            $"reached {v.reached}/{v.expected} expected nodes from root [a]",
+            $"{v.edges} edges",
+            v.identityStable ? "identity stable" : "identity BROKEN (duplicate instances)",
+            $"{v.extraQueries} extra queries",
+        };
+        return "observed : " + string.Join("; ", parts);
+    }
+
+    var (verdict, reason) = DeriveVerdict(findings);
+    string Pad(object? result) => (result?.ToString() ?? string.Empty).PadRight(4);
+
+    Console.WriteLine();
+    Console.WriteLine(Rule($"{probe} | {library} v{libraryVersion}", ruleWidth));
+    Console.WriteLine($"scenario : {scenario}");
+    Console.WriteLine($"strategy : {strategy}");
+    Console.WriteLine(ObservedLine(metrics));
+    Console.WriteLine($"  hydration  : {Pad(findings.Hydration["result"])}  {FirstLine(findings.Hydration["detail"])}");
+    Console.WriteLine($"  queryGate  : {Pad(findings.QueryGate["result"])}  {FirstLine(findings.QueryGate["detail"])}");
+    Console.WriteLine($"  smartCheck : {Pad(findings.SmartCheck["result"])}  {FirstLine(findings.SmartCheck["detail"])}");
+    Console.WriteLine($"  serialize  : {findings.Serialize["result"]}  {FirstLine(findings.Serialize["detail"])}");
+    Console.WriteLine($"VERDICT  : {verdict} -- {reason}");
+    Console.WriteLine($"json     : {jsonPath}");
 }
 
 internal sealed class Findings

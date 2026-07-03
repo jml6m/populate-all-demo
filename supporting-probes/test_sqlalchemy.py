@@ -91,6 +91,67 @@ def smart_check(roots, expected_adj):
     return True, None, len(by_name), len(visited_ids), edges
 
 
+RULE_WIDTH = 64
+SCENARIO = 'acyclic A->B->C | schema-driven full hydration (no query-time include paths)'
+STRATEGY = "session.query(Node).filter(name='a') <- relationship(lazy='selectin') (schema default)"
+
+
+def _rule(label):
+    prefix = f'== {label} '
+    return prefix + '=' * max(0, RULE_WIDTH - len(prefix))
+
+
+def _first_line(detail):
+    line = (detail or '').split('\n')[0].strip()
+    return (line[:99] + '...') if len(line) > 100 else line
+
+
+def _derive_verdict(findings):
+    if findings['hydration']['result'] == 'PASS':
+        if findings['serialize']['result'] == 'SERIALIZE_PASS':
+            return 'ACYCLIC_PASS', 'schema-driven full hydration + serialization succeeded'
+        return 'ACYCLIC_PASS', f"full hydration succeeded; serialization {findings['serialize']['result']}"
+
+    exception_raised = (
+        findings['queryGate']['result'] == 'FAIL'
+        and findings['smartCheck']['result'] == 'FAIL'
+        and findings['hydration']['detail'] == findings['smartCheck']['detail']
+        and findings['smartCheck']['detail'] == findings['queryGate']['detail']
+    )
+    if exception_raised:
+        return 'ACYCLIC_FAIL', f"probe raised before traversal -- {_first_line(findings['hydration']['detail'])}"
+    if findings['smartCheck']['result'] == 'FAIL':
+        return 'ACYCLIC_FAIL', f"smartCheck failed -- {_first_line(findings['smartCheck']['detail'])}"
+    if findings['queryGate']['result'] == 'FAIL':
+        return 'ACYCLIC_FAIL', f"topology resolved but queryGate failed -- {_first_line(findings['queryGate']['detail'])}"
+    return 'ACYCLIC_FAIL', 'hydration failed'
+
+
+def _observed_line(metrics):
+    if not metrics:
+        return 'observed : n/a -- probe raised before the traversal stage'
+    parts = [f"reached {metrics['reached']}/{metrics['expected']} expected nodes from root [a]", f"{metrics['edges']} edges"]
+    parts.append('identity stable' if metrics.get('identityStable', True) else 'identity BROKEN (duplicate instances)')
+    if metrics.get('extraQueries') is not None:
+        parts.append(f"{metrics['extraQueries']} extra queries")
+    return 'observed : ' + '; '.join(parts)
+
+
+def print_report(probe, library, library_version, strategy, findings, json_path, metrics):
+    verdict, reason = _derive_verdict(findings)
+    print()
+    print(_rule(f'{probe} | {library} v{library_version}'))
+    print(f'scenario : {SCENARIO}')
+    print(f'strategy : {strategy}')
+    print(_observed_line(metrics))
+    print(f"  hydration  : {findings['hydration']['result']:<4}  {_first_line(findings['hydration']['detail'])}")
+    print(f"  queryGate  : {findings['queryGate']['result']:<4}  {_first_line(findings['queryGate']['detail'])}")
+    print(f"  smartCheck : {findings['smartCheck']['result']:<4}  {_first_line(findings['smartCheck']['detail'])}")
+    print(f"  serialize  : {findings['serialize']['result']}  {_first_line(findings['serialize']['detail'])}")
+    print(f'VERDICT  : {verdict} -- {reason}')
+    print(f'json     : {json_path}')
+
+
 def write_result(result):
     run_id = os.environ.get('PROBE_RUN_ID', '').strip()
     if not run_id:
@@ -111,6 +172,7 @@ def write_result(result):
 def run():
     expected_adj = {'a': ['b'], 'b': ['c'], 'c': []}
     query_count = 0
+    metrics = None
 
     findings = {
         'hydration': {'result': 'FAIL', 'detail': ''},
@@ -162,7 +224,14 @@ def run():
                     'detail': f'Expected 0 additional queries during traversal, observed {extra_queries}.',
                 }
 
-            graph_ok, reason, _, _, _ = smart_check(roots, expected_adj)
+            graph_ok, reason, reached, _, edges = smart_check(roots, expected_adj)
+            metrics = {
+                'reached': reached,
+                'expected': len(expected_adj),
+                'edges': edges,
+                'extraQueries': extra_queries,
+                'identityStable': 'multiple in-memory instances' not in (reason or ''),
+            }
             if graph_ok:
                 findings['smartCheck'] = {'result': 'PASS', 'detail': 'Identity and dependency closure checks passed.'}
             else:
@@ -212,12 +281,7 @@ def run():
 
     output_path = write_result(result)
 
-    print('test_sqlalchemy')
-    print('hydration:', 'HYDRATION PASS' if findings['hydration']['result'] == 'PASS' else 'HYDRATION FAIL')
-    print('queryGate:', findings['queryGate'])
-    print('smartCheck:', findings['smartCheck'])
-    print('serialization:', findings['serialize']['result'])
-    print('json:', output_path)
+    print_report('sqlalchemy', 'SQLAlchemy', sqlalchemy.__version__, STRATEGY, findings, output_path, metrics)
 
 
 if __name__ == '__main__':
