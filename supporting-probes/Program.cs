@@ -162,7 +162,7 @@ static string WriteResult(Dictionary<string, object?> result, string probeName)
     var runId = Environment.GetEnvironmentVariable("PROBE_RUN_ID");
     if (string.IsNullOrWhiteSpace(runId))
     {
-        throw new InvalidOperationException("PROBE_RUN_ID is required for probe JSON output");
+        runId = $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-nogit";
     }
 
     var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "results", "local", runId);

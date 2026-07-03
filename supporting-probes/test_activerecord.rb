@@ -79,8 +79,11 @@ def smart_check(roots, expected_adj)
 end
 
 def write_result(result)
-  run_id = ENV['PROBE_RUN_ID']
-  raise 'PROBE_RUN_ID is required for probe JSON output' if run_id.nil? || run_id.empty?
+  run_id = ENV['PROBE_RUN_ID']&.strip
+  if run_id.nil? || run_id.empty?
+    run_id = Time.now.utc.strftime('%Y%m%d-%H%M%S-nogit')
+    ENV['PROBE_RUN_ID'] = run_id
+  end
 
   out_dir = File.join(Dir.pwd, 'results', 'local', run_id)
   FileUtils.mkdir_p(out_dir)

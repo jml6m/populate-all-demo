@@ -99,11 +99,20 @@ function sortKeysDeep(value: unknown): unknown {
   return value;
 }
 
+function buildLocalRunId(now: Date): string {
+  const y = now.getUTCFullYear().toString();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  const hh = String(now.getUTCHours()).padStart(2, '0');
+  const mm = String(now.getUTCMinutes()).padStart(2, '0');
+  const ss = String(now.getUTCSeconds()).padStart(2, '0');
+  return `${y}${m}${d}-${hh}${mm}${ss}-nogit`;
+}
+
 export function writeProbeResult(result: ProbeResult): string {
-  const runId = process.env.PROBE_RUN_ID;
-  if (!runId) {
-    throw new Error('PROBE_RUN_ID is required for probe JSON output');
-  }
+  const existingRunId = process.env.PROBE_RUN_ID?.trim();
+  const runId = existingRunId && existingRunId.length > 0 ? existingRunId : buildLocalRunId(new Date());
+  process.env.PROBE_RUN_ID = runId;
 
   return writeProbeResultForRunId(runId, result);
 }

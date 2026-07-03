@@ -13,6 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
@@ -174,7 +177,8 @@ public final class Main {
   private static String writeResult(Map<String, Object> result, String probeName) throws IOException {
     var runId = System.getenv("PROBE_RUN_ID");
     if (runId == null || runId.isBlank()) {
-      throw new IllegalStateException("PROBE_RUN_ID is required for probe JSON output");
+      runId = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-'nogit'")
+        .format(ZonedDateTime.now(ZoneOffset.UTC));
     }
 
     var outputDir = Path.of("results", "local", runId);

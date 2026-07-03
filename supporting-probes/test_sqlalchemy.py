@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import traceback
+from datetime import datetime, timezone
 from collections import deque
 
 import sqlalchemy
@@ -91,9 +92,10 @@ def smart_check(roots, expected_adj):
 
 
 def write_result(result):
-    run_id = os.environ.get('PROBE_RUN_ID')
+    run_id = os.environ.get('PROBE_RUN_ID', '').strip()
     if not run_id:
-        raise RuntimeError('PROBE_RUN_ID is required for probe JSON output')
+        run_id = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-nogit')
+        os.environ['PROBE_RUN_ID'] = run_id
 
     out_dir = os.path.join(os.getcwd(), 'results', 'local', run_id)
     os.makedirs(out_dir, exist_ok=True)
