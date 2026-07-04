@@ -149,7 +149,11 @@ async function run() {
         entities: [NodeSchema],
         dbName: ':memory:',
         allowGlobalContext: true,
-        debug: verbose,
+        // Enable query-level logging unconditionally so the queryGate counter is real.
+        // (With debug:false MikroORM never emits query messages, so the logger never
+        // fires and queryCount stays 0 -- a vacuous "0 extra queries". Console output
+        // stays gated on `verbose`.)
+        debug: ['query'],
         logger: (message) => {
           if (message.toLowerCase().includes('select') || message.toLowerCase().includes('insert') || message.toLowerCase().includes('update')) {
             queryCount += 1;
