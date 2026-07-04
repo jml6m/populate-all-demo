@@ -137,6 +137,7 @@ async function run() {
   const findings = pendingFindings();
   let metrics: ProbeMetrics | undefined;
   let verdictReason: string | undefined;
+  let proof: string | undefined;
   let orm: MikroORM<SqliteDriver> | undefined;
 
   try {
@@ -186,6 +187,10 @@ async function run() {
       // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
       if (roots !== undefined) {
         metrics = evaluateGraph(roots, findings, () => queryCount);
+        // Proof: serialize the fetched graph so the admin can see it is fully wired a->b->c.
+        if (findings.hydration.result === 'PASS') {
+          proof = JSON.stringify(toPlainCycleGraph(roots));
+        }
       }
     }
   } finally {
@@ -210,6 +215,7 @@ async function run() {
     jsonPath,
     metrics,
     verdictReason,
+    proof,
   });
 }
 

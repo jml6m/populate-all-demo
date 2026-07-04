@@ -32,6 +32,7 @@ public final class Main {
     var findings = pendingFindings();
     Map<String, Object> metrics = null;
     String verdictReason = null;
+    String proof = null;
 
     var configuration = new Configuration();
     configuration.setProperty(AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver");
@@ -89,6 +90,14 @@ public final class Main {
       // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
       if (roots != null) {
         metrics = evaluateGraph(roots, findings, expectedAdj);
+        // Proof: serialize the fetched graph so the admin can see it is fully wired a->b->c.
+        if ("PASS".equals(findings.hydration.get("result"))) {
+          try {
+            proof = new ObjectMapper().writeValueAsString(roots);
+          } catch (Exception ignored) {
+            // best-effort; the serialize gate already recorded the authoritative result
+          }
+        }
       }
     }
 
@@ -107,7 +116,7 @@ public final class Main {
 
     var outputPath = writeResult(result, "hibernate");
 
-    printReport("hibernate", "Hibernate", hibernateVersionFromPom(), STRATEGY, findings, outputPath, metrics, verdictReason);
+    printReport("hibernate", "Hibernate", hibernateVersionFromPom(), STRATEGY, findings, outputPath, metrics, verdictReason, proof);
   }
 
   private static Map<String, Object> evaluateGraph(List<Node> roots, Findings findings, Map<String, Set<String>> expectedAdj) {
@@ -217,7 +226,7 @@ public final class Main {
   }
 
   private static void printReport(String probe, String library, String libraryVersion, String strategy,
-      Findings findings, String jsonPath, Map<String, Object> metrics, String verdictReason) {
+      Findings findings, String jsonPath, Map<String, Object> metrics, String verdictReason, String proof) {
     var verdict = deriveVerdict(findings);
     var reason = verdictReason != null ? verdictReason : verdict[1];
     System.out.println();
@@ -232,6 +241,9 @@ public final class Main {
     System.out.println("  queryGate  : " + String.format("%-7s", findings.queryGate.get("result")) + "  " + firstLine(findings.queryGate.get("detail")));
     System.out.println("  smartCheck : " + String.format("%-7s", findings.smartCheck.get("result")) + "  " + firstLine(findings.smartCheck.get("detail")));
     System.out.println("  serialize  : " + String.format("%-7s", findings.serialize.get("result")) + "  " + firstLine(findings.serialize.get("detail")));
+    if (proof != null) {
+      System.out.println("proof    : populated graph from the schema-driven fetch = " + proof);
+    }
     System.out.println("VERDICT  : " + verdict[0] + " -- " + reason);
     System.out.println("json     : " + jsonPath);
   }

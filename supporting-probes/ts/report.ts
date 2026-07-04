@@ -41,6 +41,8 @@ export interface ProbeReportInput {
   metrics?: ProbeMetrics;
   /** Precise, probe-authored verdict reason. Falls back to a reason derived from findings. */
   verdictReason?: string;
+  /** Serialized populated graph, shown as evidence when full hydration succeeded. */
+  proof?: string;
 }
 
 function rule(label: string): string {
@@ -112,6 +114,9 @@ export function printProbeReport(input: ProbeReportInput): void {
   console.log(`  queryGate  : ${f.queryGate.result.padEnd(7)}  ${firstLine(f.queryGate.detail)}`);
   console.log(`  smartCheck : ${f.smartCheck.result.padEnd(7)}  ${firstLine(f.smartCheck.detail)}`);
   console.log(`  serialize  : ${f.serialize.result.padEnd(7)}  ${firstLine(f.serialize.detail)}`);
+  if (input.proof) {
+    console.log(`proof    : populated graph from the schema-driven fetch = ${input.proof}`);
+  }
   console.log(`VERDICT  : ${verdict} -- ${reason}`);
   console.log(`json     : ${input.jsonPath}`);
 }
