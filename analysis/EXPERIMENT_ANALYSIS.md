@@ -18,6 +18,8 @@ The limitations of current hydration strategies are not unique to a single progr
 
 The table records whether each library can fully populate these graphs from schema/default configuration alone (no explicit per-level path declarations in the query). Cyclic serialization is intentionally out of scope in this section. For raw probe outputs, see the [full results set](../supporting-probes/results/reference/v1/).
 
+The **Acyclic (`A -> B -> C`)** column is verified directly by the sandbox probes. The **Cyclic (`A -> B -> A`)** column is documentation-driven — the probes exercise only the acyclic case, and every surveyed library either requires explicit depth/path controls or rejects recursive eager self-relations outright for the cyclic case.
+
 When testing the broader ORM/ODM landscape for cyclic-reference and recursive-population capabilities, severe functional gaps appear across virtually all major data libraries:
 
 | Library / Ecosystem               | Tested Version                                | Analysis                                                                                                                                                                                                                                                                                                                                                              | Classification          |
