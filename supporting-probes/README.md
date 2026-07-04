@@ -2,12 +2,21 @@
 
 Supporting probes validate hydration and consumer behavior across ORM ecosystems.
 
+## Hydration scenarios under test
+
+- Cyclic self-reference case (documentation-driven in this patch cycle): `A -> B -> A` (schema-driven cyclic full population)
+- Acyclic self-reference case (implemented in probe code): `A -> B -> C` (schema-driven acyclic full population)
+
+For the acyclic case, probes intentionally avoid query-time explicit depth/path declarations; they exercise schema/default behavior only.
+
 ## Commands
 
 - `npm run probe:ts` — runs only TypeScript probes (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`).
 - `npm run probe:all` — runs all probes (TypeScript + SQLAlchemy + ActiveRecord + Hibernate + EF Core). This is the canonical CI/release command.
 
 `probe:ts` is the recommended local developer command. `probe:all` is the canonical full-suite command used by CI and the future release flow.
+
+The orchestrator summary table shows one `outcome` column (`ACYCLIC_PASS` / `ACYCLIC_FAIL`, or `PROBE_LAUNCH_FAIL`) next to per-stage columns (`fetch`, `queryGate`, `smartCheck`, `serialize`). `ACYCLIC_PASS` requires `fetch=OK` and every gate to pass; `serialize` is reported as `SERIALIZE_SKIPPED` whenever hydration fails. The stage columns are independent measurements, so a passing gate can sit next to the failure that decides the row — e.g. `smartCheck=PASS` with `queryGate=FAIL` is the N+1 signature (correct topology, but assembled via per-edge lazy queries, so not schema-driven eager hydration).
 
 ## Prerequisites
 
@@ -52,26 +61,30 @@ Non-release workflows must not write to `reference/`.
 
 ## JSON schema
 
-Each probe writes one JSON document with alphabetically sorted keys and 2-space indentation:
+Each probe writes one JSON document with alphabetically sorted keys and 2-space indentation. Findings follow the staged pipeline: `fetch` records the schema-driven query under test, then `hydration` (the rollup) and the `queryGate` / `smartCheck` / `serialize` gates. A stage that never runs because a prerequisite failed is recorded honestly as `NOT_RUN` / `SERIALIZE_NOT_RUN` rather than inheriting an unrelated error — as in the TypeORM example below:
 
 ```json
 {
   "findings": {
+    "fetch": {
+      "detail": "query not constructible -- eager self-relation join recurses without bound (data-independent)\nRangeError: Maximum call stack size exceeded",
+      "result": "ERROR"
+    },
     "hydration": {
-      "detail": "Hydration failed: queryGate=PASS, smartCheck=FAIL.",
+      "detail": "fetch did not return a graph",
       "result": "FAIL"
     },
     "queryGate": {
-      "detail": "No additional queries observed during traversal.",
-      "result": "PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     },
     "serialize": {
-      "detail": "JSON serialization passed.",
-      "result": "SERIALIZE_PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "SERIALIZE_NOT_RUN"
     },
     "smartCheck": {
-      "detail": "id \"b\" maps to multiple in-memory instances",
-      "result": "FAIL"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     }
   },
   "language": "typescript",
@@ -82,6 +95,16 @@ Each probe writes one JSON document with alphabetically sorted keys and 2-space 
   "runtimeVersion": "v22.17.1"
 }
 ```
+
+### Finding states
+
+- `fetch`: `OK` \| `ERROR` \| `NOT_RUN` — the schema-driven query under research (the operation itself).
+- `hydration`: `PASS` \| `FAIL` — rollup; `PASS` only when `queryGate` and `smartCheck` both pass.
+- `queryGate`: `PASS` \| `FAIL` \| `NOT_RUN` — whether traversal fired extra (N+1) queries.
+- `smartCheck`: `PASS` \| `FAIL` \| `NOT_RUN` — in-memory identity + dependency-closure correctness.
+- `serialize`: `SERIALIZE_PASS` \| `SERIALIZE_FAIL_CYCLE` \| `SERIALIZE_FAIL_OTHER` \| `SERIALIZE_NOT_RUN`.
+
+`NOT_RUN` / `SERIALIZE_NOT_RUN` mean the stage was never executed because an earlier stage failed (e.g. the fetch threw), so the value is not a judgment — just an accurate "not reached".
 
 ### Outcome rollup
 

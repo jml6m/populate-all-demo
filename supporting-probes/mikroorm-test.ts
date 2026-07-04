@@ -2,9 +2,19 @@ import { Collection, EntitySchema, MikroORM } from '@mikro-orm/core';
 import { SqliteDriver } from '@mikro-orm/sqlite';
 import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
-import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import {
+  formatErrorDetail,
+  getNodePackageVersion,
+  markGatesNotRun,
+  pendingFindings,
+  writeProbeResult,
+  type ProbeFindings,
+} from './ts/result-builder';
+import { printProbeReport, type ProbeMetrics } from './ts/report';
 
 const verbose = process.env.PROBE_VERBOSE === '1';
+const STRATEGY = "em.find(Node, { id:'a' }, { populate: ['*'] }) <- schema/default wildcard populate";
+const expectedAdj: Record<string, string[]> = { a: ['b'], b: ['c'], c: [] };
 
 class Node {
   id!: string;
@@ -36,6 +46,10 @@ const NodeSchema = new EntitySchema<Node>({
   },
 });
 
+function getDeps(node: Node): Node[] {
+  return node.dependencies.getItems();
+}
+
 function toPlainCycleGraph(roots: Node[]): SerializableNode[] {
   const byRef = new Map<Node, SerializableNode>();
 
@@ -54,119 +68,159 @@ function toPlainCycleGraph(roots: Node[]): SerializableNode[] {
   return roots.map((node) => materialize(node));
 }
 
+/** Seed a -> b -> c. Infrastructure only; the fetch below is the operation under research. */
+async function seed(orm: MikroORM<SqliteDriver>): Promise<void> {
+  await orm.schema.refreshDatabase();
+
+  const a = new Node();
+  a.id = 'a';
+  const b = new Node();
+  b.id = 'b';
+  const c = new Node();
+  c.id = 'c';
+
+  a.dependencies.add(b);
+  b.dependencies.add(c);
+
+  await orm.em.persistAndFlush([a, b, c]);
+  orm.em.clear();
+}
+
+function evaluateGraph(roots: Node[], findings: ProbeFindings, getQueryCount: () => number): ProbeMetrics {
+  // queryGate: traversal must not trigger further SQL if hydration was complete.
+  const queriesAfterHydration = getQueryCount();
+  for (const root of roots) {
+    for (const dep of getDeps(root)) {
+      void getDeps(dep).length;
+    }
+  }
+  const extraQueries = getQueryCount() - queriesAfterHydration;
+  findings.queryGate =
+    extraQueries === 0
+      ? { result: 'PASS', detail: 'No additional queries observed during traversal.' }
+      : { result: 'FAIL', extraQueries, detail: `Expected 0 additional queries during traversal, observed ${extraQueries}.` };
+
+  // smartCheck: identity + dependency-closure of the reachable graph.
+  const graphCheck = smartCheck(roots, expectedAdj, {
+    getId: (node) => node.id,
+    getDeps,
+  });
+  findings.smartCheck = graphCheck.pass
+    ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
+    : { result: 'FAIL', detail: graphCheck.reason ?? 'Identity/closure check failed.' };
+
+  // hydration rollup: full hydration = complete closure with no extra queries.
+  findings.hydration =
+    findings.queryGate.result === 'PASS' && findings.smartCheck.result === 'PASS'
+      ? { result: 'PASS', detail: 'Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).' }
+      : { result: 'FAIL', detail: `Full hydration not achieved: queryGate=${findings.queryGate.result}, smartCheck=${findings.smartCheck.result}.` };
+
+  // serialize: independent of smartCheck; needs only a materialized graph.
+  const serialization = finalizeSerialization(() => JSON.stringify(toPlainCycleGraph(roots)));
+  findings.serialize =
+    serialization === 'SERIALIZE_PASS'
+      ? { result: serialization, detail: 'JSON serialization passed.' }
+      : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
+
+  return {
+    reached: graphCheck.uniqueIds,
+    expected: Object.keys(expectedAdj).length,
+    edges: graphCheck.edgesTraversed,
+    extraQueries,
+    identityStable: !graphCheck.reason?.includes('multiple in-memory instances'),
+  };
+}
+
 async function run() {
   let queryCount = 0;
-  const expectedAdj = { a: ['b'], b: ['a'] };
-  const findings: {
-    hydration: { result: 'PASS' | 'FAIL'; detail: string };
-    queryGate: { result: 'PASS' | 'FAIL' | 'NOT_APPLICABLE'; detail: string; extraQueries?: number };
-    smartCheck: { result: 'PASS' | 'FAIL'; detail: string };
-    serialize: { result: 'SERIALIZE_PASS' | 'SERIALIZE_FAIL_CYCLE' | 'SERIALIZE_FAIL_OTHER'; detail: string };
-  } = {
-    hydration: { result: 'FAIL', detail: '' },
-    queryGate: { result: 'FAIL', detail: '' },
-    smartCheck: { result: 'FAIL', detail: '' },
-    serialize: { result: 'SERIALIZE_FAIL_OTHER', detail: '' },
-  };
 
-  const orm = await MikroORM.init<SqliteDriver>({
-    driver: SqliteDriver,
-    entities: [NodeSchema],
-    dbName: ':memory:',
-    allowGlobalContext: true,
-    debug: verbose,
-    logger: (message) => {
-      if (message.toLowerCase().includes('select') || message.toLowerCase().includes('insert') || message.toLowerCase().includes('update')) {
-        queryCount += 1;
-      }
-      console.log(message);
-    },
-  });
+  const findings = pendingFindings();
+  let metrics: ProbeMetrics | undefined;
+  let verdictReason: string | undefined;
+  let proof: string | undefined;
+  let orm: MikroORM<SqliteDriver> | undefined;
 
   try {
-    await orm.schema.refreshDatabase();
-
-    const a = new Node();
-    a.id = 'a';
-    const b = new Node();
-    b.id = 'b';
-
-    a.dependencies.add(b);
-    b.dependencies.add(a);
-
-    await orm.em.persistAndFlush([a, b]);
-    orm.em.clear();
-
-    const roots = await orm.em.find(Node, { id: { $in: ['a', 'b'] } }, { populate: ['dependencies.dependencies'], orderBy: { id: 'asc' } });
-
-    const queriesAfterHydration = queryCount;
-
-    for (const root of roots) {
-      for (const dep of root.dependencies.getItems()) {
-        void dep.dependencies.getItems().length;
-      }
+    // ---- Setup (infrastructure — a failure here is an environment problem, not a research result) ----
+    let setupOk = true;
+    try {
+      orm = await MikroORM.init<SqliteDriver>({
+        driver: SqliteDriver,
+        entities: [NodeSchema],
+        dbName: ':memory:',
+        allowGlobalContext: true,
+        // Enable query-level logging unconditionally so the queryGate counter is real.
+        // (With debug:false MikroORM never emits query messages, so the logger never
+        // fires and queryCount stays 0 -- a vacuous "0 extra queries". Console output
+        // stays gated on `verbose`.)
+        debug: ['query'],
+        logger: (message) => {
+          if (message.toLowerCase().includes('select') || message.toLowerCase().includes('insert') || message.toLowerCase().includes('update')) {
+            queryCount += 1;
+          }
+          if (verbose) {
+            console.log(message);
+          }
+        },
+      });
+      await seed(orm);
+    } catch (setupError) {
+      setupOk = false;
+      const detail = formatErrorDetail(setupError);
+      findings.hydration = { result: 'FAIL', detail: `probe setup failed: ${detail}` };
+      markGatesNotRun(findings, 'not reached -- probe setup failed before the fetch stage');
+      verdictReason = `probe setup failed -- ${detail}`;
+      process.exitCode = 1;
     }
 
-    const extraQueries = queryCount - queriesAfterHydration;
-    findings.queryGate =
-      extraQueries === 0
-        ? { result: 'PASS', detail: 'No additional queries observed during traversal.' }
-        : { result: 'FAIL', extraQueries, detail: `Expected 0 additional queries during traversal, observed ${extraQueries}.` };
+    // ---- Stage 1: the operation under research — schema-driven fetch of root `a` ----
+    if (setupOk && orm !== undefined) {
+      let roots: Node[] | undefined;
+      try {
+        roots = await orm.em.find(Node, { id: { $in: ['a'] } }, { populate: ['*'], orderBy: { id: 'asc' } });
+        findings.fetch = { result: 'OK', detail: `Schema-driven fetch returned ${roots.length} root row(s).` };
+      } catch (fetchError) {
+        const detail = formatErrorDetail(fetchError);
+        findings.fetch = { result: 'ERROR', detail };
+        findings.hydration = { result: 'FAIL', detail: 'fetch did not return a graph' };
+        markGatesNotRun(findings, 'not reached -- the schema-driven fetch threw before returning a graph');
+        verdictReason = `schema-driven fetch threw -- ${detail}`;
+        process.exitCode = 1;
+      }
 
-    const graphCheck = smartCheck(roots as Node[], expectedAdj, {
-      getId: (node) => node.id,
-      getDeps: (node): Node[] => node.dependencies.getItems(),
-    });
-    findings.smartCheck = graphCheck.pass
-      ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
-      : { result: 'FAIL', detail: graphCheck.reason ?? 'Identity/closure check failed.' };
-
-    findings.hydration =
-      findings.queryGate.result === 'PASS' && findings.smartCheck.result === 'PASS'
-        ? { result: 'PASS', detail: 'Hydration check passed.' }
-        : {
-            result: 'FAIL',
-            detail: `Hydration failed: queryGate=${findings.queryGate.result}, smartCheck=${findings.smartCheck.result}.`,
-          };
-
-    const serialization = finalizeSerialization(() => JSON.stringify(toPlainCycleGraph(roots)));
-    findings.serialize =
-      serialization === 'SERIALIZE_PASS'
-        ? { result: serialization, detail: 'JSON serialization passed.' }
-        : { result: serialization, detail: `JSON serialization failed with ${serialization}.` };
-
-    const outputPath = writeProbeResult({
-      ...PROBE_IDENTITIES.mikroorm,
-      libraryVersion: getNodePackageVersion('@mikro-orm/core'),
-      runtimeVersion: process.version,
-      findings,
-    });
-
-    console.log('mikroorm-test');
-    console.log('hydration:', findings.hydration.result === 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL');
-    console.log('queryGate:', findings.queryGate);
-    console.log('smartCheck:', findings.smartCheck);
-    console.log('serialization:', findings.serialize.result);
-    console.log('json:', outputPath);
-  } catch (error) {
-    const detail = formatErrorDetail(error);
-    findings.hydration = { result: 'FAIL', detail };
-    findings.queryGate = { result: 'FAIL', detail };
-    findings.smartCheck = { result: 'FAIL', detail };
-    findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail };
-
-    writeProbeResult({
-      ...PROBE_IDENTITIES.mikroorm,
-      libraryVersion: getNodePackageVersion('@mikro-orm/core'),
-      runtimeVersion: process.version,
-      findings,
-    });
-
-    console.error('mikroorm-test failed:', error);
-    process.exitCode = 1;
+      // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
+      if (roots !== undefined) {
+        metrics = evaluateGraph(roots, findings, () => queryCount);
+        // Proof: serialize the fetched graph so the admin can see it is fully wired a->b->c.
+        if (findings.hydration.result === 'PASS') {
+          proof = JSON.stringify(toPlainCycleGraph(roots));
+        }
+      }
+    }
   } finally {
-    await orm.close(true);
+    if (orm !== undefined) {
+      await orm.close(true);
+    }
   }
+
+  const jsonPath = writeProbeResult({
+    ...PROBE_IDENTITIES.mikroorm,
+    libraryVersion: getNodePackageVersion('@mikro-orm/core'),
+    runtimeVersion: process.version,
+    findings,
+  });
+
+  printProbeReport({
+    probe: PROBE_IDENTITIES.mikroorm.probe,
+    library: PROBE_IDENTITIES.mikroorm.library,
+    libraryVersion: getNodePackageVersion('@mikro-orm/core'),
+    strategy: STRATEGY,
+    findings,
+    jsonPath,
+    metrics,
+    verdictReason,
+    proof,
+  });
 }
 
 void run();

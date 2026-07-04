@@ -2,9 +2,19 @@ import 'reflect-metadata';
 import { DataSource, EntitySchema, Logger } from 'typeorm';
 import { finalizeSerialization, smartCheck } from './ts/shared';
 import { PROBE_IDENTITIES } from './ts/probe-config';
-import { formatErrorDetail, getNodePackageVersion, writeProbeResult } from './ts/result-builder';
+import {
+  formatErrorDetail,
+  getNodePackageVersion,
+  markGatesNotRun,
+  pendingFindings,
+  writeProbeResult,
+  type ProbeFindings,
+} from './ts/result-builder';
+import { printProbeReport, type ProbeMetrics } from './ts/report';
 
 const verbose = process.env.PROBE_VERBOSE === '1';
+const STRATEGY = "repo.find({ where:{ name:'a' } }) <- schema relation eager:true (self-referential m:n)";
+const expectedAdj: Record<string, string[]> = { a: ['b'], b: ['c'], c: [] };
 
 type Node = {
   id: number;
@@ -26,6 +36,7 @@ const NodeSchema = new EntitySchema<Node>({
       target: 'Node',
       joinTable: { name: 'node_dependencies' },
       inverseSide: 'dependents',
+      eager: true,
       cascade: true,
     },
     dependents: {
@@ -57,22 +68,74 @@ function toCycleSafeProjection(roots: Node[]) {
   return roots.map((node) => ({ id: node.name, depIds: node.dependencies.map((dep) => dep.name).sort() }));
 }
 
+/** Seed a -> b -> c. Infrastructure only; the fetch below is the operation under research. */
+async function seed(dataSource: DataSource): Promise<void> {
+  const repo = dataSource.getRepository<Node>('Node');
+  const a = repo.create({ name: 'a', dependencies: [] });
+  const b = repo.create({ name: 'b', dependencies: [] });
+  const c = repo.create({ name: 'c', dependencies: [] });
+  a.dependencies = [b];
+  b.dependencies = [c];
+  await repo.save([a, b, c]);
+}
+
+/**
+ * Runs the three downstream gates against a graph the fetch actually returned,
+ * mutating `findings` in place and returning the observed metrics. Operates only
+ * on already-materialized data and pure checks, so it does not swallow errors —
+ * a genuine bug here should surface, not be mislabeled as a probe failure.
+ */
+function evaluateGraph(roots: Node[], findings: ProbeFindings, getQueryCount: () => number): ProbeMetrics {
+  // queryGate: traversal must not trigger further SQL if hydration was complete.
+  const queriesAfterHydration = getQueryCount();
+  for (const root of roots) {
+    for (const dep of root.dependencies) {
+      void dep.dependencies.length;
+    }
+  }
+  const extraQueries = getQueryCount() - queriesAfterHydration;
+  findings.queryGate =
+    extraQueries === 0
+      ? { result: 'PASS', detail: 'No additional queries observed during traversal.' }
+      : { result: 'FAIL', extraQueries, detail: `Expected 0 additional queries during traversal, observed ${extraQueries}.` };
+
+  // smartCheck: identity + dependency-closure of the reachable graph.
+  const graphCheck = smartCheck(roots, expectedAdj, {
+    getId: (node) => node.name,
+    getDeps: (node) => node.dependencies,
+  });
+  findings.smartCheck = graphCheck.pass
+    ? { result: 'PASS', detail: 'Identity and dependency closure checks passed.' }
+    : { result: 'FAIL', detail: graphCheck.reason ?? 'Identity/closure check failed.' };
+
+  // hydration rollup: full hydration = complete closure with no extra queries.
+  findings.hydration =
+    findings.queryGate.result === 'PASS' && findings.smartCheck.result === 'PASS'
+      ? { result: 'PASS', detail: 'Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).' }
+      : { result: 'FAIL', detail: `Full hydration not achieved: queryGate=${findings.queryGate.result}, smartCheck=${findings.smartCheck.result}.` };
+
+  // serialize: independent of smartCheck; needs only a materialized graph.
+  const negativeSerialization = finalizeSerialization(() => JSON.stringify(roots));
+  const positiveSerialization = finalizeSerialization(() => JSON.stringify(toCycleSafeProjection(roots)));
+  findings.serialize =
+    negativeSerialization === 'SERIALIZE_PASS'
+      ? { result: 'SERIALIZE_PASS', detail: 'Direct JSON serialization passed. Cycle-safe baseline serialization also passed.' }
+      : {
+          result: negativeSerialization,
+          detail: `Direct JSON serialization failed (${negativeSerialization}); cycle-safe baseline projection serialization result was ${positiveSerialization}.`,
+        };
+
+  return {
+    reached: graphCheck.uniqueIds,
+    expected: Object.keys(expectedAdj).length,
+    edges: graphCheck.edgesTraversed,
+    extraQueries,
+    identityStable: !graphCheck.reason?.includes('multiple in-memory instances'),
+  };
+}
+
 async function run() {
   const logger = new QueryCounterLogger();
-  const expectedAdj = { a: ['b'], b: ['a'] };
-
-  const findings: {
-    hydration: { result: 'PASS' | 'FAIL'; detail: string };
-    queryGate: { result: 'PASS' | 'FAIL' | 'NOT_APPLICABLE'; detail: string; extraQueries?: number };
-    smartCheck: { result: 'PASS' | 'FAIL'; detail: string };
-    serialize: { result: 'SERIALIZE_PASS' | 'SERIALIZE_FAIL_CYCLE' | 'SERIALIZE_FAIL_OTHER'; detail: string };
-  } = {
-    hydration: { result: 'FAIL', detail: '' },
-    queryGate: { result: 'FAIL', detail: '' },
-    smartCheck: { result: 'FAIL', detail: '' },
-    serialize: { result: 'SERIALIZE_FAIL_OTHER', detail: '' },
-  };
-
   const dataSource = new DataSource({
     type: 'sqlite',
     database: ':memory:',
@@ -82,108 +145,75 @@ async function run() {
     logger,
   });
 
+  const findings = pendingFindings();
+  let metrics: ProbeMetrics | undefined;
+  let verdictReason: string | undefined;
+
   try {
-    await dataSource.initialize();
-    const repo = dataSource.getRepository<Node>('Node');
+    // ---- Setup (infrastructure — a failure here is an environment problem, not a research result) ----
+    let setupOk = true;
+    try {
+      await dataSource.initialize();
+      await seed(dataSource);
+    } catch (setupError) {
+      setupOk = false;
+      const detail = formatErrorDetail(setupError);
+      findings.hydration = { result: 'FAIL', detail: `probe setup failed: ${detail}` };
+      markGatesNotRun(findings, 'not reached -- probe setup failed before the fetch stage');
+      verdictReason = `probe setup failed -- ${detail}`;
+      process.exitCode = 1;
+    }
 
-    const a = repo.create({ name: 'a', dependencies: [] });
-    const b = repo.create({ name: 'b', dependencies: [] });
-    a.dependencies = [b];
-    b.dependencies = [a];
-    await repo.save([a, b]);
+    // ---- Stage 1: the operation under research — schema-driven fetch of root `a` ----
+    if (setupOk) {
+      const repo = dataSource.getRepository<Node>('Node');
+      let roots: Node[] | undefined;
+      try {
+        roots = await repo.find({ where: [{ name: 'a' }], order: { name: 'ASC' } });
+        findings.fetch = { result: 'OK', detail: `Schema-driven fetch returned ${roots.length} root row(s).` };
+      } catch (fetchError) {
+        // Not a runtime data fault: TypeORM cannot BUILD an eager query for a self-referential
+        // relation (it expands the self-join without bound). Verified to overflow on an empty
+        // table too, so it is independent of the row count. The raw error is kept on line 2.
+        const detail = formatErrorDetail(fetchError);
+        findings.fetch = {
+          result: 'ERROR',
+          detail: `query not constructible -- eager self-relation join recurses without bound (data-independent)\n${detail}`,
+        };
+        findings.hydration = { result: 'FAIL', detail: 'fetch did not return a graph' };
+        markGatesNotRun(findings, 'not reached -- the schema-driven eager query could not be constructed');
+        verdictReason = 'schema-level eager self-relation query not constructible (data-independent)';
+        process.exitCode = 1;
+      }
 
-    const roots = await repo.find({
-      where: [{ name: 'a' }, { name: 'b' }],
-      relations: { dependencies: { dependencies: true } },
-      order: { name: 'ASC' },
-    });
-
-    const queriesAfterHydration = logger.queryCount;
-
-    for (const root of roots) {
-      for (const dep of root.dependencies) {
-        void dep.dependencies.length;
+      // ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
+      if (roots !== undefined) {
+        metrics = evaluateGraph(roots, findings, () => logger.queryCount);
       }
     }
-
-    const extraQueries = logger.queryCount - queriesAfterHydration;
-    if (extraQueries === 0) {
-      findings.queryGate = { result: 'PASS', detail: 'No additional queries observed during traversal.' };
-    } else {
-      findings.queryGate = {
-        result: 'FAIL',
-        extraQueries,
-        detail: `Expected 0 additional queries during traversal, observed ${extraQueries}.`,
-      };
-    }
-
-    const graphCheck = smartCheck(roots, expectedAdj, {
-      getId: (node) => node.name,
-      getDeps: (node) => node.dependencies,
-    });
-
-    if (graphCheck.pass) {
-      findings.smartCheck = { result: 'PASS', detail: 'Identity and dependency closure checks passed.' };
-    } else {
-      findings.smartCheck = { result: 'FAIL', detail: graphCheck.reason ?? 'Identity/closure check failed.' };
-    }
-
-    findings.hydration =
-      findings.queryGate.result === 'PASS' && findings.smartCheck.result === 'PASS'
-        ? { result: 'PASS', detail: 'Hydration check passed.' }
-        : {
-            result: 'FAIL',
-            detail: `Hydration failed: queryGate=${findings.queryGate.result}, smartCheck=${findings.smartCheck.result}.`,
-          };
-
-    const negativeSerialization = finalizeSerialization(() => JSON.stringify(roots));
-    const positiveSerialization = finalizeSerialization(() => JSON.stringify(toCycleSafeProjection(roots)));
-
-    if (negativeSerialization === 'SERIALIZE_PASS') {
-      findings.serialize = {
-        result: 'SERIALIZE_PASS',
-        detail: 'Direct JSON serialization passed. Cycle-safe baseline serialization also passed.',
-      };
-    } else {
-      findings.serialize = {
-        result: negativeSerialization,
-        detail: `Direct JSON serialization failed (${negativeSerialization}); cycle-safe baseline projection serialization result was ${positiveSerialization}.`,
-      };
-    }
-
-    const outputPath = writeProbeResult({
-      ...PROBE_IDENTITIES.typeorm,
-      libraryVersion: getNodePackageVersion('typeorm'),
-      runtimeVersion: process.version,
-      findings,
-    });
-
-    console.log('typeorm-test');
-    console.log('hydration:', findings.hydration.result === 'PASS' ? 'HYDRATION PASS' : 'HYDRATION FAIL');
-    console.log('queryGate:', findings.queryGate);
-    console.log('smartCheck:', findings.smartCheck);
-    console.log('serialization:', findings.serialize.result);
-    console.log('json:', outputPath);
-  } catch (error) {
-    findings.hydration = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.queryGate = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.smartCheck = { result: 'FAIL', detail: formatErrorDetail(error) };
-    findings.serialize = { result: 'SERIALIZE_FAIL_OTHER', detail: formatErrorDetail(error) };
-
-    writeProbeResult({
-      ...PROBE_IDENTITIES.typeorm,
-      libraryVersion: getNodePackageVersion('typeorm'),
-      runtimeVersion: process.version,
-      findings,
-    });
-
-    console.error('typeorm-test failed:', error);
-    process.exitCode = 1;
   } finally {
     if (dataSource.isInitialized) {
       await dataSource.destroy();
     }
   }
+
+  const jsonPath = writeProbeResult({
+    ...PROBE_IDENTITIES.typeorm,
+    libraryVersion: getNodePackageVersion('typeorm'),
+    runtimeVersion: process.version,
+    findings,
+  });
+
+  printProbeReport({
+    probe: PROBE_IDENTITIES.typeorm.probe,
+    library: PROBE_IDENTITIES.typeorm.library,
+    libraryVersion: getNodePackageVersion('typeorm'),
+    strategy: STRATEGY,
+    findings,
+    jsonPath,
+    metrics,
+    verdictReason,
+  });
 }
 
 void run();
