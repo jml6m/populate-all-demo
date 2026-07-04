@@ -136,7 +136,7 @@ def _derive_verdict(findings):
     if findings['smartCheck']['result'] == 'FAIL':
         return 'ACYCLIC_FAIL', f"smartCheck failed -- {_first_line(findings['smartCheck']['detail'])}"
     if findings['queryGate']['result'] == 'FAIL':
-        return 'ACYCLIC_FAIL', f"topology resolved but queryGate failed -- {_first_line(findings['queryGate']['detail'])}"
+        return 'ACYCLIC_FAIL', f"topology resolved but not schema-driven (lazy N+1) -- {_first_line(findings['queryGate']['detail'])}"
     return 'ACYCLIC_FAIL', 'hydration failed'
 
 

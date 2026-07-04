@@ -364,24 +364,27 @@ function readProbeResult(filePath: string): ParsedProbeResult {
 }
 
 function printSummary(runId: string, probes: ProbeConfig[]): void {
-  const headers = ['probe', 'outcome', 'fetch', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
+  // `outcome` is the overall acyclic verdict; the per-stage columns (fetch/queryGate/
+  // smartCheck/serialize) show how it was reached. There is no separate `hydration`
+  // column — it was identical to `outcome` for every non-launch-failure row.
+  const headers = ['probe', 'outcome', 'fetch', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
     const parsed = readProbeResult(filePath);
     const hydrationFailed = parsed.findings.hydration.result === 'FAIL';
-    const hydrationCell = hydrationFailed ? 'ACYCLIC_FAIL' : 'ACYCLIC_PASS';
     const serializeCell = hydrationFailed ? 'SERIALIZE_SKIPPED' : parsed.findings.serialize.result;
     const fetchCell = parsed.findings.fetch?.result ?? 'n/a';
     const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
       outcome === 'PROBE_LAUNCH_FAIL'
         ? `${outcome} (probe did not launch)`
-        : hydrationCell;
+        : hydrationFailed
+          ? 'ACYCLIC_FAIL'
+          : 'ACYCLIC_PASS';
     return [
       probe.name,
       outcomeCell,
       fetchCell,
-      hydrationCell,
       parsed.findings.queryGate.result,
       parsed.findings.smartCheck.result,
       serializeCell,
@@ -398,6 +401,13 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
   for (const row of rows) {
     console.log(formatRow(row));
   }
+
+  console.log('');
+  console.log('ACYCLIC_PASS requires fetch=OK, queryGate=PASS, smartCheck=PASS, serialize=SERIALIZE_PASS.');
+  console.log('The stage columns are independent measurements, so a passing gate can sit next to the');
+  console.log('failure that decides the row -- e.g. smartCheck=PASS with queryGate=FAIL is the N+1');
+  console.log('signature: the topology is correct but was assembled via per-edge lazy queries, which is');
+  console.log('not schema-driven eager hydration.');
 }
 
 function main(): number {

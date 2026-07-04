@@ -36,7 +36,7 @@ When testing the broader ORM/ODM landscape for cyclic-reference and recursive-po
 
 ### The three failure modes behind "No"
 
-The eight **No** results are not uniform. The probes separate three distinct ways a library falls short of schema-driven full population, in increasing order of how early it gives up:
+The seven **No** results are not uniform. The probes separate three distinct ways a library falls short of schema-driven full population, in increasing order of how early it gives up:
 
 1. **Under-hydration** — _Sequelize, Prisma, Mongoose._ The root fetch succeeds, but returns the root with its relations unloaded, so `smartCheck` reports a dependency-closure mismatch. Nothing beyond the root loads without an explicit relation / `populate` / `include`.
 2. **Lazy traversal (N+1)** — _SQLAlchemy, ActiveRecord._ The fetch succeeds and the topology is correct, but dependency objects load lazily during traversal, firing an extra query per edge (`queryGate=FAIL`). Full population is reached only by paying round-trips the schema default does not avoid.

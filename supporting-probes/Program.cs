@@ -358,7 +358,7 @@ static void PrintReport(
         }
         if (Equals(f.QueryGate["result"], "FAIL"))
         {
-            return ("ACYCLIC_FAIL", $"topology resolved but queryGate failed -- {FirstLine(f.QueryGate["detail"])}");
+            return ("ACYCLIC_FAIL", $"topology resolved but not schema-driven (lazy N+1) -- {FirstLine(f.QueryGate["detail"])}");
         }
         return ("ACYCLIC_FAIL", "hydration failed");
     }

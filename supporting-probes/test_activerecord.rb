@@ -123,7 +123,7 @@ def derive_verdict(findings)
 
   return ['ACYCLIC_FAIL', first_line(findings[:hydration][:detail]).empty? ? 'hydration did not complete' : first_line(findings[:hydration][:detail])] if findings[:smartCheck][:result] == 'NOT_RUN'
   return ['ACYCLIC_FAIL', "smartCheck failed -- #{first_line(findings[:smartCheck][:detail])}"] if findings[:smartCheck][:result] == 'FAIL'
-  return ['ACYCLIC_FAIL', "topology resolved but queryGate failed -- #{first_line(findings[:queryGate][:detail])}"] if findings[:queryGate][:result] == 'FAIL'
+  return ['ACYCLIC_FAIL', "topology resolved but not schema-driven (lazy N+1) -- #{first_line(findings[:queryGate][:detail])}"] if findings[:queryGate][:result] == 'FAIL'
 
   ['ACYCLIC_FAIL', 'hydration failed']
 end

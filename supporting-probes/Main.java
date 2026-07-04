@@ -206,7 +206,7 @@ public final class Main {
       return new String[] { "ACYCLIC_FAIL", "smartCheck failed -- " + firstLine(findings.smartCheck.get("detail")) };
     }
     if ("FAIL".equals(findings.queryGate.get("result"))) {
-      return new String[] { "ACYCLIC_FAIL", "topology resolved but queryGate failed -- " + firstLine(findings.queryGate.get("detail")) };
+      return new String[] { "ACYCLIC_FAIL", "topology resolved but not schema-driven (lazy N+1) -- " + firstLine(findings.queryGate.get("detail")) };
     }
     return new String[] { "ACYCLIC_FAIL", "hydration failed" };
   }

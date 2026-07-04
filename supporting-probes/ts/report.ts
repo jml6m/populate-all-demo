@@ -79,7 +79,7 @@ export function deriveVerdict(findings: ProbeFindings): { verdict: 'ACYCLIC_PASS
     return { verdict: 'ACYCLIC_FAIL', reason: `smartCheck failed -- ${firstLine(findings.smartCheck.detail)}` };
   }
   if (findings.queryGate.result === 'FAIL') {
-    return { verdict: 'ACYCLIC_FAIL', reason: `topology resolved but queryGate failed -- ${firstLine(findings.queryGate.detail)}` };
+    return { verdict: 'ACYCLIC_FAIL', reason: `topology resolved but not schema-driven (lazy N+1) -- ${firstLine(findings.queryGate.detail)}` };
   }
   return { verdict: 'ACYCLIC_FAIL', reason: 'hydration failed' };
 }
