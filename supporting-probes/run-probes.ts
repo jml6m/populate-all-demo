@@ -378,9 +378,9 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
     const outcomeCell: ProbeOutcome | string =
       outcome === 'PROBE_LAUNCH_FAIL'
         ? `${outcome} (probe did not launch)`
-        : hydrationFailed
-          ? 'ACYCLIC_FAIL'
-          : 'ACYCLIC_PASS';
+        : outcome === 'PASS'
+          ? 'ACYCLIC_PASS'
+          : 'ACYCLIC_FAIL';
     return [
       probe.name,
       outcomeCell,
