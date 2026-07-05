@@ -118,7 +118,7 @@ def derive_verdict(findings)
   if findings[:hydration][:result] == 'PASS'
     return ['ACYCLIC_PASS', 'schema-driven full hydration + serialization succeeded'] if findings[:serialize][:result] == 'SERIALIZE_PASS'
 
-    return ['ACYCLIC_PASS', "full hydration succeeded; serialization #{findings[:serialize][:result]}"]
+    return ['ACYCLIC_FAIL', "full hydration succeeded; serialization #{findings[:serialize][:result]}"]
   end
 
   return ['ACYCLIC_FAIL', first_line(findings[:hydration][:detail]).empty? ? 'hydration did not complete' : first_line(findings[:hydration][:detail])] if findings[:smartCheck][:result] == 'NOT_RUN'

@@ -130,7 +130,7 @@ def _derive_verdict(findings):
     if findings['hydration']['result'] == 'PASS':
         if findings['serialize']['result'] == 'SERIALIZE_PASS':
             return 'ACYCLIC_PASS', 'schema-driven full hydration + serialization succeeded'
-        return 'ACYCLIC_PASS', f"full hydration succeeded; serialization {findings['serialize']['result']}"
+        return 'ACYCLIC_FAIL', f"full hydration succeeded; serialization {findings['serialize']['result']}"
     if findings['smartCheck']['result'] == 'NOT_RUN':
         return 'ACYCLIC_FAIL', _first_line(findings['hydration']['detail']) or 'hydration did not complete'
     if findings['smartCheck']['result'] == 'FAIL':

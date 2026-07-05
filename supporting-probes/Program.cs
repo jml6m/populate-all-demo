@@ -343,7 +343,7 @@ static void PrintReport(
         {
             return Equals(f.Serialize["result"], "SERIALIZE_PASS")
                 ? ("ACYCLIC_PASS", "schema-driven full hydration + serialization succeeded")
-                : ("ACYCLIC_PASS", $"full hydration succeeded; serialization {f.Serialize["result"]}");
+                : ("ACYCLIC_FAIL", $"full hydration succeeded; serialization {f.Serialize["result"]}");
         }
 
         // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.

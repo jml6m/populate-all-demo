@@ -59,7 +59,7 @@ export function deriveVerdict(findings: ProbeFindings): { verdict: 'ACYCLIC_PASS
   if (findings.hydration.result === 'PASS') {
     return findings.serialize.result === 'SERIALIZE_PASS'
       ? { verdict: 'ACYCLIC_PASS', reason: 'schema-driven full hydration + serialization succeeded' }
-      : { verdict: 'ACYCLIC_PASS', reason: `full hydration succeeded; serialization ${findings.serialize.result}` };
+      : { verdict: 'ACYCLIC_FAIL', reason: `full hydration succeeded; serialization ${findings.serialize.result}` };
   }
 
   // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.

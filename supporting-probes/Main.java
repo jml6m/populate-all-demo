@@ -194,7 +194,7 @@ public final class Main {
       if ("SERIALIZE_PASS".equals(findings.serialize.get("result"))) {
         return new String[] { "ACYCLIC_PASS", "schema-driven full hydration + serialization succeeded" };
       }
-      return new String[] { "ACYCLIC_PASS", "full hydration succeeded; serialization " + findings.serialize.get("result") };
+      return new String[] { "ACYCLIC_FAIL", "full hydration succeeded; serialization " + findings.serialize.get("result") };
     }
 
     // A staged probe marks downstream gates NOT_RUN and puts the real cause in hydration.detail.
