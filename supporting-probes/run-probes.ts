@@ -403,7 +403,7 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
   }
 
   console.log('');
-  console.log('ACYCLIC_PASS requires fetch=OK, queryGate=PASS, smartCheck=PASS, serialize=SERIALIZE_PASS.');
+  console.log('ACYCLIC_PASS requires queryGate=PASS, smartCheck=PASS, serialize=SERIALIZE_PASS (and fetch=OK when present).');
   console.log('The stage columns are independent measurements, so a passing gate can sit next to the');
   console.log('failure that decides the row -- e.g. smartCheck=PASS with queryGate=FAIL is the N+1');
   console.log('signature: the topology is correct but was assembled via per-edge lazy queries, which is');
