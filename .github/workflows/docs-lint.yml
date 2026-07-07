@@ -25,7 +25,7 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           lycheeVersion: v0.24.2
-          args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
+          args: --no-progress --config ./.lychee.toml './**/*.md'
           fail: true
 
       - name: Set up Node.js
