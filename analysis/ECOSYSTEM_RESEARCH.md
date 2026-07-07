@@ -67,7 +67,7 @@ What is striking is that the enterprise ORM ecosystem has, almost without except
 
 The gap between what is algorithmically possible and what ships as an ORM default is a deliberate product decision — and across virtually every library in this survey, that decision has consistently landed on the conservative side. Cycle-safe full hydration remains solved at the theory layer and absent at the defaults layer. For a class of tools whose central promise is to abstract away the storage layer, not supporting unbounded cyclic graph population is a significant omission.
 
-### 2.7 — Even for Acyclic Objects...
+### 2.7 — Even for Acyclic Objects
 
 The updated evidence reinforces a narrower but clearer industry gap:
 
