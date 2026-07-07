@@ -15,7 +15,7 @@
     "git:pull": "node scripts/git-pull-all.mjs",
     "lint": "eslint \"src/**/*.ts\" && npm run lint:encoding",
     "lint:encoding": "node scripts/check-encoding.mjs",
-    "lint:docs": "lychee --include-fragments --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
+    "lint:docs": "node scripts/check-lychee-version.mjs && lychee --include-fragments --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "audit:ci": "node scripts/audit-ci.mjs"
   },
@@ -34,7 +34,6 @@
     "cross-env": "^10.1.0",
     "eslint": "^9.39.4",
     "eslint-plugin-unused-imports": "^4.3.0",
-    "lychee": "^0.2.12",
     "prettier": "^3.6.2",
     "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-pkg": "^0.21.2",

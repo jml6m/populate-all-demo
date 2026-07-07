@@ -28,6 +28,7 @@ jobs:
       - name: Lychee link check
         uses: lycheeverse/lychee-action@v2
         with:
+          lycheeVersion: lychee-v0.24.2
           args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
           fail: true
       - name: Markdownlint
