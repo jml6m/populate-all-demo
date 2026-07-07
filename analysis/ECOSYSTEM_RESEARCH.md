@@ -28,7 +28,7 @@ Because every object already exists in `M`, the target is always a valid referen
 
 ## §2 — Backend Persistence Frameworks
 
-It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two fundamentally different challenges. An application can successfully hydrate a cyclic graph in memory, and then crash at the serialization step when standard functions like JSON.stringify encounter the circular reference. The ORM did its job correctly, but converting it into a standard industry format for shared use requires additional effort.
+It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two fundamentally different challenges. An application can successfully _hydrate_ a cyclic graph in memory, and then crash at the _serialization_ step when standard functions like `JSON.stringify` encounter the circular reference. The ORM did its job correctly, but converting it into a standard industry format for shared use requires additional effort.
 
 For this report, backend comparison is scoped to two schema-driven hydration questions:
 

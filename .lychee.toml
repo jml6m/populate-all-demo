@@ -1,7 +1,7 @@
 # Lychee link-checker config. See https://lychee.cli.rs/usage/config/ for full schema.
 
 # Check internal anchors (e.g., [text](./FILE.md#section)).
-include_fragments = true
+include_fragments = "full"
 
 # Treat these as success even when the remote returns these codes.
 accept = [200, 206, 429]
