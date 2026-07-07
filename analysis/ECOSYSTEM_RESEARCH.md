@@ -2,8 +2,6 @@
 
 While our core experiment demonstrates a viable approach to cyclic graph hydration in JavaScript, this extended research takes a deeper dive into how the broader ecosystem handles these challenges. Specifically, we explore two distinct but deeply intertwined problems: the _schema-driven full hydration_ problem (fully populating an object with circular references) and the _serialization_ problem (converting that hydrated object into an acceptable format). By examining a variety of technology stacks, we aim to understand how different libraries attempt to bridge the gap between relational data stores and properly constructed object representations.
 
----
-
 ## §1 — The Algorithmic Constraints of Cyclic Data
 
 ### 1.1 — Why naive recursion fails on cyclic graphs
@@ -28,30 +26,26 @@ $$
 
 Because every object already exists in `M`, the target is always a valid reference—regardless of whether `u -> v -> u` is a cycle.
 
----
-
 ## §2 — Backend Persistence Frameworks
 
-For this report revision, backend comparison is scoped to two schema-driven hydration questions only:
+It is tempting to treat "handling cyclic data" as a single problem, but it decomposes into two fundamentally different challenges. An application can successfully hydrate a cyclic graph in memory, and then crash at the serialization step when standard functions like JSON.stringify encounter the circular reference. The ORM did its job correctly, but converting it into a standard industry format for shared use requires additional effort.
 
-1. Can the library fully populate a **cyclic** self-referential graph from schema/default configuration alone (`A -> B -> A`)?
-2. Can the library fully populate an **acyclic** self-referential graph from schema/default configuration alone (`A -> B -> C`)?
+For this report, backend comparison is scoped to two schema-driven hydration questions:
 
-Query-level explicit depth/path declarations are out of scope for this section.
+1. Can the library fully populate a **cyclic** self-referential graph from schema alone (`A -> B -> A`)?
+2. Can the library fully populate an **acyclic** self-referential graph from schema alone (`A -> B -> C`)?
 
-Probe versions for the current published reference set are recorded per-probe in [`supporting-probes/results/reference/v1/`](../supporting-probes/results/reference/v1/) (each `<probe>.json` carries its `libraryVersion` field).
+Conclusions for the cyclic case are documentation-driven: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations, therefore no test were done on cyclic graphs (all are assumed to fail). Conclusions for the acyclic case are backed by the sandbox probes.
 
 > _Sandbox probes for every framework in this section live in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage._
 
-Conclusions for the cyclic case are documentation-driven in this patch cycle: all surveyed libraries require explicit depth/path controls or reject recursive eager self-relations. Conclusions for the acyclic case are backed by sandbox probes; canonical published snapshots under `supporting-probes/results/reference/v<N>/` are written only by the release workflow.
-
 ### 2.1 — SQLAlchemy (Python)
 
-SQLAlchemy's `Session` maintains an identity map, but schema-only unbounded recursive hydration is not provided for self-referential relationships; depth controls remain explicit (`join_depth`, loader options).[^1] [^2] In the acyclic-case probe, topology is reachable, but traversal still triggers additional lazy-load queries (`queryGate=FAIL`), so it does not satisfy full schema-driven population under this project's definition.
+SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects to ensure each database row is represented by only one object instance.[^1] However, for self-referential relationships, the library requires explicit controls like `join_depth` to prevent infinite recursion during eager loading, as SQL joins do not fully support unbounded tree structures.[^2] While `join_depth` manages these read-path complexities, the write-path uses `post_update=True` to resolve circular foreign key dependencies. This is a two-pass strategy that allows the session to insert rows before their mutually dependent links are available.[^3] In the acyclic case probe, the traversal still triggers additional lazy-load queries against the database, so it does not satisfy full schema-driven population, even for acyclic objects.
 
 ### 2.2 — Hibernate (Java) and EF Core (.NET)
 
-Hibernate's Persistence Context and EF Core's `ChangeTracker` are both identity maps, but they diverge under schema-driven rules. Hibernate passes the acyclic case with eager association defaults in the probe: it materializes rows and resolves associations through the persistence context rather than emitting one recursive JOIN. EF Core's schema-driven `AutoInclude` on a self-referential navigation is instead rejected at query-compile time by its unbounded-include-cycle guard (`InvalidOperationException`) — a configuration limit independent of the data (it fails identically on an empty table), not a runtime fault — so the acyclic case fails in probe output.[^4] [^5]
+Hibernate's Persistence Context and EF Core's `ChangeTracker` both function as an identity-map during object construction. That helps avoid duplicate in-memory instances, but it does **not** automatically solve full "populate all" retrieval across arbitrary recursive depth: explicit eager loading, such as EF Core's `Include` or Hibernate's `join fetch`, is required for complete data retrieval.[^4] [^5] Native serialization fails on these objects, so annotations/options (`@JsonIdentityInfo`, `@JsonBackReference`, `ReferenceHandler.*`) are available for mitigation, but as mentioned above, the resulting format is not guaranteed to work end-to-end in transport.[^6] [^7]
 
 ### 2.3 — MikroORM (Node.js)
 
@@ -59,13 +53,21 @@ MikroORM remains "No" for schema-driven cyclic full hydration in the cyclic case
 
 ### 2.4 — ActiveRecord (Ruby on Rails)
 
-ActiveRecord requires explicit `.includes(...)` depth for eager recursion and therefore does not satisfy schema-driven cyclic full hydration.[^8] In the acyclic case, it resolves topology but relies on additional lazy-load queries during traversal (`queryGate=FAIL`), so it is also "No" for schema-driven acyclic full hydration in this project's strict sense.
+ActiveRecord uses the `.includes()` method for strict tree traversal. If a backend attempts to traverse a fully cyclic graph beyond the explicitly defined depth, ActiveRecord silently falls back to lazy-loading. This triggers a barrage of N+1 SQL queries to fetch the missing references, often crippling performance.[^8] Ruby's native `.to_json` lacks cycle-detection, resulting in a `JSON::NestingError` or stack overflow when encountering circular references.[^9] Similar to SQLAlchemy, the acyclic case fails because additional lazy-load queries are called during traversal.
 
 ### 2.5 — JavaScript ORMs
 
-For the detailed JavaScript ORM comparison matrix, see [`EXPERIMENT_ANALYSIS.md`](./EXPERIMENT_ANALYSIS.md).[^10] In the updated acyclic-case probes, only MikroORM passes schema-driven acyclic full hydration. Sequelize, Prisma, and Mongoose under-hydrate — the root loads but its relations do not, failing `smartCheck` — whereas TypeORM fails one step earlier: its `eager: true` self-relation query is not even constructible, overflowing at query construction (`RangeError`) independent of the data.
+For the detailed JavaScript ORM comparison matrix, see [`EXPERIMENT_ANALYSIS.md`](./EXPERIMENT_ANALYSIS.md).[^10] At a high level, JavaScript ORMs consistently fail at _schema-driven_ full hydration. In the acyclic probes, only MikroORM passes schema-driven acyclic full hydration. Sequelize, Prisma, and Mongoose under-hydrate — the root loads but its relations do not, failing `smartCheck` — whereas TypeORM fails one step earlier: its `eager: true` self-relation query is not even constructible, overflowing at query construction (`RangeError`) independent of the data.
 
 ### 2.6 — The Industry Gap
+
+The foundation for cycle-safe full hydration is nothing new — it is a textbook two-pass pattern with O(V+E) complexity and no corner cases. This research demonstrates that both Tarjan SCC Layering and Two-Pass Wire produce correct, fully wired graphs at every scale from 10 to 250,000 nodes. The problem is solved.
+
+What is striking is that the enterprise ORM ecosystem has, almost without exception, elected not to make this the default. Every library surveyed above offloads the work to the developer, such as: explicit depth caps in SQLAlchemy (`join_depth`), manual include chains in Hibernate (`join fetch`) and EF Core (`.Include()`), and N+1 fallbacks in ActiveRecord. The identity map — the very data structure that makes cycle-safe in-memory wiring trivially achievable — is present in all four backend ORMs, yet none uses it to provide automatic full hydration out of the box.
+
+The gap between what is algorithmically possible and what ships as an ORM default is a deliberate product decision — and across virtually every library in this survey, that decision has consistently landed on the conservative side. Cycle-safe full hydration remains solved at the theory layer and absent at the defaults layer. For a class of tools whose central promise is to abstract away the storage layer, not supporting unbounded cyclic graph population is a significant omission.
+
+### 2.7 — Even for Acyclic Objects...
 
 The updated evidence reinforces a narrower but clearer industry gap:
 
@@ -82,9 +84,7 @@ Among the libraries that fall short, the shortfall takes three distinct forms, i
 
 Only MikroORM and Hibernate materialize the full acyclic closure from schema defaults, resolving associations through an identity map rather than a single recursive JOIN.
 
----
-
-### 2.7 — Limitations of the acyclic-pass evidence
+### 2.8 — Limitations of the acyclic-pass evidence
 
 The two acyclic **Yes** results (MikroORM, Hibernate) are the least-settled findings in this report and are treated as **provisional**. The sandbox probes establish them at small scale, but a stronger standard is warranted before treating "schema-driven acyclic full hydration is supported" as settled:
 
@@ -130,8 +130,6 @@ Modern full-stack SSR frameworks fundamentally flip this dynamic by explicitly l
 For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^16] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
 
 There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^17]
-
----
 
 ## §4 — Algorithmic Theory: The Two-Pass Necessity
 
@@ -187,8 +185,6 @@ A two-pass solution resolves the paradox by splitting the single time variable `
 
 By separating memory allocation from reference assignment, the chronological paradox is broken. Both references point to memory addresses that were safely established in the past.
 
----
-
 ## Appendix A — Methodological Boundaries
 
 This extended report is scoped to cross-ecosystem comparison of full cyclic hydration and post-hydration serialization. It relies on the motivating model defined in the core experiment. To maintain clear boundaries, this analysis assumes:
@@ -197,19 +193,25 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 2. **Single-object materialization:** Dependencies reached from multiple parents must resolve to one coherent in-memory node in the fully populated graph, not duplicated copies.
 3. **Valid edges:** "Dangling" references (edges pointing to nodes that do not exist) are invalid input, not a topology variant, and are rejected at preflight.
 
----
-
 ## References
 
 [^1]: [SQLAlchemy — Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
 
 [^2]: [SQLAlchemy — Self-Referential Strategies](https://docs.sqlalchemy.org/en/20/orm/self_referential.html)
 
+[^3]: [SQLAlchemy — Relationship Persistence / `post_update`](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html)
+
 [^4]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
 
 [^5]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
 
+[^6]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
+
+[^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
+
 [^8]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
+
+[^9]: [JavaScript Object Notation (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
 
 [^10]: [EXPERIMENT_ANALYSIS §2](./EXPERIMENT_ANALYSIS.md#2--a-recognized-challenge-in-the-data-layer-ecosystem)
 

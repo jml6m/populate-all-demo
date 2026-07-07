@@ -99,7 +99,7 @@ The `reference/` directories under `reports/`, `logs/`, `supporting-probes/resul
 - **The current in-development version's reference dir does not yet exist** until the next release workflow runs. Do not pre-create it.
 - **Local runs** write benchmark output under `reports/` (gitignored). Tests and trace artifacts write under `logs/` (gitignored).
 - **CI runs** (non-release workflows) must upload artifacts from `reports/` and/or `logs/` only; they must never write under any `reference/` path.
-CI includes a dedicated `repo-config-guard` workflow that enforces reference-artifact immutability and the `release-infra` label requirement for `release.yml` changes.
+  CI includes a dedicated `repo-config-guard` workflow that enforces reference-artifact immutability and the `release-infra` label requirement for `release.yml` changes.
 
 ### 7. Idempotency-First Design
 
@@ -149,7 +149,6 @@ If a change you make causes the same input to produce different output across re
 
 - The runner's human-readable stdout tables (`src/runner.ts`) must fit the active terminal: measure **display width** (not `.length`), truncate with an explicit ellipsis, and never hardcode `colWidths` or silently clip borders. Resolve width via explicit override → `stdout.columns` (TTY) → `$COLUMNS` → a clamped default.
 - The console table is a **view layer only**. Canonical, full-precision numbers live in the committed JSON/`reference/` artifacts (see §6) — never round or truncate in a way that loses data from the stored results. This is the same data-vs-presentation separation the determinism rules (§7) already require.
-- Reference implementation: `x-app-skeleton/src/utils/logTable.js` + its `log-table-requirements.md`; new repos get it via the `@jml6m/skeletor` `log-table` layer.
 
 ---
 

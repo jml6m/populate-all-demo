@@ -4,19 +4,15 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 ## Hydration scenarios under test
 
-- Cyclic self-reference case (documentation-driven in this patch cycle): `A -> B -> A` (schema-driven cyclic full population)
-- Acyclic self-reference case (implemented in probe code): `A -> B -> C` (schema-driven acyclic full population)
-
-For the acyclic case, probes intentionally avoid query-time explicit depth/path declarations; they exercise schema/default behavior only.
+- Schema-driven full hydration of **cyclic** objects (documentation-driven in this patch cycle): `A -> B -> A`
+- Schema-driven full hydration of **acyclic** objects (implemented in probe code): `A -> B -> C`
 
 ## Commands
 
 - `npm run probe:ts` — runs only TypeScript probes (`typeorm`, `sequelize`, `mikroorm`, `prisma`, `mongoose`).
 - `npm run probe:all` — runs all probes (TypeScript + SQLAlchemy + ActiveRecord + Hibernate + EF Core). This is the canonical CI/release command.
 
-`probe:ts` is the recommended local developer command. `probe:all` is the canonical full-suite command used by CI and the future release flow.
-
-The orchestrator summary table shows one `outcome` column (`ACYCLIC_PASS` / `ACYCLIC_FAIL`, or `PROBE_LAUNCH_FAIL`) next to per-stage columns (`fetch`, `queryGate`, `smartCheck`, `serialize`). `ACYCLIC_PASS` requires `fetch=OK` and every gate to pass; `serialize` is reported as `SERIALIZE_SKIPPED` whenever hydration fails. The stage columns are independent measurements, so a passing gate can sit next to the failure that decides the row — e.g. `smartCheck=PASS` with `queryGate=FAIL` is the N+1 signature (correct topology, but assembled via per-edge lazy queries, so not schema-driven eager hydration).
+The orchestrator summary table shows one `outcome` column (`ACYCLIC_PASS` / `ACYCLIC_FAIL`) next to per-stage columns (`fetch`, `queryGate`, `smartCheck`, `serialize`). `ACYCLIC_PASS` requires `fetch=OK` and every gate to pass. The stage columns are independent measurements, so a passing gate can sit next to the failure that decides the row — e.g. `smartCheck=PASS` with `queryGate=FAIL` is the N+1 signature (correct topology, but assembled via per-edge lazy queries, so not schema-driven eager hydration).
 
 ## Prerequisites
 
@@ -100,7 +96,7 @@ Each probe writes one JSON document with alphabetically sorted keys and 2-space 
 
 - `fetch`: `OK` \| `ERROR` \| `NOT_RUN` — the schema-driven query under research (the operation itself).
 - `hydration`: `PASS` \| `FAIL` — rollup; `PASS` only when `queryGate` and `smartCheck` both pass.
-- `queryGate`: `PASS` \| `FAIL` \| `NOT_RUN` — whether traversal fired extra (N+1) queries.
+- `queryGate`: `PASS` \| `FAIL` \| `NOT_RUN` — whether fetch query fired extra (N+1) queries.
 - `smartCheck`: `PASS` \| `FAIL` \| `NOT_RUN` — in-memory identity + dependency-closure correctness.
 - `serialize`: `SERIALIZE_PASS` \| `SERIALIZE_FAIL_CYCLE` \| `SERIALIZE_FAIL_OTHER` \| `SERIALIZE_NOT_RUN`.
 
@@ -120,14 +116,14 @@ Canonical implementation for rollup and TS JSON writing: `supporting-probes/ts/r
 
 ## Library + version source-of-truth
 
-| Probe | Library | Version source |
-| --- | --- | --- |
-| `typeorm` | TypeORM | `node_modules/typeorm/package.json` at runtime |
-| `sequelize` | Sequelize | `node_modules/sequelize/package.json` at runtime |
-| `mikroorm` | MikroORM | `node_modules/@mikro-orm/core/package.json` at runtime |
-| `prisma` | Prisma | `node_modules/@prisma/client/package.json` at runtime |
-| `mongoose` | Mongoose | `node_modules/mongoose/package.json` at runtime |
-| `sqlalchemy` | SQLAlchemy | `sqlalchemy.__version__` |
-| `activerecord` | ActiveRecord | `ActiveRecord::VERSION::STRING` |
-| `hibernate` | Hibernate | `pom.xml` hibernate-core dependency version |
-| `efcore` | EF Core | loaded `Microsoft.EntityFrameworkCore` assembly informational version |
+| Probe          | Library      | Version source                                                        |
+| -------------- | ------------ | --------------------------------------------------------------------- |
+| `typeorm`      | TypeORM      | `node_modules/typeorm/package.json` at runtime                        |
+| `sequelize`    | Sequelize    | `node_modules/sequelize/package.json` at runtime                      |
+| `mikroorm`     | MikroORM     | `node_modules/@mikro-orm/core/package.json` at runtime                |
+| `prisma`       | Prisma       | `node_modules/@prisma/client/package.json` at runtime                 |
+| `mongoose`     | Mongoose     | `node_modules/mongoose/package.json` at runtime                       |
+| `sqlalchemy`   | SQLAlchemy   | `sqlalchemy.__version__`                                              |
+| `activerecord` | ActiveRecord | `ActiveRecord::VERSION::STRING`                                       |
+| `hibernate`    | Hibernate    | `pom.xml` hibernate-core dependency version                           |
+| `efcore`       | EF Core      | loaded `Microsoft.EntityFrameworkCore` assembly informational version |
