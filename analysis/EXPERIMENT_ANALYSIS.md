@@ -44,6 +44,8 @@ The seven **No** results are not uniform. The probes separate three distinct way
 
 Only **MikroORM** (`populate: ['*']`) and **Hibernate** (`@ManyToMany(fetch = EAGER)`) reach full acyclic population from schema defaults. Both materialize rows and resolve associations through an identity map rather than building a single recursive JOIN — which is precisely why they succeed where TypeORM's and EF Core's query-construction step fails.
 
+> **Confidence note.** The two acyclic **Yes** results (MikroORM, Hibernate) are the least-settled findings here and are treated as **provisional**: they are established only at the three-node probe scale, and the query-count instrumentation behind them is library-internal rather than wire-/DB-level. A rigorous at-scale re-test (external query instrumentation, a runtime/memory stress run, and a docs cross-check of the `populate: ['*']` / `@ManyToMany(EAGER)` semantics) is tracked in [issue #88](https://github.com/jml6m/populate-all-demo/issues/88); see [Ecosystem Research §2.9](./ECOSYSTEM_RESEARCH.md#29--limitations-of-the-acyclic-pass-evidence) for the full caveat. The seven acyclic **No** results and the cyclic conclusions do not depend on this and stand on their own.
+
 ## §3 — Experiment Design
 
 ### Algorithms under test

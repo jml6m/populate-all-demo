@@ -186,14 +186,18 @@ def deep_sort(value)
 end
 
 def evaluate_graph(roots, findings)
-  # queryGate: traversal must not trigger further SQL if hydration was complete.
-  queries_after_hydration = yield
+  # queryGate: the baseline is sampled *after* the schema-default fetch has returned. We
+  # then merely walk the in-memory edges (root.dependencies, then each dep.dependencies).
+  # Any SQL emitted during that walk means the schema default (here has_and_belongs_to_many
+  # with no .includes) did not eager-load the closure and is lazy-loading per edge -- the
+  # N+1 signature. Zero extra queries == the closure was fully materialized by the fetch.
+  queries_before_traversal = yield
   roots.each do |root|
     root.dependencies.each do |dep|
       dep.dependencies.length
     end
   end
-  extra_queries = yield - queries_after_hydration
+  extra_queries = yield - queries_before_traversal
   findings[:queryGate] = if extra_queries.zero?
                            { result: 'PASS', detail: 'No additional queries observed during traversal.' }
                          else

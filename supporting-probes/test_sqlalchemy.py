@@ -187,12 +187,17 @@ def write_result(result):
 
 
 def evaluate_graph(roots, findings, get_query_count):
-    # queryGate: traversal must not trigger further SQL if hydration was complete.
-    queries_after_hydration = get_query_count()
+    # queryGate: the baseline is sampled *after* the schema-default fetch has returned,
+    # by which point an eager schema default (here lazy='selectin') should already have
+    # materialized the whole A->B->C closure. We then merely walk the in-memory edges
+    # (root.dependencies, then each dep.dependencies). Any SQL emitted during that walk
+    # means the schema default did NOT fully hydrate up front and is lazy-loading per
+    # edge -- the N+1 signature. Zero extra queries == the closure was fully eager-loaded.
+    queries_before_traversal = get_query_count()
     for root in roots:
         for dep in root.dependencies:
             _ = len(dep.dependencies)
-    extra_queries = get_query_count() - queries_after_hydration
+    extra_queries = get_query_count() - queries_before_traversal
     if extra_queries == 0:
         findings['queryGate'] = {'result': 'PASS', 'detail': 'No additional queries observed during traversal.'}
     else:
@@ -253,6 +258,9 @@ def run():
 
     engine = create_engine('sqlite+pysqlite:///:memory:', future=True)
 
+    # Registered as a SQLAlchemy event hook via the decorator below; it is invoked by the
+    # engine on every statement, not called directly, so linters may flag it as "unused".
+    # It is the query counter that backs the queryGate N+1 check in evaluate_graph.
     @event.listens_for(engine, 'before_cursor_execute')
     def _before_cursor_execute(*_):
         query_count['n'] += 1
