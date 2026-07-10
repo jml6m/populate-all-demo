@@ -74,8 +74,7 @@ npm test
 npm run lint:docs
 ```
 
-Docs-only pre-PR sanity check: `npm run lint:docs`
-(requires the official `lychee` binary at `v0.24.2` to match CI — for example `cargo install lychee --locked --version 0.24.2`; CI pins the same version via `lycheeverse/lychee-action`).
+Docs-only pre-PR sanity check: `npm run lint:docs` (requires the official `lychee` binary at `v0.24.2`)
 
 Dependency hard reset (root + supporting-probes):
 
