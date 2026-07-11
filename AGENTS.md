@@ -201,3 +201,20 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 ## Documentation conventions
 
 - **Linkable paths must be clickable links.** Any in-repo path mentioned in a Markdown file must be written as a clickable link to the target (e.g. `[src/runner.ts](./src/runner.ts)`), not as bare inline code. Command examples and illustrative / non-existent paths are exempt. The existing [`docs-lint`](./.github/workflows/docs-lint.yml) job (lychee + markdownlint) validates that the links resolve.
+
+## Opening PRs — author as the app, not the admin
+
+Command-line agents must not open PRs on this repo using the default `jml6m`
+credentials. GitHub forbids approving your own PR, so an admin-authored PR leaves the
+owner able only to "Comment" — and it blocks merge wherever an approving review is
+required. Author PRs as the **`jml6m-bot` GitHub App** (App `4163019`) instead, so the
+admin can review and Approve them:
+
+```bash
+git push -u origin <branch>
+GH_TOKEN="$(~/workspaces/.tooling/gh-app-token.sh jml6m/populate-all-demo)" gh pr create --fill
+```
+
+CI and Actions get the same identity from the `APP_ID` / `APP_PRIVATE_KEY` repo secrets
+via `actions/create-github-app-token`. The GitHub App is the standard automation
+identity for this repo — personal access tokens are not used.
