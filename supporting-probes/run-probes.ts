@@ -366,13 +366,13 @@ function readProbeResult(filePath: string): ParsedProbeResult {
 function printSummary(runId: string, probes: ProbeConfig[]): void {
   // `outcome` is the overall acyclic verdict; the per-stage columns (fetch/queryGate/
   // smartCheck/serialize) show how it was reached. There is no separate `hydration`
-  // column — it was identical to `outcome` for every non-launch-failure row.
+  // column because the rollup already collapses that PASS/FAIL state into the final
+  // `outcome` label for each non-launch-failure row.
   const headers = ['probe', 'outcome', 'fetch', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
     const parsed = readProbeResult(filePath);
-    const hydrationFailed = parsed.findings.hydration.result === 'FAIL';
-    const serializeCell = hydrationFailed ? 'SERIALIZE_SKIPPED' : parsed.findings.serialize.result;
+    const serializeCell = parsed.findings.serialize.result;
     const fetchCell = parsed.findings.fetch?.result ?? 'n/a';
     const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
