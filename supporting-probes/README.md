@@ -48,7 +48,7 @@ The `supporting-probes` workflow runs with `PROBE_VERBOSE=1` so workflow logs pr
 
 ## Output layout
 
-Each orchestrator run computes one `PROBE_RUN_ID` (`YYYYMMDD-HHMMSS-<shortsha>`) and every probe writes JSON to:
+Each orchestrator run computes one `PROBE_RUN_ID` (`YYYYMMDD-HHMMSS-<7hexchars|nogit>`) and every probe writes JSON to:
 
 - Local/unofficial runs: `supporting-probes/results/local/<run-id>/<probe>.json`
 - Official release artifacts (future release workflow only): `supporting-probes/results/reference/v<N>/`

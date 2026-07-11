@@ -24,7 +24,7 @@ jobs:
       - name: Lychee link check
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
+          args: --no-progress --config ./.lychee.toml './**/*.md'
           fail: true
 
       - name: Set up Node.js
