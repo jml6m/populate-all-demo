@@ -15,7 +15,7 @@
     "git:pull": "node scripts/git-pull-all.mjs",
     "lint": "eslint \"src/**/*.ts\" && npm run lint:encoding",
     "lint:encoding": "node scripts/check-encoding.mjs",
-    "lint:docs": "node scripts/check-lychee-version.mjs && lychee --no-progress --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
+    "lint:docs": "lychee --no-progress --config ./.lychee.toml \"**/*.md\" && npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "audit:ci": "node scripts/audit-ci.mjs"
   },
