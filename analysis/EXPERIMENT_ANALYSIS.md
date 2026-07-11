@@ -18,7 +18,7 @@ The limitations of current hydration strategies are not unique to a single progr
 
 The table records whether each library can fully populate these graphs from schema/default configuration alone (no explicit attribute/path declarations in the query).
 
-The **Acyclic (`A -> B -> C`)** column is verified directly by the sandbox probes. The **Cyclic (`A -> B -> A`)** column is documentation-driven — the probes verify only the acyclic case, and every surveyed library either requires explicit depth/path controls or rejects recursive eager self-relations outright for the cyclic case, so those conclusions are derived from the documentation alone. For the extended per-framework analysis — cyclic hydration, the cyclic-serialization problem, and the acyclic result for each library — see [Ecosystem Research §2 — Backend Persistence Frameworks](./ECOSYSTEM_RESEARCH.md#2--backend-persistence-frameworks).
+The **Acyclic (`A -> B -> C`)** column is verified directly by the sandbox probes. The **Cyclic (`A -> B -> A`)** column is documentation-driven — the probes verify only the acyclic case, and every surveyed library either requires explicit depth/path controls or rejects recursive eager self-relations outright for the cyclic case, so those conclusions are derived from the documentation alone. See [Ecosystem Research §2 — Backend Persistence Frameworks](./ECOSYSTEM_RESEARCH.md#2--backend-persistence-frameworks) for the full discussion.
 
 For raw probe outputs, see the [full results set](../supporting-probes/results/reference/v1/).
 
