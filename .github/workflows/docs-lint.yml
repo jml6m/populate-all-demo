@@ -21,25 +21,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # Install the pinned lychee binary directly. The lycheeverse/lychee-action
-      # install step cannot locate the binary in the v0.24.2 release tarball (it is
-      # nested under a lychee-<target>/ directory), so we fetch and install it here.
-      - name: Install lychee v0.24.2
-        run: |
-          set -euo pipefail
-          version=0.24.2
-          url="https://github.com/lycheeverse/lychee/releases/download/lychee-v${version}/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          curl -sfL "$url" -o /tmp/lychee.tar.gz
-          tar -xzf /tmp/lychee.tar.gz -C /tmp
-          if [ -f /tmp/lychee-x86_64-unknown-linux-gnu/lychee ]; then
-            sudo install /tmp/lychee-x86_64-unknown-linux-gnu/lychee /usr/local/bin/lychee
-          else
-            sudo install /tmp/lychee /usr/local/bin/lychee
-          fi
-          lychee --version
-
       - name: Lychee link check
-        run: lychee --no-progress --config ./.lychee.toml './**/*.md'
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
+          fail: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

@@ -7,6 +7,7 @@ This repository demonstrates how to fully populate a partially hydrated object g
 - [Node.js](https://nodejs.org/) v20 or later
 - npm (included with Node.js)
 - MongoDB (only required for the Mongoose supporting probe)
+- [lychee](https://github.com/lycheeverse/lychee) (only required for `npm run lint:docs`, the Markdown link/anchor check). Install it with `cargo install lychee` or download a release binary onto your `PATH`
 
 For supporting probe prerequisites and runtime setup details (including `MONGODB_URI` for the Mongoose probe), see [`supporting-probes/README.md`](./supporting-probes/README.md). The main experiment and development checks in this README require only Node.js + npm.
 
@@ -61,6 +62,7 @@ npm run clean
 ## Development commands
 
 - `npm run lint` — ESLint on `src/**/*.ts` (zero errors required).
+- `npm run lint:docs` — lychee link/anchor check + markdownlint across all Markdown. Requires the `lychee` binary on your `PATH` (see Prerequisites).
 - `npm run build` — TypeScript compile to `dist/`.
 - `npm test` — Node test runner against `src/**/*.test.ts`.
 - `npm run npm:reinstall` — clean reinstall of root + supporting-probes dependencies (deletes `node_modules` and runs `npm ci` in both). Useful when lockfile changes or after pulling a branch with dep updates.

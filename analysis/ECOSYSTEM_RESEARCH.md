@@ -38,7 +38,7 @@ For each framework, we examine three questions:
 
 Conclusions for **cyclic hydration** and **cyclic serialization** are documentation-driven: every surveyed library requires explicit depth/path controls or rejects recursive eager self-relations (so cyclic hydration is assumed to fail for each and is not probed in this project). Every native serializer surveyed lacks a cycle guard (so cyclic serialization fails everywhere absent a mitigation). Conclusions for **acyclic hydration** are tested with custom scripts in this project, the results of which are discussed below. Serialization of the _acyclic_ result is deliberately not the subject of this section — an acyclic tree contains no cycle for a serializer to trip over.
 
-> _Sandbox probes for every framework in this section can be found in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage._
+> _Sandbox probes for every framework in this section can be found in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`Available Commands`](../supporting-probes/README.md#commands)._
 
 ### 2.1 — SQLAlchemy (Python)
 
@@ -50,7 +50,7 @@ This research probes the `relationship(lazy='selectin')` technique, which fetche
 
 While Hibernate's engine can technically handle infinite depth because it tracks visited nodes in an object via the persistence context, attempting to force full hydration using schema alone would require an infinitely nested SQL join. One workaround is requiring an explicit `join fetch` per layer.[^6] Native/Jackson serialization recurses infinitely on a cycle and throws (`StackOverflowError`); the documented mitigations are annotations such as `@JsonIdentityInfo` and `@JsonBackReference`, whose output is not guaranteed to be supported end-to-end in transport.[^7]
 
-This library does support acyclic hydration, tested in this probe using `@ManyToMany(fetch = EAGER)`.
+This library does support acyclic hydration, tested in this probe using `@ManyToMany(fetch = EAGER)`: the schema-default fetch returns the full `a -> b -> c` closure and a consumer can then traverse it without triggering any further queries — the probe reports `ACYCLIC_PASS`. This is a "no lazy traversal" pass rather than a single-query fetch, and is treated as **provisional**; [§2.8](#28--limitations-of-the-acyclic-pass-evidence) explains exactly what the pass does and does not establish.
 
 ### 2.3 — EF Core (.NET)
 
@@ -62,13 +62,13 @@ _Note:_ EF Core can hydrate exactly this acyclic closure with an explicit, depth
 
 ### 2.4 — MikroORM (Node.js)
 
-MikroORM provides no schema-only cyclic full hydration; the wildcard `populate: ['*']` halts at depth 1 on a cyclic self-relation. Even if the cyclic object is fully populated using some other technique, `JSON.stringify` throws `TypeError: Converting circular structure to JSON` when trying to serialize it in a standard way. However, one major achievement for MikroORM is that unlike the other ORMs in this ecosystem research, it does support schema-driven acyclic hydration via `populate: ['*']`. It materializes the full `a -> b -> c` closure through an identity map with no additional queries, and the acyclic tree serializes cleanly — the probe reports `ACYCLIC_PASS`.
+MikroORM provides no schema-only cyclic full hydration; the wildcard `populate: ['*']` halts at depth 1 on a cyclic self-relation. Even if the cyclic object is fully populated using some other technique, `JSON.stringify` throws `TypeError: Converting circular structure to JSON` when trying to serialize it in a standard way. However, one major achievement for MikroORM is that unlike the other ORMs in this ecosystem research, it does support schema-driven acyclic hydration via `populate: ['*']`.[^10] It materializes the full `a -> b -> c` closure through an identity map with no additional queries **during traversal**, and the acyclic tree serializes cleanly — the probe reports `ACYCLIC_PASS`. As with Hibernate, this is a "no lazy traversal" pass rather than a single-query fetch, and is treated as **provisional** — see [§2.8](#28--limitations-of-the-acyclic-pass-evidence).
 
 ### 2.5 — ActiveRecord (Ruby on Rails)
 
-ActiveRecord uses `.includes()` for bounded tree traversal; beyond the explicitly declared depth it silently falls back to lazy loading, firing a burst of N+1 queries to fetch the missing references.[^10] Ruby's native `.to_json` lacks cycle detection, producing a `JSON::NestingError` or a stack overflow on circular references.[^11]
+ActiveRecord uses `.includes()` for bounded tree traversal; beyond the explicitly declared depth it silently falls back to lazy loading, firing a burst of N+1 queries to fetch the missing references.[^11] Ruby's native `.to_json` lacks cycle detection, producing a `JSON::NestingError` or a stack overflow on circular references.[^12]
 
-This project probes the ability to populate acyclic graphs in schema-driven fashion using `has_and_belongs_to_many` with no `.includes` (defaults to lazy loading).[^12] Similar to SQLAlchemy, additional queries are made during the traversal, resulting in an N+1 signature which fails the test.
+This project probes the ability to populate acyclic graphs in schema-driven fashion using `has_and_belongs_to_many` with no `.includes` (defaults to lazy loading).[^13] Similar to SQLAlchemy, additional queries are made during the traversal, resulting in an N+1 signature which fails the test.
 
 ### 2.6 — Other JavaScript ORMs (Mongoose, Sequelize, TypeORM, Prisma)
 
@@ -93,14 +93,17 @@ For a class of tools whose central promise is to abstract away the storage layer
 
 ### 2.8 — Limitations of the acyclic-pass evidence
 
-The two acyclic **Yes** results (MikroORM, Hibernate) are the least-settled findings in this report and are treated as **provisional**. The sandbox probes establish them at small scale, but a stronger standard is warranted before treating "schema-driven acyclic full hydration is supported" as settled:
+The two acyclic **Yes** results (MikroORM, Hibernate) are still treated as **provisional**.
 
-- **In-memory population is well-supported.** `smartCheck` walks live object references and would fault on an uninitialized collection (MikroORM's `getItems()` throws) or a detached association (Hibernate, traversed after the session closes, throws `LazyInitializationException`). A `smartCheck` pass is therefore strong, instrumentation-independent evidence that the fetch materialized the full `A -> B -> C` closure — at the tested scale.
-- **Query-count instrumentation is weaker and library-internal.** The N+1 gate counts statements via library hooks — Hibernate's `StatementInspector` (authoritative: fires for every statement, with the second-level cache disabled) and MikroORM's query log. The MikroORM counter was found to be a no-op unless query logging is explicitly enabled, and even the Hibernate hook observes what the ORM _issues_, not what the database _receives_. A wire-/DB-level inspector would be more authoritative.
+**What the pass actually measures.** `ACYCLIC_PASS` means the schema-default fetch returned a graph that is _fully materialized and traversal-safe_ — a consumer can walk `A -> B -> C` without triggering any further database round-trips. It is **not** a claim that the graph was retrieved in a single SQL query. Neither passing library uses one query: both issue their multi-level loads _during the fetch_ — MikroORM fires a root select plus one batched `IN` select per relation level, and Hibernate's `@ManyToMany(fetch = EAGER)` fires eager sub-selects for the deeper levels. The `queryGate` deliberately measures traversal-time queries only (check occurs after the fetch).
+
+The sandbox probes establish these results at small scale, but a stronger standard is warranted before treating "schema-driven acyclic full hydration is supported" as verified:
+
+- **Query-count instrumentation is traversal-only and library-internal.** The gate counts statements via library hooks — Hibernate's `StatementInspector` and MikroORM's query log — but only over the post-fetch traversal. It therefore verifies the absence of lazy N+1, yet says nothing about how many queries the fetch _itself_ issued, nor whether that count stays bounded (one batched query per level) or degrades toward per-node N+1 as the graph grows. The MikroORM counter was also found to be a no-op unless query logging is explicitly enabled, and even the Hibernate hook observes what the ORM _issues_, not what the database _receives_. A wire-/DB-level inspector that also captures fetch-time query volume would be more authoritative.
 - **Scale is unproven.** The probes use a three-node graph. That cannot rule out a hidden depth cap, batching cutoff, or other shortcut that would only surface on a large graph, nor does it characterize the runtime/memory cost that the core experiment measures for the JavaScript algorithms.
 - **Documented semantics need confirmation.** Whether `populate: ['*']` and `@ManyToMany(fetch = EAGER)` are _documented_ to fully resolve arbitrary-depth self-referential relations — versus happening to in these versions — should be verified against each library's official docs.
 
-Accordingly, the acyclic **Yes** for MikroORM and Hibernate should be read as "supported at small scale in these probe versions," with a rigorous at-scale confirmation (external query instrumentation, a runtime/memory stress test, and a docs cross-check) left to follow-up work tracked in [issue #88](https://github.com/jml6m/populate-all-demo/issues/88). The cyclic result and the seven acyclic **No** results do not depend on this and stand on their own.
+Accordingly, this research is reasonably confident about an acyclic pass for MikroORM and Hibernate. Rigorous at-scale confirmation, as well as external (wire/DB-level) query instrumentation that also counts fetch-time queries, via a large object stress test, and a docs cross-check is tabled for a future release. The cyclic result and the seven acyclic **No** results do not depend on this and stand on their own.
 
 ## §3 — Frontend Layer
 
@@ -108,7 +111,7 @@ Unlike the more synchronous nature of backend ORMs, frontend technologies can "g
 
 ### 3.1 — GraphQL
 
-GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^13] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^14] [^15]
+GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^14] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^15] [^16]
 
 ### 3.2 — Traditional Frontend JavaScript Ecosystems
 
@@ -120,23 +123,23 @@ Once the data arrives on the client, the frontend ecosystem must decide how to r
 
 > Examples: Redux, Vuex, NgRx.
 
-**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^16]<br />
+**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^17]<br />
 **Trade-off:** Because the state remains completely flat, serialization is trivially solved (no cycles exist). However, the burden of achieving "full population" is pushed to the developer. To render an `Author` and their `Posts`, developers must write explicit selectors to dynamically join these separate dictionary records at runtime.
 
 #### The Referential Graph Paradigm (The "Wired" State)
 
 > Examples: MobX, RxJS, Vue (Reactive).
 
-**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^17]<br />
+**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^18]<br />
 **Trade-off:** Components can safely dot-chain through the hydrated graph (`author.posts[0].author.name`). However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
 
 ### 3.3 — Full-stack SSR Boundaries and E2E Integrated Transport
 
 Modern full-stack SSR frameworks fundamentally flip this dynamic by explicitly leveraging their **end-to-end framework ownership**. In an ecosystem like the Next.js App Router, the framework authors both the server payload generation and the client hydration cycle. Because of this, they don't have to play by generic JSON's rulebook. When a backend query retrieves a "fully populated" object with a schema containing circular references, the developer can use proprietary wire protocols to send the data to the client component (Headers like `RSC: 1`, `Content-Type: text/x-component`, `Transfer-Encoding: chunked`, etc.)
 
-For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^18] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
+For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^19] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
 
-There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^19]
+There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^20]
 
 ## §4 — Algorithmic Theory: The Two-Pass Necessity
 
@@ -214,28 +217,30 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^6]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
 
+[^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
+
 [^8]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
 
 [^9]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
 
-[^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
+[^10]: [MikroORM - populate: ['\*']](https://mikro-orm.io/docs/populating-relations#populating-all-relations)
 
-[^10]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
+[^11]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
 
-[^12]: [ActiveRecord - Associations (Rails Guide)](https://guides.rubyonrails.org/v8.0/association_basics.html#has-many-through-vs-has-and-belongs-to-many)
+[^12]: [JavaScript Object Notation - Ruby (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
 
-[^11]: [JavaScript Object Notation - Ruby (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
+[^13]: [ActiveRecord - Associations (Rails Guide)](https://guides.rubyonrails.org/v8.0/association_basics.html#has-many-through-vs-has-and-belongs-to-many)
 
-[^13]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
+[^14]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
 
-[^14]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
+[^15]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
 
-[^15]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
+[^16]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
 
-[^16]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
+[^17]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
 
-[^17]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
+[^18]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
 
-[^18]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+[^19]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
 
-[^19]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
+[^20]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
