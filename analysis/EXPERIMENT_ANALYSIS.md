@@ -22,17 +22,17 @@ The **Acyclic (`A -> B -> C`)** column is verified directly by the sandbox probe
 
 For raw probe outputs, see the [full results set](../supporting-probes/results/reference/v1/).
 
-| Library / Ecosystem | Tested Version | Hydration (Cyclic) | Hydration (Acyclic) | Sources |
-| :------------------ | :------------- | :----------------: | :-----------------: | :------ |
-| **Mongoose**<br>_(Node.js)_ | v8.24.0 | ❌ | ❌ | [populate](https://mongoosejs.com/docs/populate.html) |
-| **Sequelize**<br>_(Node.js)_ | v6.37.8 | ❌ | ❌ | [eager loading](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything), [circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) |
-| **TypeORM**<br>_(Node.js)_ | v0.3.30 | ❌ | ❌ | [#3663](https://github.com/typeorm/typeorm/issues/3663) |
-| **Prisma**<br>_(Node.js)_ | v5.22.0 | ❌ | ❌ | [relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries), [#3725](https://github.com/prisma/prisma/issues/3725) |
-| **MikroORM**<br>_(Node.js)_ | v6.6.14 | ❌ | ✅ PASS | [populate all](https://mikro-orm.io/docs/populating-relations#populating-all-relations) |
-| **SQLAlchemy**<br>_(Python)_ | <small>v2.0.50 (SQLAlchemy)</small><br><small>v3.14.5 (Python)</small> | ❌ | ❌ | [self-referential](https://docs.sqlalchemy.org/en/20/orm/self_referential.html) |
-| **Hibernate/Jackson**<br>_(Java)_ | <small>v6.6.0.Final (Hibernate)</small><br><small>v2.17.0 (Jackson)</small> | ❌ | ✅ PASS | [associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations) |
-| **EF Core**<br>_(.NET)_ | v8.0.6 | ❌ | ❌ | [eager loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager) |
-| **ActiveRecord**<br>_(Ruby)_ | v8.1.3 | ❌ | ❌ | [associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html) |
+| Library / Ecosystem | Tested Version | Hydration (Cyclic) | Hydration (Acyclic) |
+| :------------------ | :------------- | :----------------: | :-----------------: |
+| **Mongoose**<br>_(Node.js)_ | v8.24.0 | ❌ | ❌ |
+| **Sequelize**<br>_(Node.js)_ | v6.37.8 | ❌ | ❌ |
+| **TypeORM**<br>_(Node.js)_ | v0.3.30 | ❌ | ❌ |
+| **Prisma**<br>_(Node.js)_ | v5.22.0 | ❌ | ❌ |
+| **MikroORM**<br>_(Node.js)_ | v6.6.14 | ❌ | ✅ PASS |
+| **SQLAlchemy**<br>_(Python)_ | <small>v2.0.50 (SQLAlchemy)</small><br><small>v3.14.5 (Python)</small> | ❌ | ❌ |
+| **Hibernate/Jackson**<br>_(Java)_ | <small>v6.6.0.Final (Hibernate)</small><br><small>v2.17.0 (Jackson)</small> | ❌ | ✅ PASS |
+| **EF Core**<br>_(.NET)_ | v8.0.6 | ❌ | ❌ |
+| **ActiveRecord**<br>_(Ruby)_ | v8.1.3 | ❌ | ❌ |
 
 ## §3 — Experiment Design
 

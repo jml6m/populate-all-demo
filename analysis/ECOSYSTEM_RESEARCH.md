@@ -76,8 +76,8 @@ None of the four exposes a schema-driven recursive hydration method; explicit `.
 
 For Acyclic hydration, we see two categories emerge here:
 
-- **Under-hydration** (Mongoose, Sequelize, Prisma): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
-- **Query not constructible** (TypeORM): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
+- **Under-hydration** (Mongoose,[^21] Sequelize,[^22][^23] Prisma[^25][^26]): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
+- **Query not constructible** (TypeORM[^24]): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
 
 Only **MikroORM** (see above) reaches full acyclic population among the Node.js libraries.
 
@@ -244,3 +244,15 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 [^19]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
 
 [^20]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
+
+[^21]: [Mongoose — populate](https://mongoosejs.com/docs/populate.html)
+
+[^22]: [Sequelize — Eager Loading (including everything)](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything)
+
+[^23]: [Sequelize — Constraints and Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/)
+
+[^24]: [TypeORM — issue #3663](https://github.com/typeorm/typeorm/issues/3663)
+
+[^25]: [Prisma — Relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
+
+[^26]: [Prisma — issue #3725](https://github.com/prisma/prisma/issues/3725)
