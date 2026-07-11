@@ -38,7 +38,7 @@ For each framework, we examine three questions:
 
 Conclusions for **cyclic hydration** and **cyclic serialization** are documentation-driven: every surveyed library requires explicit depth/path controls or rejects recursive eager self-relations (so cyclic hydration is assumed to fail for each and is not probed in this project). Every native serializer surveyed lacks a cycle guard (so cyclic serialization fails everywhere absent a mitigation). Conclusions for **acyclic hydration** are tested with custom scripts in this project, the results of which are discussed below. Serialization of the _acyclic_ result is deliberately not the subject of this section — an acyclic tree contains no cycle for a serializer to trip over.
 
-> _Sandbox probes for every framework in this section can be found in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`supporting-probes/README.md#commands`](../supporting-probes/README.md#commands) for prerequisites and usage, and [`README.md#finding-states`](../supporting-probes/README.md#finding-states) for the `fetch` / `queryGate` / `smartCheck` / `serialize` / `ACYCLIC_PASS` result vocabulary used throughout this section._
+> _Sandbox probes for every framework in this section can be found in [`supporting-probes/`](../supporting-probes/) and can be run locally — see [`Available Commands`](../supporting-probes/README.md#commands)._
 
 ### 2.1 — SQLAlchemy (Python)
 
