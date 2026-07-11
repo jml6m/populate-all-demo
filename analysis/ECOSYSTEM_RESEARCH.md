@@ -44,7 +44,7 @@ Conclusions for **cyclic hydration** and **cyclic serialization** are documentat
 
 SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects, so each row is represented by a single instance.[^1] For self-referential relationships, eager loading requires an explicit `join_depth` bound to prevent infinite recursion, as SQL joins do not support unbounded tree structures.[^2] Looking at the write path, it resolves circular foreign keys with `post_update=True`, a two-pass insert-then-link strategy.[^3] No schema-only mechanism fully populates an unbounded cycle. Even if the cyclic object was fully populated in memory, Python's `json.dumps` carries a cycle guard and raises an error the moment it re-encounters a visited node.[^4] Escaping it requires a custom `default=` encoder or an ID-substitution pass that flattens the graph before encoding.
 
-This research probes the `relationship(lazy='selectin')` technique, which fetches a root `a` then walks down the child paths, in this case, triggering two additional queries during traversal.[^5] This results in a `queryGate=FAIL` for our probe because the object does not fully hydrate from the single rooth fetch.
+This research probes the `relationship(lazy='selectin')` technique, which fetches a root `a` then walks down the child paths, in this case, triggering two additional queries during traversal.[^5] This results in a `queryGate=FAIL` for our probe because the object does not fully hydrate from the single root fetch.
 
 ### 2.2 — Hibernate (Java)
 
