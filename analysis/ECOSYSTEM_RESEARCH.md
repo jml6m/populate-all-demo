@@ -76,8 +76,8 @@ None of the four exposes a schema-driven recursive hydration method; explicit `.
 
 For Acyclic hydration, we see two categories emerge here:
 
-- **Under-hydration** (Mongoose,[^14][^15] Sequelize,[^16][^17] Prisma[^19][^20]): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
-- **Query not constructible** (TypeORM[^18]): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
+- **Under-hydration** (Mongoose,[^14][^15] Sequelize,[^16][^17] Prisma[^18][^19]): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
+- **Query not constructible** (TypeORM[^20]): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
 
 Only **MikroORM** (see above) reaches full acyclic population among the Node.js libraries.
 
@@ -239,11 +239,11 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^17]: [Sequelize — Constraints and Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/)
 
-[^18]: [TypeORM — issue #3663](https://github.com/typeorm/typeorm/issues/3663)
+[^18]: [Prisma — Relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
 
-[^19]: [Prisma — Relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
+[^19]: [Prisma — issue #3725](https://github.com/prisma/prisma/issues/3725)
 
-[^20]: [Prisma — issue #3725](https://github.com/prisma/prisma/issues/3725)
+[^20]: [TypeORM — issue #3663](https://github.com/typeorm/typeorm/issues/3663)
 
 [^21]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
 
