@@ -42,19 +42,19 @@ Conclusions for **cyclic hydration** and **cyclic serialization** are documentat
 
 ### 2.1 — SQLAlchemy (Python)
 
-SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects, so each row is represented by a single instance.[^1] For self-referential relationships, eager loading requires an explicit `join_depth` bound to prevent infinite recursion, as SQL joins do not support unbounded tree structures.[^2] Looking at the write path, it resolves circular foreign keys with `post_update=True`, a two-pass insert-then-link strategy.[^3] No schema-only mechanism fully populates an unbounded cycle. Even if the cyclic object was fully populated in memory, Python's `json.dumps` carries a cycle guard and raises an error the moment it re-encounters a visited node.[^19] Escaping it requires a custom `default=` encoder or an ID-substitution pass that flattens the graph before encoding.
+SQLAlchemy's `Session` maintains an identity map of database IDs to Python objects, so each row is represented by a single instance.[^1] For self-referential relationships, eager loading requires an explicit `join_depth` bound to prevent infinite recursion, as SQL joins do not support unbounded tree structures.[^2] Looking at the write path, it resolves circular foreign keys with `post_update=True`, a two-pass insert-then-link strategy.[^3] No schema-only mechanism fully populates an unbounded cycle. Even if the cyclic object was fully populated in memory, Python's `json.dumps` carries a cycle guard and raises an error the moment it re-encounters a visited node.[^4] Escaping it requires a custom `default=` encoder or an ID-substitution pass that flattens the graph before encoding.
 
-This research probes the `relationship(lazy='selectin')` technique, which fetches a root `a` then walks down the child paths, in this case, triggering two additional queries during traversal.[^18] This results in a `queryGate=FAIL` for our probe because the object does not fully hydrate from the single rooth fetch.
+This research probes the `relationship(lazy='selectin')` technique, which fetches a root `a` then walks down the child paths, in this case, triggering two additional queries during traversal.[^5] This results in a `queryGate=FAIL` for our probe because the object does not fully hydrate from the single rooth fetch.
 
 ### 2.2 — Hibernate (Java)
 
-While Hibernate's engine can technically handle infinite depth because it tracks visited nodes in an object via the persistence context, attempting to force full hydration using schema alone would require an infinitely nested SQL join. One workaround is requiring an explicit `join fetch` per layer.[^4] Native/Jackson serialization recurses infinitely on a cycle and throws (`StackOverflowError`); the documented mitigations are annotations such as `@JsonIdentityInfo` and `@JsonBackReference`, whose output is not guaranteed to be supported end-to-end in transport.[^7]
+While Hibernate's engine can technically handle infinite depth because it tracks visited nodes in an object via the persistence context, attempting to force full hydration using schema alone would require an infinitely nested SQL join. One workaround is requiring an explicit `join fetch` per layer.[^6] Native/Jackson serialization recurses infinitely on a cycle and throws (`StackOverflowError`); the documented mitigations are annotations such as `@JsonIdentityInfo` and `@JsonBackReference`, whose output is not guaranteed to be supported end-to-end in transport.[^7]
 
 This library does support acyclic hydration, tested in this probe using `@ManyToMany(fetch = EAGER)`.
 
 ### 2.3 — EF Core (.NET)
 
-EF Core's `ChangeTracker` is an identity map during construction, but complete retrieval across recursive depth requires explicit `.Include().ThenInclude()` chains.[^5] For serialization, `System.Text.Json` throws `JsonException: A possible object cycle was detected` (and separately enforces a depth-64 guard); the documented mitigation is `ReferenceHandler.Preserve`.[^6]
+EF Core's `ChangeTracker` is an identity map during construction, but complete retrieval across recursive depth requires explicit `.Include().ThenInclude()` chains.[^8] For serialization, `System.Text.Json` throws `JsonException: A possible object cycle was detected` (and separately enforces a depth-64 guard); the documented mitigation is `ReferenceHandler.Preserve`.[^9]
 
 In a slight difference from some of its peers, even for fetching objects with acyclic schemas using `AutoInclude()`, EF Core **rejects this at query-compile time**. The auto-include expansion forms a cycle in the model's include-graph, so it throws `InvalidOperationException` before emitting any SQL or reading a single row. The guard is **data-independent** — it fails identically on an empty table, so EF Core never gets the chance to observe that the actual data (`a -> b -> c`) is acyclic and terminates.
 
@@ -66,9 +66,9 @@ MikroORM provides no schema-only cyclic full hydration; the wildcard `populate: 
 
 ### 2.5 — ActiveRecord (Ruby on Rails)
 
-ActiveRecord uses `.includes()` for bounded tree traversal; beyond the explicitly declared depth it silently falls back to lazy loading, firing a burst of N+1 queries to fetch the missing references.[^8] Ruby's native `.to_json` lacks cycle detection, producing a `JSON::NestingError` or a stack overflow on circular references.[^9]
+ActiveRecord uses `.includes()` for bounded tree traversal; beyond the explicitly declared depth it silently falls back to lazy loading, firing a burst of N+1 queries to fetch the missing references.[^10] Ruby's native `.to_json` lacks cycle detection, producing a `JSON::NestingError` or a stack overflow on circular references.[^11]
 
-This project probes the ability to populate acyclic graphs in schema-driven fashion using `has_and_belongs_to_many` with no `.includes` (defaults to lazy loading).[^20] Similar to SQLAlchemy, additional queries are made during the traversal, resulting in an N+1 signature which fails the test.
+This project probes the ability to populate acyclic graphs in schema-driven fashion using `has_and_belongs_to_many` with no `.includes` (defaults to lazy loading).[^12] Similar to SQLAlchemy, additional queries are made during the traversal, resulting in an N+1 signature which fails the test.
 
 ### 2.6 — Other JavaScript ORMs (Mongoose, Sequelize, TypeORM, Prisma)
 
@@ -108,7 +108,7 @@ Unlike the more synchronous nature of backend ORMs, frontend technologies can "g
 
 ### 3.1 — GraphQL
 
-GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^11] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^12] [^13]
+GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^13] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^14] [^15]
 
 ### 3.2 — Traditional Frontend JavaScript Ecosystems
 
@@ -120,23 +120,23 @@ Once the data arrives on the client, the frontend ecosystem must decide how to r
 
 > Examples: Redux, Vuex, NgRx.
 
-**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^14]<br />
+**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^16]<br />
 **Trade-off:** Because the state remains completely flat, serialization is trivially solved (no cycles exist). However, the burden of achieving "full population" is pushed to the developer. To render an `Author` and their `Posts`, developers must write explicit selectors to dynamically join these separate dictionary records at runtime.
 
 #### The Referential Graph Paradigm (The "Wired" State)
 
 > Examples: MobX, RxJS, Vue (Reactive).
 
-**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^15]<br />
+**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^17]<br />
 **Trade-off:** Components can safely dot-chain through the hydrated graph (`author.posts[0].author.name`). However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
 
 ### 3.3 — Full-stack SSR Boundaries and E2E Integrated Transport
 
 Modern full-stack SSR frameworks fundamentally flip this dynamic by explicitly leveraging their **end-to-end framework ownership**. In an ecosystem like the Next.js App Router, the framework authors both the server payload generation and the client hydration cycle. Because of this, they don't have to play by generic JSON's rulebook. When a backend query retrieves a "fully populated" object with a schema containing circular references, the developer can use proprietary wire protocols to send the data to the client component (Headers like `RSC: 1`, `Content-Type: text/x-component`, `Transfer-Encoding: chunked`, etc.)
 
-For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^16] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
+For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^18] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
 
-There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^17]
+There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^19]
 
 ## §4 — Algorithmic Theory: The Two-Pass Necessity
 
@@ -208,34 +208,34 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^3]: [SQLAlchemy — Relationship Persistence / `post_update`](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html)
 
-[^19]: [Python - json.dump()](https://docs.python.org/3/library/json.html#json.dump)
+[^4]: [Python - json.dump()](https://docs.python.org/3/library/json.html#json.dump)
 
-[^18]: [SQLAlchemy - Relationship Loading Techniques](https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html)
+[^5]: [SQLAlchemy - Relationship Loading Techniques](https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html)
 
-[^4]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
+[^6]: [Hibernate — Associations](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations)
 
-[^5]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
+[^8]: [EF Core - Eager Loading](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager)
 
-[^6]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
+[^9]: [EF Core - Serialization](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization)
 
 [^7]: [Jackson - Bidirectional Relationships and Infinite Recursion](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion)
 
-[^8]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
+[^10]: [ActiveRecord - Eager Loading of Associations](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Eager+loading+of+associations)
 
-[^20]: [ActiveRecord - Associations (Rails Guide)](https://guides.rubyonrails.org/v8.0/association_basics.html#has-many-through-vs-has-and-belongs-to-many)
+[^12]: [ActiveRecord - Associations (Rails Guide)](https://guides.rubyonrails.org/v8.0/association_basics.html#has-many-through-vs-has-and-belongs-to-many)
 
-[^9]: [JavaScript Object Notation - Ruby (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
+[^11]: [JavaScript Object Notation - Ruby (JSON)](https://docs.ruby-lang.org/en/3.3/JSON.html)
 
-[^11]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
+[^13]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
 
-[^12]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
+[^14]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
 
-[^13]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
+[^15]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
 
-[^14]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
+[^16]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
 
-[^15]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
+[^17]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
 
-[^16]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+[^18]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
 
-[^17]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
+[^19]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
