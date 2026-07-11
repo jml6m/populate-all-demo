@@ -76,8 +76,8 @@ None of the four exposes a schema-driven recursive hydration method; explicit `.
 
 For Acyclic hydration, we see two categories emerge here:
 
-- **Under-hydration** (Mongoose, Sequelize, Prisma): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
-- **Query not constructible** (TypeORM): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
+- **Under-hydration** (Mongoose,[^14][^15] Sequelize,[^16][^17] Prisma[^18][^19]): the root loads but its relations do not without an explicit `populate` / `include` (same as the cyclic object)
+- **Query not constructible** (TypeORM[^20]): the schema-level `eager: true` self-relation expands the self-join without bound and overflows at query construction (`RangeError`), independent of the data.
 
 Only **MikroORM** (see above) reaches full acyclic population among the Node.js libraries.
 
@@ -111,7 +111,7 @@ Unlike the more synchronous nature of backend ORMs, frontend technologies can "g
 
 ### 3.1 — GraphQL
 
-GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^14] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^15] [^16]
+GraphQL type definitions frequently contain mutual references (e.g., `Author` has `posts`, `Post` has `author`). The standard solution is the **thunk pattern**: wrap the fields in a function called lazily after all types are registered.[^21] This is identical to the two-pass strategy already discussed. Some GraphQL-specific client frameworks, like Apollo `InMemoryCache` and Relay’s `Store`, use a normalized identity map. These require **Global Object Identification**, the mandate that every object has a globally unique `id`.[^22] [^23]
 
 ### 3.2 — Traditional Frontend JavaScript Ecosystems
 
@@ -123,23 +123,23 @@ Once the data arrives on the client, the frontend ecosystem must decide how to r
 
 > Examples: Redux, Vuex, NgRx.
 
-**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^17]<br />
+**Concept:** Abandon memory references entirely. Instead of attempting to reconstruct circular pointers in memory, the client parses the incoming JSON and stores entities purely as a relational Identity Map (a flat dictionary keyed by globally unique IDs). Prioritizes strict immutability, which allows for "Time Travel Debugging", or viewing different snapshots of the data throughout the app's history. This is possible because the data is stored in the frontend as essentially one giant JavaScript object.[^24]<br />
 **Trade-off:** Because the state remains completely flat, serialization is trivially solved (no cycles exist). However, the burden of achieving "full population" is pushed to the developer. To render an `Author` and their `Posts`, developers must write explicit selectors to dynamically join these separate dictionary records at runtime.
 
 #### The Referential Graph Paradigm (The "Wired" State)
 
 > Examples: MobX, RxJS, Vue (Reactive).
 
-**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^18]<br />
+**Concept:** Fully execute the second pass upon data arrival. The frontend iterates over the incoming flat JSON and manually wires up the true cyclic graph in memory. Allows for more complex frontend JavaScript functionality like Observables and Signals.[^25]<br />
 **Trade-off:** Components can safely dot-chain through the hydrated graph (`author.posts[0].author.name`). However, the cyclical serialization problem is immediately reintroduced to the client. If the frontend ever needs to send that state back to the server (or take some actions contained within the frontend itself, like saving it to `localStorage` or inspecting it in DevTools), custom serialization logic is required to flatten the data before crossing a new boundary.
 
 ### 3.3 — Full-stack SSR Boundaries and E2E Integrated Transport
 
 Modern full-stack SSR frameworks fundamentally flip this dynamic by explicitly leveraging their **end-to-end framework ownership**. In an ecosystem like the Next.js App Router, the framework authors both the server payload generation and the client hydration cycle. Because of this, they don't have to play by generic JSON's rulebook. When a backend query retrieves a "fully populated" object with a schema containing circular references, the developer can use proprietary wire protocols to send the data to the client component (Headers like `RSC: 1`, `Content-Type: text/x-component`, `Transfer-Encoding: chunked`, etc.)
 
-For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^19] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
+For example, Next.js utilizes the **React Server Component Payload (RSC)**.[^26] The RSC Payload is a compact, streamable representation of the rendered tree and its associated data. When the React encoder encounters a cyclical object, it does not infinite loop; it tracks object identity and passes a reference pointer (e.g., a chunk ID like `$1`). The client will use HTML to immediately display a quickly rendered "preview" page, while continuously ingesting the RSC Payload stream via one single HTTP request. As suspended data becomes available when a `Promise` finishes, the client-side React runtime merges it into the existing page without a full reload.
 
-There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^20]
+There is still some similarity to traditional decoupled paradigms, as the RSC Payload in some ways can be viewed as a distributed identity map. However, the sophistication of these JavaScript libraries allows these data streams to contain more complex content, such as file import metadata and UI template strings (essentially JSON-like representation of HTML components).[^27]
 
 ## §4 — Algorithmic Theory: The Two-Pass Necessity
 
@@ -231,16 +231,30 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^13]: [ActiveRecord - Associations (Rails Guide)](https://guides.rubyonrails.org/v8.0/association_basics.html#has-many-through-vs-has-and-belongs-to-many)
 
-[^14]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
+[^14]: [Mongoose — populate](https://mongoosejs.com/docs/populate.html)
 
-[^15]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
+[^15]: [Mongoose — issue #16074](https://github.com/Automattic/mongoose/issues/16074)
 
-[^16]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
+[^16]: [Sequelize — Eager Loading (including everything)](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything)
 
-[^17]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
+[^17]: [Sequelize — Constraints and Circularities](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/)
 
-[^18]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
+[^18]: [Prisma — Relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
 
-[^19]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+[^19]: [Prisma — issue #3725](https://github.com/prisma/prisma/issues/3725)
 
-[^20]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
+[^20]: [TypeORM — issue #3663](https://github.com/typeorm/typeorm/issues/3663)
+
+[^21]: [GraphQL - Object Types](https://graphql.org/graphql-js/type/#graphqlobjecttype)
+
+[^22]: [Apollo Client — Cache Configuration / Normalization](https://www.apollographql.com/docs/react/caching/cache-configuration/#normalization)
+
+[^23]: [Relay — Object Identification](https://relay.dev/docs/guides/graphql-server-specification/#object-identification)
+
+[^24]: [Redux - Normalizing State Shape](https://redux.js.org/usage/structuring-reducers/normalizing-state-shape)
+
+[^25]: [MobX - Domain Objects](https://mobx.js.org/defining-data-stores.html#domain-objects)
+
+[^26]: [NextJS - Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+
+[^27]: [NextJS - Suspense](https://nextjs.org/docs/app/api-reference/file-conventions/loading#streaming-with-suspense)
