@@ -7,7 +7,7 @@ This repository demonstrates how to fully populate a partially hydrated object g
 - [Node.js](https://nodejs.org/) v20 or later
 - npm (included with Node.js)
 - MongoDB (only required for the Mongoose supporting probe)
-- [lychee](https://github.com/lycheeverse/lychee) (only required for `npm run lint:docs`, the Markdown link/anchor check). Install it with `cargo install lychee --version 0.24.2` or download the v0.24.2 release binary onto your `PATH`
+- [lychee](https://github.com/lycheeverse/lychee) (only required for `npm run lint:docs`, the Markdown link/anchor check). Install it with `brew install lychee` or `cargo install lychee` (any modern release that supports `.lychee.toml` fragment checking works)
 
 For supporting probe prerequisites and runtime setup details (including `MONGODB_URI` for the Mongoose probe), see [`supporting-probes/README.md`](./supporting-probes/README.md). The main experiment and development checks in this README require only Node.js + npm.
 
