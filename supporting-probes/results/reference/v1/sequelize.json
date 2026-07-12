@@ -1,7 +1,11 @@
 {
   "findings": {
+    "fetch": {
+      "detail": "Schema-driven fetch returned 1 root row(s).",
+      "result": "OK"
+    },
     "hydration": {
-      "detail": "Hydration failed: queryGate=PASS, smartCheck=FAIL.",
+      "detail": "Full hydration not achieved: queryGate=PASS, smartCheck=FAIL.",
       "result": "FAIL"
     },
     "queryGate": {
@@ -13,7 +17,7 @@
       "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
-      "detail": "id \"b\" maps to multiple in-memory instances",
+      "detail": "dependency closure mismatch at \"a\"",
       "result": "FAIL"
     }
   },
@@ -22,5 +26,5 @@
   "libraryVersion": "6.37.8",
   "outcome": "HYDRATION_FAIL",
   "probe": "sequelize",
-  "runtimeVersion": "v22.22.3"
+  "runtimeVersion": "v22.23.1"
 }

@@ -1,7 +1,11 @@
 {
   "findings": {
+    "fetch": {
+      "detail": "Schema-driven fetch returned 1 root row(s).",
+      "result": "OK"
+    },
     "hydration": {
-      "detail": "Hydration check passed.",
+      "detail": "Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).",
       "result": "PASS"
     },
     "queryGate": {
@@ -9,8 +13,8 @@
       "result": "PASS"
     },
     "serialize": {
-      "detail": "JSON serialization failed with SERIALIZE_FAIL_CYCLE.",
-      "result": "SERIALIZE_FAIL_CYCLE"
+      "detail": "JSON serialization passed.",
+      "result": "SERIALIZE_PASS"
     },
     "smartCheck": {
       "detail": "Identity and dependency closure checks passed.",
@@ -20,7 +24,7 @@
   "language": "typescript",
   "library": "MikroORM",
   "libraryVersion": "6.6.14",
-  "outcome": "SERIALIZE_FAIL",
+  "outcome": "PASS",
   "probe": "mikroorm",
-  "runtimeVersion": "v22.22.3"
+  "runtimeVersion": "v22.23.1"
 }

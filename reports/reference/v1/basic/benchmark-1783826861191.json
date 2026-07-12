@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "6a6dba00c024dab0",
-    "runAt": "2026-06-07T18:26:43.766Z",
-    "nodeVersion": "v22.22.3",
+    "fingerprint": "96f3ece2f3d211e4",
+    "runAt": "2026-07-12T03:27:41.152Z",
+    "nodeVersion": "v22.23.1",
     "platform": "linux",
-    "packageVersion": "1.0.0",
+    "packageVersion": "1.0.1",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-06-07T18:26:43.077Z"
+    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
   },
   "results": [
     {
@@ -30,9 +30,13 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "extreme",
-      "skipped": true,
-      "metrics": null,
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 8.089,
+        "probeTimingsMs": {}
+      },
       "hydration": {
         "pass": false,
         "smartCompare": {
@@ -64,52 +68,14 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "extreme",
+      "dataset": "basic",
       "metrics": {
-        "headlineTimeMs": null,
-        "headlineRamMb": null,
-        "hydrationTimeMs": 177.068,
-        "probeTimingsMs": {}
-      },
-      "hydration": {
-        "pass": false,
-        "smartCompare": {
-          "pass": false,
-          "errorDetail": "Maximum call stack size exceeded",
-          "nodesProcessed": 0,
-          "edgesTraversed": 0
-        },
-        "flatCompare": {
-          "pass": false,
-          "errorDetail": "Maximum call stack size exceeded"
-        },
-        "runtimeInvariant": {
-          "pass": false,
-          "errorDetail": "Maximum call stack size exceeded",
-          "uniqueIds": 0,
-          "uniqueInstances": 0,
-          "edgesTraversed": 0
-        },
-        "doubleVerified": false
-      },
-      "consumerProbes": {
-        "ran": false,
-        "probes": []
-      }
-    },
-    {
-      "algorithmCategory": "Topological",
-      "algorithmName": "Tarjan SCC Layering",
-      "timeComplexity": "O(V + E)",
-      "spaceComplexity": "O(V)",
-      "dataset": "extreme",
-      "metrics": {
-        "headlineTimeMs": 3482.344,
-        "headlineRamMb": 281.093,
-        "hydrationTimeMs": 3260.873,
+        "headlineTimeMs": 0.13,
+        "headlineRamMb": 0.049,
+        "hydrationTimeMs": 0.119,
         "probeTimingsMs": {
-          "naive-json": 6.5,
-          "cycle-flat": 221.471
+          "naive-json": 0.034,
+          "cycle-flat": 0.011
         }
       },
       "hydration": {
@@ -117,8 +83,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 250000,
-          "edgesTraversed": 500514
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
         },
         "flatCompare": {
           "pass": true,
@@ -127,9 +93,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 250000,
-          "uniqueInstances": 250000,
-          "edgesTraversed": 500514
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
         },
         "doubleVerified": true
       },
@@ -139,7 +105,64 @@
           {
             "name": "naive-json",
             "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "outputVerification": null
+          },
+          {
+            "name": "cycle-flat",
+            "pass": true,
+            "errorDetail": null,
+            "outputVerification": {
+              "pass": true,
+              "errorDetail": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "algorithmCategory": "Topological",
+      "algorithmName": "Tarjan SCC Layering",
+      "timeComplexity": "O(V + E)",
+      "spaceComplexity": "O(V)",
+      "dataset": "basic",
+      "metrics": {
+        "headlineTimeMs": 0.736,
+        "headlineRamMb": 0,
+        "hydrationTimeMs": 0.728,
+        "probeTimingsMs": {
+          "naive-json": 0.026,
+          "cycle-flat": 0.008
+        }
+      },
+      "hydration": {
+        "pass": true,
+        "smartCompare": {
+          "pass": true,
+          "errorDetail": null,
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
+        },
+        "flatCompare": {
+          "pass": true,
+          "errorDetail": null
+        },
+        "runtimeInvariant": {
+          "pass": true,
+          "errorDetail": null,
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
+        },
+        "doubleVerified": true
+      },
+      "consumerProbes": {
+        "ran": true,
+        "probes": [
+          {
+            "name": "naive-json",
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
             "outputVerification": null
           },
           {
@@ -159,14 +182,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "extreme",
+      "dataset": "basic",
       "metrics": {
-        "headlineTimeMs": 2174.188,
-        "headlineRamMb": 203.311,
-        "hydrationTimeMs": 1980.096,
+        "headlineTimeMs": 0.09,
+        "headlineRamMb": 0.048,
+        "hydrationTimeMs": 0.082,
         "probeTimingsMs": {
-          "naive-json": 6.246,
-          "cycle-flat": 194.092
+          "naive-json": 0.023,
+          "cycle-flat": 0.008
         }
       },
       "hydration": {
@@ -174,8 +197,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 250000,
-          "edgesTraversed": 500514
+          "nodesProcessed": 10,
+          "edgesTraversed": 17
         },
         "flatCompare": {
           "pass": true,
@@ -184,9 +207,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 250000,
-          "uniqueInstances": 250000,
-          "edgesTraversed": 500514
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 17
         },
         "doubleVerified": true
       },
@@ -196,7 +219,7 @@
           {
             "name": "naive-json",
             "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
             "outputVerification": null
           },
           {

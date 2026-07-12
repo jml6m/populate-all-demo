@@ -1,26 +1,30 @@
 {
   "findings": {
+    "fetch": {
+      "detail": "query not constructible -- self-referential AutoInclude rejected as unbounded (data-independent)\nInvalidOperationException: Cycle detected while auto-including navigations: \u0027Node.Dependencies\u0027. To fix this issue, either don\u0027t configure at least one navigation in the cycle as auto included in \u0060OnModelCreating\u0060 or call \u0027IgnoreAutoInclude\u0027 method on the query.",
+      "result": "ERROR"
+    },
     "hydration": {
-      "detail": "Hydration check passed.",
-      "result": "PASS"
+      "detail": "fetch did not return a graph",
+      "result": "FAIL"
     },
     "queryGate": {
-      "detail": "No additional queries observed during traversal.",
-      "result": "PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     },
     "serialize": {
-      "detail": "JsonException: A possible object cycle was detected. This can either be due to a cycle or if the object depth is larger than the maximum allowed depth of 64. Consider using ReferenceHandler.Preserve on JsonSerializerOptions to support cycles. Path: $.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Dependencies.Id.\n   at System.Text.Json.ThrowHelper.ThrowJsonException_SerializerCycleDetected(Int32 maxDepth)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo\u00601.GetMemberAndWriteJson(Object obj, WriteStack\u0026 state, Utf8JsonWriter writer)\n   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter\u00601.OnTryWrite(Utf8JsonWriter writer, T value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Converters.ListOfTConverter\u00602.OnWriteResume(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonCollectionConverter\u00602.OnTryWrite(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo\u00601.GetMemberAndWriteJson(Object obj, WriteStack\u0026 state, Utf8JsonWriter writer)\n   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter\u00601.OnTryWrite(Utf8JsonWriter writer, T value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.JsonConverter\u00601.TryWrite(Utf8JsonWriter writer, T\u0026 value, JsonSerializerOptions options, WriteStack\u0026 state)\n   at System.Text.Json.Serialization.Converters.ListOfTConverter\u00602.OnWriteResume(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, WriteStack\u0026 state)",
-      "result": "SERIALIZE_FAIL_CYCLE"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "SERIALIZE_NOT_RUN"
     },
     "smartCheck": {
-      "detail": "Identity and dependency closure checks passed.",
-      "result": "PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     }
   },
   "language": "csharp",
   "library": "EF Core",
   "libraryVersion": "8.0.6",
-  "outcome": "SERIALIZE_FAIL",
+  "outcome": "HYDRATION_FAIL",
   "probe": "efcore",
-  "runtimeVersion": "8.0.27"
+  "runtimeVersion": "8.0.28"
 }

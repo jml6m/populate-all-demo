@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "6a6dba00c024dab0",
-    "runAt": "2026-06-07T18:26:43.766Z",
-    "nodeVersion": "v22.22.3",
+    "fingerprint": "96f3ece2f3d211e4",
+    "runAt": "2026-07-12T03:27:41.152Z",
+    "nodeVersion": "v22.23.1",
     "platform": "linux",
-    "packageVersion": "1.0.0",
+    "packageVersion": "1.0.1",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-06-07T18:26:43.077Z"
+    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
   },
   "results": [
     {
@@ -30,24 +30,28 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "medium",
-      "skipped": true,
-      "metrics": null,
+      "dataset": "acyclic-control",
+      "metrics": {
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 0.704,
+        "probeTimingsMs": {}
+      },
       "hydration": {
         "pass": false,
         "smartCompare": {
           "pass": false,
-          "errorDetail": "Maximum call stack size exceeded",
-          "nodesProcessed": 0,
-          "edgesTraversed": 0
+          "errorDetail": "Graph topology mismatch at edge comp_2→comp_8: expected edge to point to already",
+          "nodesProcessed": 8,
+          "edgesTraversed": 8
         },
         "flatCompare": {
           "pass": false,
-          "errorDetail": "Maximum call stack size exceeded"
+          "errorDetail": "Dependency of node \"comp_0\" at index 0 is not present in the top-level actual ar"
         },
         "runtimeInvariant": {
           "pass": false,
-          "errorDetail": "Maximum call stack size exceeded",
+          "errorDetail": "Invariant skipped (structural compare failed)",
           "uniqueIds": 0,
           "uniqueInstances": 0,
           "edgesTraversed": 0
@@ -64,14 +68,14 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "acyclic-control",
       "metrics": {
-        "headlineTimeMs": 58.604,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 54.416,
+        "headlineTimeMs": 0.636,
+        "headlineRamMb": 0.081,
+        "hydrationTimeMs": 0.597,
         "probeTimingsMs": {
-          "naive-json": 5.961,
-          "cycle-flat": 4.188
+          "naive-json": 0.039,
+          "cycle-flat": 0.198
         }
       },
       "hydration": {
@@ -79,8 +83,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
         },
         "flatCompare": {
           "pass": true,
@@ -89,9 +93,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
         },
         "doubleVerified": true
       },
@@ -100,8 +104,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
+            "pass": true,
+            "errorDetail": null,
             "outputVerification": null
           },
           {
@@ -121,14 +125,14 @@
       "algorithmName": "Tarjan SCC Layering",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "acyclic-control",
       "metrics": {
-        "headlineTimeMs": 38.036,
-        "headlineRamMb": 10.243,
-        "hydrationTimeMs": 36.139,
+        "headlineTimeMs": 0.759,
+        "headlineRamMb": 0.099,
+        "hydrationTimeMs": 0.751,
         "probeTimingsMs": {
-          "naive-json": 8.262,
-          "cycle-flat": 1.897
+          "naive-json": 0.008,
+          "cycle-flat": 0.021
         }
       },
       "hydration": {
@@ -136,8 +140,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
         },
         "flatCompare": {
           "pass": true,
@@ -146,9 +150,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
         },
         "doubleVerified": true
       },
@@ -157,8 +161,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
+            "pass": true,
+            "errorDetail": null,
             "outputVerification": null
           },
           {
@@ -178,14 +182,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "medium",
+      "dataset": "acyclic-control",
       "metrics": {
-        "headlineTimeMs": 24.678,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 21.011,
+        "headlineTimeMs": 0.163,
+        "headlineRamMb": 0.039,
+        "hydrationTimeMs": 0.156,
         "probeTimingsMs": {
-          "naive-json": 6.009,
-          "cycle-flat": 3.667
+          "naive-json": 0.009,
+          "cycle-flat": 0.007
         }
       },
       "hydration": {
@@ -193,8 +197,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "nodesProcessed": 10,
+          "edgesTraversed": 11
         },
         "flatCompare": {
           "pass": true,
@@ -203,9 +207,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "uniqueIds": 10,
+          "uniqueInstances": 10,
+          "edgesTraversed": 11
         },
         "doubleVerified": true
       },
@@ -214,8 +218,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
+            "pass": true,
+            "errorDetail": null,
             "outputVerification": null
           },
           {

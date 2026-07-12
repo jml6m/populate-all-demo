@@ -1,20 +1,24 @@
 {
   "findings": {
+    "fetch": {
+      "detail": "query not constructible -- eager self-relation join recurses without bound (data-independent)\nRangeError: Maximum call stack size exceeded",
+      "result": "ERROR"
+    },
     "hydration": {
-      "detail": "Hydration failed: queryGate=PASS, smartCheck=FAIL.",
+      "detail": "fetch did not return a graph",
       "result": "FAIL"
     },
     "queryGate": {
-      "detail": "No additional queries observed during traversal.",
-      "result": "PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     },
     "serialize": {
-      "detail": "Direct JSON serialization passed. Cycle-safe baseline serialization also passed.",
-      "result": "SERIALIZE_PASS"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "SERIALIZE_NOT_RUN"
     },
     "smartCheck": {
-      "detail": "id \"b\" maps to multiple in-memory instances",
-      "result": "FAIL"
+      "detail": "not reached -- the schema-driven eager query could not be constructed",
+      "result": "NOT_RUN"
     }
   },
   "language": "typescript",
@@ -22,5 +26,5 @@
   "libraryVersion": "0.3.30",
   "outcome": "HYDRATION_FAIL",
   "probe": "typeorm",
-  "runtimeVersion": "v22.22.3"
+  "runtimeVersion": "v22.23.1"
 }
