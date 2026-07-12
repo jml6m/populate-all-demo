@@ -7,6 +7,7 @@ This repository demonstrates how to fully populate a partially hydrated object g
 - [Node.js](https://nodejs.org/) v20 or later
 - npm (included with Node.js)
 - MongoDB (only required for the Mongoose supporting probe)
+- [lychee](https://github.com/lycheeverse/lychee) (only required for `npm run lint:docs`, the Markdown link/anchor check). Install it with `brew install lychee` or `cargo install lychee` (any modern release that supports `.lychee.toml` fragment checking works)
 
 For supporting probe prerequisites and runtime setup details (including `MONGODB_URI` for the Mongoose probe), see [`supporting-probes/README.md`](./supporting-probes/README.md). The main experiment and development checks in this README require only Node.js + npm.
 
@@ -61,6 +62,7 @@ npm run clean
 ## Development commands
 
 - `npm run lint` — ESLint on `src/**/*.ts` (zero errors required).
+- `npm run lint:docs` — lychee link/anchor check + markdownlint across all Markdown. Requires the `lychee` binary on your `PATH` (see Prerequisites).
 - `npm run build` — TypeScript compile to `dist/`.
 - `npm test` — Node test runner against `src/**/*.test.ts`.
 - `npm run npm:reinstall` — clean reinstall of root + supporting-probes dependencies (deletes `node_modules` and runs `npm ci` in both). Useful when lockfile changes or after pulling a branch with dep updates.
@@ -70,7 +72,8 @@ For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, 
 ## Releases
 
 - **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
-- **v1.0.1** (patch) — corrected the MikroORM supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for `supporting-probes/results/reference/v1/mikroorm.json` was updated; benchmark/algorithm results are unchanged.
+- **v1.0.1** (patch) — corrected the **MikroORM** supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for [MikroORM results](./supporting-probes/results/reference/v1/mikroorm.json) were updated; benchmark/algorithm results are unchanged.
+- **v1.0.2** (patch) — corrected the ecosystem hydration conclusions: Only **MikroORM** and **Hibernate** reach schema-driven acyclic full hydration — and even these are provisional. **EF Core** and **TypeORM** cannot construct the eager query at all; **SQLAlchemy** and **ActiveRecord** resolve the graph only through N+1 traversal queries; the remaining libraries under-hydrate. The §2 comparison was reworked into an explicit cyclic/acyclic hydration matrix. Core two-pass algorithm and benchmark results are unchanged.
 
 See [docs/ADMIN.md §Release procedure](./docs/ADMIN.md#release-procedure) for canonical release workflow and artifact details.
 

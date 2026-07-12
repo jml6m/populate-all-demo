@@ -74,8 +74,9 @@ npm test
 npm run lint:docs
 ```
 
-Docs-only pre-PR sanity check: `npm run lint:docs`
-(requires `lychee` — `brew install lychee` or `cargo install lychee`; CI installs it automatically via `lycheeverse/lychee-action`).
+Docs-only pre-PR sanity check: `npm run lint:docs` (requires `lychee` on your `PATH`; `brew install lychee` or `cargo install lychee`)
+
+[`docs-lint.yml`](../.github/workflows/docs-lint.yml) runs the same lychee/markdownlint checks on github.com and uses `lycheeverse/lychee-action@v2` for CI lychee installation.
 
 Dependency hard reset (root + supporting-probes):
 

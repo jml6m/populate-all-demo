@@ -1,6 +1,10 @@
 name: Supporting Probes
 
 on:
+  pull_request:
+    paths:
+      - 'supporting-probes/**'
+      - '.github/workflows/supporting-probes.yml'
   workflow_dispatch:
 
 env:

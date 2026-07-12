@@ -9,27 +9,30 @@ In the presence of cycles, naive recursive hydration (the most straightforward, 
 
 This research proposes a Two-Pass algorithm. By decoupling memory allocation (Pass 1: Vertex Creation) from reference assignment (Pass 2: Edge Wiring), we achieve a cycle-safe solution that operates in $O(V+E)$ time. This approach replaces recursive uncertainty with a deterministic object population algorithm.
 
----
-
 ## §2 — A Recognized Challenge in the Data Layer Ecosystem
 
-The limitations of current hydration strategies are not unique to a single programming language or library but represent a pervasive challenge in the data-layer ecosystem. A core issue is that "handling cyclic data" decomposes into two distinct gaps: **(A) Hydration Limits** (ability to fully populate objects based on schema alone) and **(B) Serialization Limits** (converting that in-memory graph into a flat string like JSON).
+The limitations of current hydration strategies are not unique to a single programming language or library but represent a pervasive challenge in the data-layer ecosystem. For this comparison, we scope the question to **schema-driven full population** in two concrete self-referential cases:
 
-When testing the broader ORM/ODM landscape for cyclic-reference and recursive-population capabilities, severe functional gaps appear across virtually all major data libraries:
+- **Cyclic case:** `A -> B -> A`
+- **Acyclic case:** `A -> B -> C`
 
-| Library / Ecosystem               | Tested Version ([v1](../supporting-probes/results/reference/v1/)) | Eager-Loading & Hydration Strategy | Recursive Limits (Hydration & Serialization Gaps) |
-| :-------------------------------- | :---------------------------------------------------------------- | :--------------------------------- | :------------------------------------------------ |
-| **Mongoose**<br>_(Node.js)_       | v8.24.0 | Relies on explicit `.populate()` chaining. No built-in `populateAll()` [[1]](https://mongoosejs.com/docs/populate.html) | **Hydration Gap:** There is no API to resolve the full schema in a single call. Self-referential schemas have no safe depth limit — each association level must be named explicitly, and nodes beyond the last named level go unfetched. ([#16074](https://github.com/Automattic/mongoose/issues/16074)) |
-| **Sequelize**<br>_(Node.js)_      | v6.37.8 | `{ include: { all: true, nested: true } }` [[1]](https://sequelize.org/docs/v6/advanced-association-concepts/eager-loading/#including-everything) [[2]](https://sequelize.org/docs/v6/other-topics/constraints-and-circularities/) | **Hydration Gap:** In self-referential models, this method truncates recursive objects at depth 1 to prevent infinite SQL joins. This reflects a structural SQL constraint: a query cannot self-join a tree of unbounded depth. |
-| **TypeORM**<br>_(Node.js)_        | v0.3.30 | `eager: true` via entity decorators [[1]](https://typeorm.io/eager-and-lazy-relations) | **Hydration Gap:** Circular eager relations are disallowed at the entity level. `eager: true` cannot be set on both sides of a bidirectional relation; a positive control with only one eager side succeeds. ([#3663](https://github.com/typeorm/typeorm/issues/3663)) |
-| **Prisma**<br>_(Node.js)_         | v5.22.0 | Explicit `include` mapping [[1]](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries) | **Hydration Gap:** Recursive self-relations require statically declaring every nesting level in the query. The result truncates at the deepest declared level; the Prisma Client type system provides no mechanism for unbounded depth. ([#3725](https://github.com/prisma/prisma/issues/3725)) |
-| **MikroORM**<br>_(Node.js)_       | v6.6.14 | `populate: ['*']` [[1]](https://mikro-orm.io/docs/populating-relations#populating-all-relations) | **Hydration Gap:** `populate: ['*']` strictly halts at depth 1; deeper traversal requires hardcoded explicit paths. The Identity Map can correctly hydrate cyclic graphs when explicit paths are given — the wildcard limit is a query-API constraint, not a fundamental hydration failure. The depth cap is documented as intentional. |
-| **SQLAlchemy**<br>_(Python)_      | v2.0.50 | `joinedload` with `join_depth` limits, or bulk loading via Identity Map [[1]](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) [[2]](https://docs.sqlalchemy.org/en/20/orm/self_referential.html) | **Hydration Gap (Partial) & Serialization Gap:** Self-referential schemas require an explicit `join_depth` cap to prevent infinite SQL joins. The Identity Map cleanly wires cyclic objects in memory, but downstream `json.dumps` still errors on the resulting circular references. Circular FK write ordering uses `post_update=True` [[1]](https://docs.sqlalchemy.org/en/20/orm/relationship_persistence.html). |
-| **Hibernate/Jackson**<br>_(Java)_ | v6.6.0.Final (Hibernate)<br>v2.17.0 (Jackson) | Persistence Context acts as an Identity Map [[1]](https://javadoc.io/doc/com.fasterxml.jackson.core/jackson-databind/2.17.0/com/fasterxml/jackson/databind/ObjectMapper.html) [[2]](https://docs.hibernate.org/orm/6.6/introduction/html_single/#associations) | **Serialization Gap:** The Persistence Context resolves memory cycles correctly (e.g. A↔B are wired without duplication). Passing that graph to standard Jackson serialization throws `JsonMappingException`. `@JsonIdentityInfo` preserves full fidelity; `@JsonManagedReference`/`@JsonBackReference`/`@JsonIgnore` suppress the back-reference side (data loss). [[1]](https://www.baeldung.com/jackson-bidirectional-relationships-and-infinite-recursion) |
-| **EF Core**<br>_(.NET)_           | v8.0.6 | Statically chained `.Include()` / `.ThenInclude()` [[1]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager) [[2]](https://learn.microsoft.com/en-us/ef/core/querying/related-data/serialization) | **Hydration Gap (Partial) & Serialization Gap:** Requires statically chained `.ThenInclude()` — no unbounded wildcard. `ChangeTracker` wires cycles safely in memory, but `System.Text.Json` throws `JsonException` upon serializing them. Built-in options: `ReferenceHandler.IgnoreCycles` (sets looping references to `null`) and `ReferenceHandler.Preserve` (emits `$id`/`$ref` metadata incompatible with standard JSON consumers). |
-| **ActiveRecord**<br>_(Ruby)_      | v8.1.3 | Explicit `.includes()` depth limits [[1]](https://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html) [[2]](https://docs.ruby-lang.org/en/3.3/JSON.html) | **Hydration & Serialization Gaps:** Traversal beyond the declared `.includes()` depth silently falls back to N+1 lazy queries. Built-in `.to_json` triggers `JSON::NestingError` or `SystemStackError` on cyclic objects. Rails treats serialization as a presentation-layer concern requiring explicit definition. |
+The table records whether each library can fully populate these graphs from schema/default configuration alone (no explicit attribute/path declarations in the query). A ✅ PASS marks a schema-driven full-hydration pass; every other cell is a failure (❌).
 
----
+The **Acyclic (`A -> B -> C`)** column is verified directly by the sandbox probes. The **Cyclic (`A -> B -> A`)** column is documentation-driven — the probes verify only the acyclic case, and every surveyed library either requires explicit depth/path controls or rejects recursive eager self-relations outright for the cyclic case, so those conclusions are derived from the documentation alone. See [Ecosystem Research §2 — Backend Persistence Frameworks](./ECOSYSTEM_RESEARCH.md#2--backend-persistence-frameworks) for the full discussion.
+
+For raw probe outputs, see the [full results set](../supporting-probes/results/reference/v1/).
+
+| Library / Ecosystem | Tested Version | Hydration (Cyclic) | Hydration (Acyclic) |
+| :------------------ | :------------- | :----------------: | :-----------------: |
+| **Mongoose**<br>_(Node.js)_ | v8.24.0 | ❌ | ❌ |
+| **Sequelize**<br>_(Node.js)_ | v6.37.8 | ❌ | ❌ |
+| **TypeORM**<br>_(Node.js)_ | v0.3.30 | ❌ | ❌ |
+| **Prisma**<br>_(Node.js)_ | v5.22.0 | ❌ | ❌ |
+| **MikroORM**<br>_(Node.js)_ | v6.6.14 | ❌ | ✅ PASS |
+| **SQLAlchemy**<br>_(Python)_ | <small>v2.0.50 (SQLAlchemy)</small><br><small>v3.14.5 (Python)</small> | ❌ | ❌ |
+| **Hibernate/Jackson**<br>_(Java)_ | <small>v6.6.0.Final (Hibernate)</small><br><small>v2.17.0 (Jackson)</small> | ❌ | ✅ PASS |
+| **EF Core**<br>_(.NET)_ | v8.0.6 | ❌ | ❌ |
+| **ActiveRecord**<br>_(Ruby)_ | v8.1.3 | ❌ | ❌ |
 
 ## §3 — Experiment Design
 
@@ -91,8 +94,6 @@ The runner shows full three-phase detail (Hydration → Consumer probes → Full
 
 Larger tiers (`medium`, `stress`, `extreme`) suppress repeated consumer-probe detail because the probe outcome patterns are fully established by these two tiers. Known failures (algorithms that crashed at an earlier cyclic tier) are also omitted from the runs of the larger tiers — they deterministically fail at all scales and re-running adds no information.
 
----
-
 ## §4 — Results
 
 > **Note on figures:** Timing and RAM measurements below are sourced from the `json` files in [/reports/reference/v1](../reports/reference/v1/).
@@ -153,8 +154,6 @@ Both Tarjan SCC Layering and Two-Pass Wire successfully hydrate every tier from 
 
 The headline result is that cycle-safe graph population is **a solved problem**. Both Tarjan SCC Layering and Two-Pass Wire produce correct, fully wired graphs at every scale tested; either is suitable for production use. Why this hasn't translated into automatic full hydration as an ORM default across the ecosystem is a separate question — see [Ecosystem Research §2](./ECOSYSTEM_RESEARCH.md#2--backend-persistence-frameworks).
 
----
-
 ## §5 — Scaling Profile
 
 Both surviving algorithms are O(V+E). The analytical proofs are in [Ecosystem Research §1](./ECOSYSTEM_RESEARCH.md#1--the-algorithmic-constraints-of-cyclic-data).
@@ -172,8 +171,6 @@ The relative resource trends from the measured results above:
 The memory difference is most pronounced at large scales where Tarjan SCC's extra bookkeeping structures (per-node component tracking arrays, condensation DAG edges) grow alongside the main graph. Two-Pass Wire allocates exactly one record per node plus a single lookup Map and nothing else.
 
 Both algorithms are fast enough for production use at any of the tested scales. The more meaningful distinction is that Tarjan SCC Layering has substantially higher memory overhead at scale — which matters in memory-constrained environments.
-
----
 
 ## §6 — Benchmark Scope
 

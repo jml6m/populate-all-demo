@@ -347,50 +347,55 @@ function writeFallbackResult(runId: string, probe: ProbeConfig, detail: string):
   });
 }
 
-function readOutcomeCell(filePath: string, key: 'outcome' | 'hydration' | 'queryGate' | 'smartCheck' | 'serialize'): string {
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const parsed = JSON.parse(raw) as {
-    outcome: string;
-    findings: {
-      hydration: { result: string };
-      queryGate: { result: string };
-      smartCheck: { result: string };
-      serialize: { result: string };
-    };
+type ParsedProbeResult = {
+  outcome: string;
+  findings: {
+    fetch?: { result: string };
+    hydration: { result: string };
+    queryGate: { result: string };
+    smartCheck: { result: string };
+    serialize: { result: string };
   };
+};
 
-  switch (key) {
-    case 'outcome':
-      return parsed.outcome;
-    case 'hydration':
-      return parsed.findings.hydration.result;
-    case 'queryGate':
-      return parsed.findings.queryGate.result;
-    case 'smartCheck':
-      return parsed.findings.smartCheck.result;
-    case 'serialize':
-      return parsed.findings.serialize.result;
-    default:
-      return 'UNKNOWN';
-  }
+function readProbeResult(filePath: string): ParsedProbeResult {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  return JSON.parse(raw) as ParsedProbeResult;
 }
 
 function printSummary(runId: string, probes: ProbeConfig[]): void {
-  const headers = ['probe', 'outcome', 'hydration', 'queryGate', 'smartCheck', 'serialize'];
+  // `outcome` is the overall acyclic verdict; the per-stage columns (fetch/queryGate/
+  // smartCheck/serialize) show how it was reached. There is no separate `hydration`
+  // column because the rollup already collapses that PASS/FAIL state into the final
+  // `outcome` label for each non-launch-failure row.
+  const headers = ['probe', 'outcome', 'fetch', 'queryGate', 'smartCheck', 'serialize'];
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
-    const outcome = readOutcomeCell(filePath, 'outcome');
+    const parsed = readProbeResult(filePath);
+    // serialize only decides the outcome once hydration passes. A SERIALIZE_PASS on a
+    // row that already failed an earlier gate is not meaningful (it often "passes" only
+    // because an under-hydrated graph has nothing to serialize), so surface it as
+    // SERIALIZE_SKIPPED rather than a misleading PASS beside ACYCLIC_FAIL. Genuine
+    // SERIALIZE_NOT_RUN (fetch never reached serialize) and any real SERIALIZE_FAIL_*
+    // stay visible.
+    const serializeResult = parsed.findings.serialize.result;
+    const serializeCell =
+      serializeResult === 'SERIALIZE_PASS' && parsed.outcome !== 'PASS' ? 'SERIALIZE_SKIPPED' : serializeResult;
+    const fetchCell = parsed.findings.fetch?.result ?? 'n/a';
+    const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
       outcome === 'PROBE_LAUNCH_FAIL'
         ? `${outcome} (probe did not launch)`
-        : outcome;
+        : outcome === 'PASS'
+          ? 'ACYCLIC_PASS'
+          : 'ACYCLIC_FAIL';
     return [
       probe.name,
       outcomeCell,
-      readOutcomeCell(filePath, 'hydration'),
-      readOutcomeCell(filePath, 'queryGate'),
-      readOutcomeCell(filePath, 'smartCheck'),
-      readOutcomeCell(filePath, 'serialize'),
+      fetchCell,
+      parsed.findings.queryGate.result,
+      parsed.findings.smartCheck.result,
+      serializeCell,
     ];
   });
 
@@ -404,6 +409,13 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
   for (const row of rows) {
     console.log(formatRow(row));
   }
+
+  console.log('');
+  console.log('ACYCLIC_PASS requires queryGate=PASS, smartCheck=PASS, serialize=SERIALIZE_PASS (and fetch=OK when present).');
+  console.log('The stage columns are independent measurements, so a passing gate can sit next to the');
+  console.log('failure that decides the row -- e.g. smartCheck=PASS with queryGate=FAIL is the N+1');
+  console.log('signature: the topology is correct but was assembled via per-edge lazy queries, which is');
+  console.log('not schema-driven eager hydration.');
 }
 
 function main(): number {

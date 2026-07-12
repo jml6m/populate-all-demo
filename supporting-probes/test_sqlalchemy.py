@@ -1,14 +1,19 @@
 import json
 import os
 import sys
-import traceback
+from datetime import datetime, timezone
 from collections import deque
 
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, Integer, String, Table, create_engine, event
-from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
+
+RULE_WIDTH = 64
+SCENARIO = 'acyclic A->B->C | schema-driven full hydration (no query-time include paths)'
+STRATEGY = "session.query(Node).filter(name='a') <- relationship(lazy='selectin') (schema default)"
+EXPECTED_ADJ = {'a': ['b'], 'b': ['c'], 'c': []}
 
 node_dependencies = Table(
     'node_dependencies',
@@ -29,7 +34,12 @@ class Node(Base):
         primaryjoin=id == node_dependencies.c.node_id,
         secondaryjoin=id == node_dependencies.c.dependency_id,
         backref='dependents',
+        lazy='selectin',
     )
+
+
+def err_detail(error: Exception) -> str:
+    return f'{type(error).__name__}: {error}'
 
 
 def classify_serialization(error: Exception | None) -> str:
@@ -54,6 +64,23 @@ def build_outcome(findings) -> str:
         and findings['serialize']['result'] == 'SERIALIZE_PASS'
     )
     return 'PASS' if all_passed else 'MIXED'
+
+
+def pending_findings():
+    detail = 'not run -- a prerequisite stage did not complete'
+    return {
+        'fetch': {'result': 'NOT_RUN', 'detail': detail},
+        'hydration': {'result': 'FAIL', 'detail': detail},
+        'queryGate': {'result': 'NOT_RUN', 'detail': detail},
+        'smartCheck': {'result': 'NOT_RUN', 'detail': detail},
+        'serialize': {'result': 'SERIALIZE_NOT_RUN', 'detail': detail},
+    }
+
+
+def mark_gates_not_run(findings, reason):
+    findings['queryGate'] = {'result': 'NOT_RUN', 'detail': reason}
+    findings['smartCheck'] = {'result': 'NOT_RUN', 'detail': reason}
+    findings['serialize'] = {'result': 'SERIALIZE_NOT_RUN', 'detail': reason}
 
 
 def smart_check(roots, expected_adj):
@@ -89,10 +116,64 @@ def smart_check(roots, expected_adj):
     return True, None, len(by_name), len(visited_ids), edges
 
 
+def _rule(label):
+    prefix = f'== {label} '
+    return prefix + '=' * max(0, RULE_WIDTH - len(prefix))
+
+
+def _first_line(detail):
+    line = (detail or '').split('\n')[0].strip()
+    return (line[:99] + '...') if len(line) > 100 else line
+
+
+def _derive_verdict(findings):
+    if findings['hydration']['result'] == 'PASS':
+        if findings['serialize']['result'] == 'SERIALIZE_PASS':
+            return 'ACYCLIC_PASS', 'schema-driven full hydration + serialization succeeded'
+        return 'ACYCLIC_FAIL', f"full hydration succeeded; serialization {findings['serialize']['result']}"
+    if findings['smartCheck']['result'] == 'NOT_RUN':
+        return 'ACYCLIC_FAIL', _first_line(findings['hydration']['detail']) or 'hydration did not complete'
+    if findings['smartCheck']['result'] == 'FAIL':
+        return 'ACYCLIC_FAIL', f"smartCheck failed -- {_first_line(findings['smartCheck']['detail'])}"
+    if findings['queryGate']['result'] == 'FAIL':
+        return 'ACYCLIC_FAIL', f"topology resolved but not schema-driven (lazy N+1) -- {_first_line(findings['queryGate']['detail'])}"
+    return 'ACYCLIC_FAIL', 'hydration failed'
+
+
+def _observed_line(metrics):
+    if not metrics:
+        return 'observed : no graph hydrated -- traversal/identity/serialization gates were not run'
+    parts = [f"reached {metrics['reached']}/{metrics['expected']} expected nodes from root [a]", f"{metrics['edges']} edges"]
+    parts.append('identity stable' if metrics.get('identityStable', True) else 'identity BROKEN (duplicate instances)')
+    if metrics.get('extraQueries') is not None:
+        parts.append(f"{metrics['extraQueries']} extra queries")
+    return 'observed : ' + '; '.join(parts)
+
+
+def print_report(probe, library, library_version, strategy, findings, json_path, metrics, verdict_reason=None):
+    verdict, reason = _derive_verdict(findings)
+    if verdict_reason:
+        reason = verdict_reason
+    print()
+    print(_rule(f'{probe} | {library} v{library_version}'))
+    print(f'scenario : {SCENARIO}')
+    print(f'strategy : {strategy}')
+    print(_observed_line(metrics))
+    if findings.get('fetch'):
+        print(f"  fetch      : {findings['fetch']['result']:<7}  {_first_line(findings['fetch']['detail'])}")
+    print(f"  hydration  : {findings['hydration']['result']:<7}  {_first_line(findings['hydration']['detail'])}")
+    print(f"  queryGate  : {findings['queryGate']['result']:<7}  {_first_line(findings['queryGate']['detail'])}")
+    print(f"  smartCheck : {findings['smartCheck']['result']:<7}  {_first_line(findings['smartCheck']['detail'])}")
+    print(f"  serialize  : {findings['serialize']['result']:<7}  {_first_line(findings['serialize']['detail'])}")
+    print(f'VERDICT  : {verdict} -- {reason}')
+    print(f'json     : {json_path}')
+
+
 def write_result(result):
-    run_id = os.environ.get('PROBE_RUN_ID')
+    run_id = os.environ.get('PROBE_RUN_ID', '').strip()
     if not run_id:
-        raise RuntimeError('PROBE_RUN_ID is required for probe JSON output')
+        run_id = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-nogit')
+        os.environ['PROBE_RUN_ID'] = run_id
 
     out_dir = os.path.join(os.getcwd(), 'results', 'local', run_id)
     os.makedirs(out_dir, exist_ok=True)
@@ -105,97 +186,124 @@ def write_result(result):
     return out_path
 
 
-def run():
-    expected_adj = {'a': ['b'], 'b': ['a']}
-    query_count = 0
+def evaluate_graph(roots, findings, get_query_count):
+    # queryGate: the baseline is sampled *after* the schema-default fetch has returned,
+    # by which point an eager schema default (here lazy='selectin') should already have
+    # materialized the whole A->B->C closure. We then merely walk the in-memory edges
+    # (root.dependencies, then each dep.dependencies). Any SQL emitted during that walk
+    # means the schema default did NOT fully hydrate up front and is lazy-loading per
+    # edge -- the N+1 signature. Zero extra queries == the closure was fully eager-loaded.
+    queries_before_traversal = get_query_count()
+    for root in roots:
+        for dep in root.dependencies:
+            _ = len(dep.dependencies)
+    extra_queries = get_query_count() - queries_before_traversal
+    if extra_queries == 0:
+        findings['queryGate'] = {'result': 'PASS', 'detail': 'No additional queries observed during traversal.'}
+    else:
+        findings['queryGate'] = {
+            'result': 'FAIL',
+            'extraQueries': extra_queries,
+            'detail': f'Expected 0 additional queries during traversal, observed {extra_queries}.',
+        }
 
-    findings = {
-        'hydration': {'result': 'FAIL', 'detail': ''},
-        'queryGate': {'result': 'FAIL', 'detail': ''},
-        'smartCheck': {'result': 'FAIL', 'detail': ''},
-        'serialize': {'result': 'SERIALIZE_FAIL_OTHER', 'detail': ''},
+    # smartCheck: identity + dependency-closure of the reachable graph.
+    graph_ok, reason, reached, _, edges = smart_check(roots, EXPECTED_ADJ)
+    if graph_ok:
+        findings['smartCheck'] = {'result': 'PASS', 'detail': 'Identity and dependency closure checks passed.'}
+    else:
+        findings['smartCheck'] = {'result': 'FAIL', 'detail': reason or 'Identity/closure check failed.'}
+
+    # hydration rollup: full hydration = complete closure with no extra queries.
+    if findings['queryGate']['result'] == 'PASS' and findings['smartCheck']['result'] == 'PASS':
+        findings['hydration'] = {'result': 'PASS', 'detail': 'Full hydration achieved from the root fetch (complete acyclic closure, no extra queries).'}
+    else:
+        findings['hydration'] = {
+            'result': 'FAIL',
+            'detail': f"Full hydration not achieved: queryGate={findings['queryGate']['result']}, smartCheck={findings['smartCheck']['result']}.",
+        }
+
+    # serialize: independent of smartCheck; needs only a materialized graph.
+    def _default(obj):
+        if isinstance(obj, Node):
+            return {'name': obj.name, 'dependencies': obj.dependencies}
+        raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
+    serialization_error = None
+    try:
+        json.dumps(roots, default=_default)
+    except Exception as error:  # pylint: disable=broad-except
+        serialization_error = error
+
+    serialization = classify_serialization(serialization_error)
+    if serialization == 'SERIALIZE_PASS':
+        findings['serialize'] = {'result': serialization, 'detail': 'JSON serialization passed.'}
+    else:
+        findings['serialize'] = {'result': serialization, 'detail': err_detail(serialization_error)}
+
+    return {
+        'reached': reached,
+        'expected': len(EXPECTED_ADJ),
+        'edges': edges,
+        'extraQueries': extra_queries,
+        'identityStable': 'multiple in-memory instances' not in (reason or ''),
     }
+
+
+def run():
+    findings = pending_findings()
+    metrics = None
+    verdict_reason = None
+    query_count = {'n': 0}
 
     engine = create_engine('sqlite+pysqlite:///:memory:', future=True)
 
+    # Registered as a SQLAlchemy event hook via the decorator below; it is invoked by the
+    # engine on every statement, not called directly, so linters may flag it as "unused".
+    # It is the query counter that backs the queryGate N+1 check in evaluate_graph.
     @event.listens_for(engine, 'before_cursor_execute')
     def _before_cursor_execute(*_):
-        nonlocal query_count
-        query_count += 1
+        query_count['n'] += 1
 
+    session = None
+
+    # ---- Setup (infrastructure — a failure here is an environment problem, not a research result) ----
+    setup_ok = True
     try:
         Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
+        session = sessionmaker(bind=engine)()
+        a = Node(name='a')
+        b = Node(name='b')
+        c = Node(name='c')
+        a.dependencies.append(b)
+        b.dependencies.append(c)
+        session.add_all([a, b, c])
+        session.commit()
+    except Exception as setup_error:  # pylint: disable=broad-except
+        setup_ok = False
+        detail = err_detail(setup_error)
+        findings['hydration'] = {'result': 'FAIL', 'detail': f'probe setup failed: {detail}'}
+        verdict_reason = f'probe setup failed -- {detail}'
 
-        with Session() as session:
-            a = Node(name='a')
-            b = Node(name='b')
-            a.dependencies.append(b)
-            b.dependencies.append(a)
-            session.add_all([a, b])
-            session.commit()
+    # ---- Stage 1: the operation under research — schema-driven fetch of root `a` ----
+    if setup_ok:
+        roots = None
+        try:
+            roots = session.query(Node).filter(Node.name.in_(['a'])).order_by(Node.name.asc()).all()
+            findings['fetch'] = {'result': 'OK', 'detail': f'Schema-driven fetch returned {len(roots)} root row(s).'}
+        except Exception as fetch_error:  # pylint: disable=broad-except
+            detail = err_detail(fetch_error)
+            findings['fetch'] = {'result': 'ERROR', 'detail': detail}
+            findings['hydration'] = {'result': 'FAIL', 'detail': 'fetch did not return a graph'}
+            mark_gates_not_run(findings, 'not reached -- the schema-driven fetch threw before returning a graph')
+            verdict_reason = f'schema-driven fetch threw -- {detail}'
 
-            roots = (
-                session.query(Node)
-                .options(selectinload(Node.dependencies).selectinload(Node.dependencies))
-                .filter(Node.name.in_(['a', 'b']))
-                .order_by(Node.name.asc())
-                .all()
-            )
+        # ---- Stages 2-4: gates run only against a graph the fetch actually returned ----
+        if roots is not None:
+            metrics = evaluate_graph(roots, findings, lambda: query_count['n'])
 
-            queries_after_hydration = query_count
-
-            for root in roots:
-                for dep in root.dependencies:
-                    _ = len(dep.dependencies)
-
-            extra_queries = query_count - queries_after_hydration
-            if extra_queries == 0:
-                findings['queryGate'] = {'result': 'PASS', 'detail': 'No additional queries observed during traversal.'}
-            else:
-                findings['queryGate'] = {
-                    'result': 'FAIL',
-                    'extraQueries': extra_queries,
-                    'detail': f'Expected 0 additional queries during traversal, observed {extra_queries}.',
-                }
-
-            graph_ok, reason, _, _, _ = smart_check(roots, expected_adj)
-            if graph_ok:
-                findings['smartCheck'] = {'result': 'PASS', 'detail': 'Identity and dependency closure checks passed.'}
-            else:
-                findings['smartCheck'] = {'result': 'FAIL', 'detail': reason or 'Identity/closure check failed.'}
-
-            if findings['queryGate']['result'] == 'PASS' and findings['smartCheck']['result'] == 'PASS':
-                findings['hydration'] = {'result': 'PASS', 'detail': 'Hydration check passed.'}
-            else:
-                findings['hydration'] = {
-                    'result': 'FAIL',
-                    'detail': f"Hydration failed: queryGate={findings['queryGate']['result']}, smartCheck={findings['smartCheck']['result']}.",
-                }
-
-            def _default(obj):
-                if isinstance(obj, Node):
-                    return {'name': obj.name, 'dependencies': obj.dependencies}
-                raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
-
-            serialization_error = None
-            try:
-                json.dumps(roots, default=_default)
-            except Exception as error:  # pylint: disable=broad-except
-                serialization_error = error
-
-            serialization = classify_serialization(serialization_error)
-            if serialization == 'SERIALIZE_PASS':
-                findings['serialize'] = {'result': serialization, 'detail': 'JSON serialization passed.'}
-            else:
-                detail = ''.join(traceback.format_exception(type(serialization_error), serialization_error, serialization_error.__traceback__)) if serialization_error else serialization
-                findings['serialize'] = {'result': serialization, 'detail': detail}
-    except Exception as error:  # pylint: disable=broad-except
-        detail = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
-        findings['hydration'] = {'result': 'FAIL', 'detail': detail}
-        findings['queryGate'] = {'result': 'FAIL', 'detail': detail}
-        findings['smartCheck'] = {'result': 'FAIL', 'detail': detail}
-        findings['serialize'] = {'result': 'SERIALIZE_FAIL_OTHER', 'detail': detail}
+    if session is not None:
+        session.close()
 
     result = {
         'probe': 'sqlalchemy',
@@ -209,12 +317,7 @@ def run():
 
     output_path = write_result(result)
 
-    print('test_sqlalchemy')
-    print('hydration:', 'HYDRATION PASS' if findings['hydration']['result'] == 'PASS' else 'HYDRATION FAIL')
-    print('queryGate:', findings['queryGate'])
-    print('smartCheck:', findings['smartCheck'])
-    print('serialization:', findings['serialize']['result'])
-    print('json:', output_path)
+    print_report('sqlalchemy', 'SQLAlchemy', sqlalchemy.__version__, STRATEGY, findings, output_path, metrics, verdict_reason)
 
 
 if __name__ == '__main__':
