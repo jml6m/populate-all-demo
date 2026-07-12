@@ -372,7 +372,15 @@ function printSummary(runId: string, probes: ProbeConfig[]): void {
   const rows = probes.map((probe) => {
     const filePath = path.join(process.cwd(), 'results', 'local', runId, `${probe.name}.json`);
     const parsed = readProbeResult(filePath);
-    const serializeCell = parsed.findings.serialize.result;
+    // serialize only decides the outcome once hydration passes. A SERIALIZE_PASS on a
+    // row that already failed an earlier gate is not meaningful (it often "passes" only
+    // because an under-hydrated graph has nothing to serialize), so surface it as
+    // SERIALIZE_SKIPPED rather than a misleading PASS beside ACYCLIC_FAIL. Genuine
+    // SERIALIZE_NOT_RUN (fetch never reached serialize) and any real SERIALIZE_FAIL_*
+    // stay visible.
+    const serializeResult = parsed.findings.serialize.result;
+    const serializeCell =
+      serializeResult === 'SERIALIZE_PASS' && parsed.outcome !== 'PASS' ? 'SERIALIZE_SKIPPED' : serializeResult;
     const fetchCell = parsed.findings.fetch?.result ?? 'n/a';
     const outcome = parsed.outcome;
     const outcomeCell: ProbeOutcome | string =
