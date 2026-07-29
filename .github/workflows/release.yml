@@ -33,7 +33,7 @@ jobs:
           --health-retries 5
 
     steps:
-      # Mint a short-lived token from the jml6m-bot GitHub App (App 4163019), an `always`
+      # Mint a short-lived token from the jml6m-bot GitHub App, an `always`
       # bypass actor on the main ruleset, so the release push bypasses the require-PR rule.
       - name: Mint GitHub App token
         id: app-token
@@ -304,13 +304,13 @@ jobs:
           if ! git push origin main; then
             echo ""
             echo "❌ Push to main failed."
-            echo "   Most likely cause: the App token step failed, or App 4163019 (jml6m-bot)"
+            echo "   Most likely cause: the App token step failed, or the jml6m-bot App"
             echo "   is not an 'Always allow' bypass actor on the main branch ruleset."
             echo ""
             echo "   Admin remediation:"
-            echo "   1. Verify APP_ID + APP_PRIVATE_KEY secrets exist (Settings > Secrets and variables > Actions)."
-            echo "   2. Verify the jml6m-bot App (4163019) is installed on this repo."
-            echo "   3. Verify App 4163019 has 'Always allow' bypass on the main ruleset."
+            echo "   1. Verify the App ID + private-key Actions secrets exist (Settings > Secrets and variables > Actions)."
+            echo "   2. Verify the jml6m-bot App is installed on this repo."
+            echo "   3. Verify the jml6m-bot App has 'Always allow' bypass on the main ruleset."
             echo ""
             exit 1
           fi
