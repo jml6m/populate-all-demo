@@ -10,14 +10,14 @@
   },
   "dependencies": {
     "@mikro-orm/core": "^6.6.13",
-    "@mikro-orm/sqlite": "^6.6.13",
+    "@mikro-orm/sqlite": "^7.1.8",
     "@prisma/client": "^5.12.0",
     "mongoose": "^8.0.0",
     "prisma": "^5.12.0",
     "reflect-metadata": "^0.2.2",
     "sequelize": "^6.37.0",
-    "sqlite3": "^5.1.7",
-    "typeorm": "^0.3.20"
+    "sqlite3": "^6.0.1",
+    "typeorm": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
