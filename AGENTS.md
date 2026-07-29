@@ -204,10 +204,20 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 
 ## Opening PRs — author as the app, not the admin
 
+### GitHub credentials — never commit values
+
+Do **not** commit GitHub App IDs, installation IDs, client IDs/secrets, private keys,
+PATs, tokens, webhook secrets, or any other Actions secret/variable **values**. Refer
+to apps by slug/name (`jml6m-bot`), never by numeric ID. Workflows may reference
+secret *names* (e.g. `${{ secrets.APP_ID }}`) — never hardcode values into source,
+docs, comments, or agent instruction files. Local App credentials live only under
+`~/workspaces/.tooling/` (outside any git repo); repository secrets live only in
+GitHub Settings → Secrets and variables.
+
 Command-line agents must not open PRs on this repo using the default `jml6m`
 credentials. GitHub forbids approving your own PR, so an admin-authored PR leaves the
 owner able only to "Comment" — and it blocks merge wherever an approving review is
-required. Author PRs as the **`jml6m-bot` GitHub App** (App `4163019`) instead, so the
+required. Author PRs as the **`jml6m-bot` GitHub App** instead, so the
 admin can review and Approve them:
 
 ```bash
@@ -215,6 +225,5 @@ git push -u origin <branch>
 GH_TOKEN="$(~/workspaces/.tooling/gh-app-token.sh jml6m/populate-all-demo)" gh pr create --fill
 ```
 
-CI and Actions get the same identity from the `APP_ID` / `APP_PRIVATE_KEY` repo secrets
-via `actions/create-github-app-token`. The GitHub App is the standard automation
+CI and Actions mint the same identity via `actions/create-github-app-token` using App credentials stored only as GitHub Actions secrets (never in source). The GitHub App is the standard automation
 identity for this repo — personal access tokens are not used.
