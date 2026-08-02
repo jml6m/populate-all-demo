@@ -198,6 +198,15 @@ The following paths are **agent-protected**. Do not modify without explicit inst
     `git for-each-ref --sort=committerdate --format='%(committerdate:short) %(refname:short)' refs/remotes/origin`
   - Cross-reference against open PRs (`gh pr list --state open`) and delete only stale, merged, PR-less branches deliberately.
 
+## Task protocols
+
+Task-specific protocols live in [`docs/agent-rules/`](./docs/agent-rules/) and apply to every agent working in this repo, not just one tool:
+
+- [`issue-workflow.md`](./docs/agent-rules/issue-workflow.md) — GitHub issues are the planning source of truth.
+- [`fast-iteration.md`](./docs/agent-rules/fast-iteration.md) — use short-lived probe scripts to learn fast, then promote or delete.
+- [`testing.md`](./docs/agent-rules/testing.md) — what to test (deterministic hydration behavior via Node's test runner).
+- [`session-validation.md`](./docs/agent-rules/session-validation.md) — the mandatory end-of-task validation gate.
+
 ## Documentation conventions
 
 - **Linkable paths must be clickable links.** Any in-repo path mentioned in a Markdown file must be written as a clickable link to the target (e.g. `[src/runner.ts](./src/runner.ts)`), not as bare inline code. Command examples and illustrative / non-existent paths are exempt. The existing [`docs-lint`](./.github/workflows/docs-lint.yml) job (lychee + markdownlint) validates that the links resolve.

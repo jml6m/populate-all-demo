@@ -1,0 +1,11 @@
+# Agent-instruction governance lock — added as part of the 2026-08 cross-repo
+# consolidation to AGENTS.md as the single source of truth. Only these paths
+# require @jml6m's review before merge (enforced by the "main-require-review"
+# ruleset's "Require review from Code Owners" rule); everything else keeps
+# the repo's normal review requirements. See AGENTS.md for the full policy.
+
+CLAUDE.md                          @jml6m
+.github/copilot-instructions.md    @jml6m
+.cursorrules                       @jml6m
+GEMINI.md                          @jml6m
+.grok/                             @jml6m
