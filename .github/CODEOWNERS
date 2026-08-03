@@ -3,9 +3,14 @@
 # require @jml6m's review before merge (enforced by the "main-require-review"
 # ruleset's "Require review from Code Owners" rule); everything else keeps
 # the repo's normal review requirements. See AGENTS.md for the full policy.
+#
+# .github/ is protected in full (not just the agent-instruction files within
+# it) — it's CI/CD workflows and repo automation, i.e. anything that could
+# weaken or bypass a merge gate. Matches the pattern already used in
+# local-land-client/local-land-server.
 
 CLAUDE.md                          @jml6m
-.github/copilot-instructions.md    @jml6m
+.github/                           @jml6m
 .cursorrules                       @jml6m
 GEMINI.md                          @jml6m
 .grok/                             @jml6m
