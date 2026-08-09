@@ -226,12 +226,13 @@ git push -u origin <branch>
 GH_TOKEN="$(~/workspaces/.tooling/gh-app-token.sh jml6m/populate-all-demo)" gh pr create --fill
 ```
 
-**Identity split:** `jml6m-bot` (`APP_ID` / `APP_PRIVATE_KEY`) authors PRs and must
-**not** hold Always-allow ruleset bypass. Release pushes use **`jml6m-version-bot`**
-(`VERSION_BUMP_APP_ID` / `VERSION_BUMP_APP_PRIVATE_KEY`) — the sole Always-allow
-bypass actor on `main-require-review` for direct pushes from
-[`.github/workflows/release.yml`](./.github/workflows/release.yml). Agents never
-mint or use the version-bump App token.
+**Identity split (target):** `jml6m-bot` (`APP_ID` / `APP_PRIVATE_KEY`) authors
+PRs; **`jml6m-version-bot`** (`VERSION_BUMP_APP_ID` /
+`VERSION_BUMP_APP_PRIVATE_KEY`) is the sole Always-allow bypass actor on
+`main-require-review` for direct pushes from
+[`.github/workflows/release.yml`](./.github/workflows/release.yml). **Interim:**
+release.yml still mints **jml6m-bot** via `APP_*` until `VERSION_BUMP_APP_*`
+secrets are installed on this repo. Agents never mint the version-bump App token.
 
 CI and Actions mint these identities via `actions/create-github-app-token` using
 App credentials stored only as GitHub Actions secrets (never in source). Personal

@@ -33,16 +33,18 @@ jobs:
           --health-retries 5
 
     steps:
-      # Mint a short-lived token from the dedicated *version-bump* GitHub App
-      # (jml6m-version-bot via VERSION_BUMP_APP_*; Always-allow bypass on the
-      # main-require-review ruleset — NOT jml6m-bot / APP_ID). jml6m-bot authors
-      # PRs and must remain subject to required checks (no release-push bypass).
-      - name: Mint version-bump App token
+      # Mint a short-lived token for the release push (Always-allow bypass on
+      # main-require-review). Interim: jml6m-bot via APP_ID / APP_PRIVATE_KEY —
+      # these secrets already exist on this repo. Target end-state (v1.1.0+):
+      # jml6m-version-bot via VERSION_BUMP_APP_ID / VERSION_BUMP_APP_PRIVATE_KEY
+      # once those secrets are installed and that App holds the sole Always-allow
+      # bypass (jml6m-bot then authors PRs only, no release-push bypass).
+      - name: Mint GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.VERSION_BUMP_APP_ID }}
-          private-key: ${{ secrets.VERSION_BUMP_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -306,16 +308,17 @@ jobs:
           if ! git push origin main; then
             echo ""
             echo "❌ Push to main failed."
-            echo "   Most likely cause: the version-bump App token step failed, or"
-            echo "   jml6m-version-bot is not an 'Always allow' bypass actor on the"
-            echo "   main-require-review ruleset."
+            echo "   Most likely cause: the App token step failed, or the App is not"
+            echo "   an 'Always allow' bypass actor on the main-require-review ruleset."
             echo ""
-            echo "   Admin remediation:"
-            echo "   1. Verify VERSION_BUMP_APP_ID + VERSION_BUMP_APP_PRIVATE_KEY exist"
+            echo "   Admin remediation (interim — jml6m-bot / APP_*):"
+            echo "   1. Verify APP_ID + APP_PRIVATE_KEY exist"
             echo "      (Settings > Secrets and variables > Actions)."
-            echo "   2. Verify the jml6m-version-bot App is installed on this repo."
-            echo "   3. Verify jml6m-version-bot has 'Always allow' bypass on the"
-            echo "      main-require-review ruleset (not jml6m-bot — that App authors PRs)."
+            echo "   2. Verify the jml6m-bot App is installed on this repo."
+            echo "   3. Verify jml6m-bot has 'Always allow' bypass on main-require-review."
+            echo ""
+            echo "   Target end-state: switch this workflow to VERSION_BUMP_APP_*"
+            echo "   (jml6m-version-bot) and move Always-allow to that App only."
             echo ""
             exit 1
           fi
