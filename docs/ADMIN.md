@@ -133,7 +133,11 @@ that may write to the `reference/` trees.
    - `patch`: replaces existing `reports/logs/supporting-probes/results/data/reference/v<N>/` assets in place
 7. Writes/updates `reports/reference/v<N>/manifest.json` (tag, releasedAt, runId, lockfile hashes).
 8. Bumps `package.json` to the computed SemVer via `npm version`.
-9. Commits and pushes directly to `main` using the `RELEASE_PUSH_TOKEN` PAT.
+9. Commits and pushes directly to `main` using a short-lived token from the
+   **jml6m-version-bot** GitHub App (`VERSION_BUMP_APP_ID` /
+   `VERSION_BUMP_APP_PRIVATE_KEY`). That App is the Always-allow bypass actor
+   on `main-require-review` for release pushes only; **jml6m-bot** authors PRs
+   and must not hold that bypass.
 
 End-to-end runtime is roughly 5–10 minutes including polyglot setup.
 
@@ -204,9 +208,10 @@ Common failure modes:
 - **"Fingerprint check"** — The experiment produces identical results to the
   previous release. Either there are no experiment-relevant changes since
   v<N-1> (release not needed), or a config change was missed.
-- **"Push to main failed"** — `RELEASE_PUSH_TOKEN` is missing, expired, or
-  lacks the right scopes. The error message in the workflow log includes
-  remediation steps.
+- **"Push to main failed"** — the version-bump App token mint failed, the
+  `VERSION_BUMP_APP_*` secrets are missing, **jml6m-version-bot** is not
+  installed on the repo, or it lacks Always-allow bypass on
+  `main-require-review`. The workflow log includes remediation steps.
 
 For failures before the final push step, no repository state is changed on
 `main`; re-run after fixing the cause. If the push step succeeds, the release

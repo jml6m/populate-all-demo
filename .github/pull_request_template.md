@@ -3,7 +3,7 @@
 
 ## Related Issues
 <!--
-  Use keywords to automatically close issues (e.g. "Closes #1").
+  Agents put closing keywords in the body to link/close issues (e.g. "Closes #1").
   For multiple issues, use the keyword before each issue (e.g. "Closes #1, Fixes #2").
 -->
 <!-- Closes # -->

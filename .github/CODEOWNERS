@@ -1,0 +1,16 @@
+# Governance locks — these paths require @jml6m review (ruleset: Require
+# review from Code Owners). Everything else keeps normal review requirements.
+#
+# Agent-instruction / automation surfaces (AGENTS.md is the single source;
+# these paths are tripwires against reintroducing mirrors or weakening gates):
+AGENTS.md                          @jml6m
+CLAUDE.md                          @jml6m
+.github/                           @jml6m
+.cursorrules                       @jml6m
+GEMINI.md                          @jml6m
+.grok/                             @jml6m
+
+# package.json governance — dependency, scripts, and important metadata.
+# Lockfiles intentionally NOT listed (high churn / transitive noise).
+package.json                       @jml6m
+supporting-probes/package.json     @jml6m

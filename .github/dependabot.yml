@@ -1,20 +1,6 @@
-# Dependabot configuration for jml6m/populate-all-demo
-#
-# Manifests checked into this repo and tracked here:
-#   /package.json                          -> npm            (root)
-#   /supporting-probes/package.json        -> npm            (TypeScript probes)
-#   /.github/workflows/*.yml               -> github-actions
-#   /supporting-probes/pom.xml             -> maven          (Hibernate probe)
-#   /supporting-probes/EfCoreTest.csproj   -> nuget          (EF Core probe)
-#
-# Ecosystems intentionally NOT configured because no manifest is committed
-# to the repo. The corresponding probes install dependencies ad-hoc inside
-# .github/workflows/supporting-probes.yml:
-#   - pip / pyproject / Pipfile -> SQLAlchemy probe (`pip install sqlalchemy`)
-#   - bundler / Gemfile         -> ActiveRecord probe (`gem install ...`)
-# If a manifest for one of those probes is ever committed, add a matching
-# `updates:` block here.
-
+# Dependabot — monthly multi-ecosystem gold baseline (multi-directory)
+# https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configuring-multi-ecosystem-updates
+# open-pull-requests-limit must live on the multi-ecosystem group (not on updates).
 version: 2
 
 multi-ecosystem-groups:
@@ -29,7 +15,6 @@ multi-ecosystem-groups:
       - "jml6m"
 
 updates:
-  # Root TypeScript package (generator + experiment runner)
   - package-ecosystem: "npm"
     directory: "/"
     patterns:
@@ -37,7 +22,6 @@ updates:
     multi-ecosystem-group: "all-dependencies"
     versioning-strategy: "increase"
 
-  # TypeScript supporting probes (typeorm, sequelize, mikroorm, prisma, mongoose)
   - package-ecosystem: "npm"
     directory: "/supporting-probes"
     patterns:
@@ -45,21 +29,18 @@ updates:
     multi-ecosystem-group: "all-dependencies"
     versioning-strategy: "increase"
 
-  # GitHub Actions workflows under .github/workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
 
-  # Hibernate (Java) supporting probe
   - package-ecosystem: "maven"
     directory: "/supporting-probes"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
 
-  # EF Core (.NET) supporting probe
   - package-ecosystem: "nuget"
     directory: "/supporting-probes"
     patterns:

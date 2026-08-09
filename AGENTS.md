@@ -208,11 +208,12 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 
 Do **not** commit GitHub App IDs, installation IDs, client IDs/secrets, private keys,
 PATs, tokens, webhook secrets, or any other Actions secret/variable **values**. Refer
-to apps by slug/name (`jml6m-bot`), never by numeric ID. Workflows may reference
-secret *names* (e.g. `${{ secrets.APP_ID }}`) — never hardcode values into source,
-docs, comments, or agent instruction files. Local App credentials live only under
-`~/workspaces/.tooling/` (outside any git repo); repository secrets live only in
-GitHub Settings → Secrets and variables.
+to apps by slug/name (`jml6m-bot`, `jml6m-version-bot`), never by numeric ID.
+Workflows may reference secret *names* only (e.g. `${{ secrets.APP_ID }}` for
+PR-bot tokens, `${{ secrets.VERSION_BUMP_APP_ID }}` for release pushes) — never
+hardcode values into source, docs, comments, or agent instruction files. Local
+App credentials live only under `~/workspaces/.tooling/` (outside any git repo);
+repository secrets live only in GitHub Settings → Secrets and variables.
 
 Command-line agents must not open PRs on this repo using the default `jml6m`
 credentials. GitHub forbids approving your own PR, so an admin-authored PR leaves the
@@ -225,5 +226,17 @@ git push -u origin <branch>
 GH_TOKEN="$(~/workspaces/.tooling/gh-app-token.sh jml6m/populate-all-demo)" gh pr create --fill
 ```
 
-CI and Actions mint the same identity via `actions/create-github-app-token` using App credentials stored only as GitHub Actions secrets (never in source). The GitHub App is the standard automation
-identity for this repo — personal access tokens are not used.
+**Identity split:** `jml6m-bot` (`APP_ID` / `APP_PRIVATE_KEY`) authors PRs and must
+**not** hold Always-allow ruleset bypass. Release pushes use **`jml6m-version-bot`**
+(`VERSION_BUMP_APP_ID` / `VERSION_BUMP_APP_PRIVATE_KEY`) — the sole Always-allow
+bypass actor on `main-require-review` for direct pushes from
+[`.github/workflows/release.yml`](./.github/workflows/release.yml). Agents never
+mint or use the version-bump App token.
+
+CI and Actions mint these identities via `actions/create-github-app-token` using
+App credentials stored only as GitHub Actions secrets (never in source). Personal
+access tokens are not used for repo automation.
+
+## Issues & PRs
+
+Agents put `Closes #N` / `Relates to #N` in the PR body (there is no auto-link workflow; do not rely on `N-` branch names).
