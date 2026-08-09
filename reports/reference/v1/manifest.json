@@ -1,18 +1,18 @@
 {
   "version": "v1",
-  "tag": "v1.0.2",
-  "releasedAt": "2026-07-12T03:29:25Z",
-  "commit": "efd09a3dd1b918c9c8c9ad7881eca0c34d4da999",
-  "runId": "20260712-032741-efd09a3",
+  "tag": "v1.0.3",
+  "releasedAt": "2026-08-09T17:31:01Z",
+  "commit": "796c7bb7f376fb7ebe97f8ff1d8906c5f131ae31",
+  "runId": "20260809-172929-796c7bb",
   "runtime": {
-    "node": "v22.23.1",
+    "node": "v24.18.0",
     "python": "3.14.6",
-    "ruby": "4.0.5",
+    "ruby": "4.0.6",
     "java": "21.0.11",
-    "dotnet": "10.0.301"
+    "dotnet": "10.0.302"
   },
   "lockfileHashes": {
-    "package-lock.json": "sha256:bf93e746b24f885003d131216c4d7000085d7c87b4d42b9e0af7a790082aa5c0",
+    "package-lock.json": "sha256:f902bd54819b4bca7fbb49822596bf305932b6750da4c6449750a27c26c44068",
     "supporting-probes/package-lock.json": "sha256:ef91ad3ff5ca4cca5f8253b2ccb80d7fb442fa80573f59b712ef4547ae39284c"
   }
 }

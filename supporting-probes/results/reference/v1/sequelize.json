@@ -26,5 +26,5 @@
   "libraryVersion": "6.37.8",
   "outcome": "HYDRATION_FAIL",
   "probe": "sequelize",
-  "runtimeVersion": "v22.23.1"
+  "runtimeVersion": "v24.18.0"
 }

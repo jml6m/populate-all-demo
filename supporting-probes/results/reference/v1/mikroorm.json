@@ -26,5 +26,5 @@
   "libraryVersion": "6.6.14",
   "outcome": "PASS",
   "probe": "mikroorm",
-  "runtimeVersion": "v22.23.1"
+  "runtimeVersion": "v24.18.0"
 }

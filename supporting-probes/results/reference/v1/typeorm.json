@@ -26,5 +26,5 @@
   "libraryVersion": "0.3.30",
   "outcome": "HYDRATION_FAIL",
   "probe": "typeorm",
-  "runtimeVersion": "v22.23.1"
+  "runtimeVersion": "v24.18.0"
 }

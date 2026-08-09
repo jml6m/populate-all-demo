@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "96f3ece2f3d211e4",
-    "runAt": "2026-07-12T03:27:41.152Z",
-    "nodeVersion": "v22.23.1",
+    "fingerprint": "b6a95e96465566fd",
+    "runAt": "2026-08-09T17:29:29.131Z",
+    "nodeVersion": "v24.18.0",
     "platform": "linux",
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.0.2",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
+    "manifestGeneratedAt": "2026-08-09T17:29:28.461Z"
   },
   "results": [
     {
@@ -66,54 +66,35 @@
       "spaceComplexity": "O(V)",
       "dataset": "medium",
       "metrics": {
-        "headlineTimeMs": 35.043,
-        "headlineRamMb": 0.745,
-        "hydrationTimeMs": 32.373,
-        "probeTimingsMs": {
-          "naive-json": 6.189,
-          "cycle-flat": 2.67
-        }
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 8.848,
+        "probeTimingsMs": {}
       },
       "hydration": {
-        "pass": true,
+        "pass": false,
         "smartCompare": {
-          "pass": true,
-          "errorDetail": null,
-          "nodesProcessed": 5000,
-          "edgesTraversed": 9998
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "nodesProcessed": 0,
+          "edgesTraversed": 0
         },
         "flatCompare": {
-          "pass": true,
-          "errorDetail": null
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded"
         },
         "runtimeInvariant": {
-          "pass": true,
-          "errorDetail": null,
-          "uniqueIds": 5000,
-          "uniqueInstances": 5000,
-          "edgesTraversed": 9998
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "uniqueIds": 0,
+          "uniqueInstances": 0,
+          "edgesTraversed": 0
         },
-        "doubleVerified": true
+        "doubleVerified": false
       },
       "consumerProbes": {
-        "ran": true,
-        "probes": [
-          {
-            "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Maximum call stack size exceeded",
-            "outputVerification": null
-          },
-          {
-            "name": "cycle-flat",
-            "pass": true,
-            "errorDetail": null,
-            "outputVerification": {
-              "pass": true,
-              "errorDetail": null
-            }
-          }
-        ]
+        "ran": false,
+        "probes": []
       }
     },
     {
@@ -123,12 +104,12 @@
       "spaceComplexity": "O(V)",
       "dataset": "medium",
       "metrics": {
-        "headlineTimeMs": 29.5,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 26.698,
+        "headlineTimeMs": 31.776,
+        "headlineRamMb": 28.565,
+        "hydrationTimeMs": 29.096,
         "probeTimingsMs": {
-          "naive-json": 6.913,
-          "cycle-flat": 2.802
+          "naive-json": 6.07,
+          "cycle-flat": 2.68
         }
       },
       "hydration": {
@@ -180,12 +161,12 @@
       "spaceComplexity": "O(V)",
       "dataset": "medium",
       "metrics": {
-        "headlineTimeMs": 19.947,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 18.031,
+        "headlineTimeMs": 12.476,
+        "headlineRamMb": 20.439,
+        "hydrationTimeMs": 11.216,
         "probeTimingsMs": {
-          "naive-json": 5.892,
-          "cycle-flat": 1.916
+          "naive-json": 6.038,
+          "cycle-flat": 1.26
         }
       },
       "hydration": {

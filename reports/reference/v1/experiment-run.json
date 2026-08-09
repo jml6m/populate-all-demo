@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "96f3ece2f3d211e4",
-    "runAt": "2026-07-12T03:27:41.152Z",
-    "nodeVersion": "v22.23.1",
+    "fingerprint": "b6a95e96465566fd",
+    "runAt": "2026-08-09T17:29:29.131Z",
+    "nodeVersion": "v24.18.0",
     "platform": "linux",
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.0.2",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,13 +22,13 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
+    "manifestGeneratedAt": "2026-08-09T17:29:28.461Z"
   },
   "reports": {
-    "acyclic-control": "acyclic-control/benchmark-1783826861178.json",
-    "basic": "basic/benchmark-1783826861191.json",
-    "medium": "medium/benchmark-1783826861911.json",
-    "stress": "stress/benchmark-1783826867493.json",
-    "extreme": "extreme/benchmark-1783826898350.json"
+    "acyclic-control": "acyclic-control/benchmark-1786296569156.json",
+    "basic": "basic/benchmark-1786296569176.json",
+    "medium": "medium/benchmark-1786296569835.json",
+    "stress": "stress/benchmark-1786296575106.json",
+    "extreme": "extreme/benchmark-1786296603362.json"
   }
 }

@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "96f3ece2f3d211e4",
-    "runAt": "2026-07-12T03:27:41.152Z",
-    "nodeVersion": "v22.23.1",
+    "fingerprint": "b6a95e96465566fd",
+    "runAt": "2026-08-09T17:29:29.131Z",
+    "nodeVersion": "v24.18.0",
     "platform": "linux",
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.0.2",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
+    "manifestGeneratedAt": "2026-08-09T17:29:28.461Z"
   },
   "results": [
     {
@@ -30,28 +30,28 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "acyclic-control",
+      "dataset": "basic",
       "metrics": {
         "headlineTimeMs": null,
         "headlineRamMb": null,
-        "hydrationTimeMs": 0.704,
+        "hydrationTimeMs": 14.742,
         "probeTimingsMs": {}
       },
       "hydration": {
         "pass": false,
         "smartCompare": {
           "pass": false,
-          "errorDetail": "Graph topology mismatch at edge comp_2→comp_8: expected edge to point to already",
-          "nodesProcessed": 8,
-          "edgesTraversed": 8
+          "errorDetail": "Maximum call stack size exceeded",
+          "nodesProcessed": 0,
+          "edgesTraversed": 0
         },
         "flatCompare": {
           "pass": false,
-          "errorDetail": "Dependency of node \"comp_0\" at index 0 is not present in the top-level actual ar"
+          "errorDetail": "Maximum call stack size exceeded"
         },
         "runtimeInvariant": {
           "pass": false,
-          "errorDetail": "Invariant skipped (structural compare failed)",
+          "errorDetail": "Maximum call stack size exceeded",
           "uniqueIds": 0,
           "uniqueInstances": 0,
           "edgesTraversed": 0
@@ -68,14 +68,14 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "acyclic-control",
+      "dataset": "basic",
       "metrics": {
-        "headlineTimeMs": 0.636,
-        "headlineRamMb": 0.081,
-        "hydrationTimeMs": 0.597,
+        "headlineTimeMs": 0.155,
+        "headlineRamMb": 0.049,
+        "hydrationTimeMs": 0.141,
         "probeTimingsMs": {
-          "naive-json": 0.039,
-          "cycle-flat": 0.198
+          "naive-json": 0.034,
+          "cycle-flat": 0.014
         }
       },
       "hydration": {
@@ -84,7 +84,7 @@
           "pass": true,
           "errorDetail": null,
           "nodesProcessed": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "flatCompare": {
           "pass": true,
@@ -95,7 +95,7 @@
           "errorDetail": null,
           "uniqueIds": 10,
           "uniqueInstances": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "doubleVerified": true
       },
@@ -104,8 +104,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": true,
-            "errorDetail": null,
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
             "outputVerification": null
           },
           {
@@ -125,14 +125,14 @@
       "algorithmName": "Tarjan SCC Layering",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "acyclic-control",
+      "dataset": "basic",
       "metrics": {
-        "headlineTimeMs": 0.759,
-        "headlineRamMb": 0.099,
-        "hydrationTimeMs": 0.751,
+        "headlineTimeMs": 0.251,
+        "headlineRamMb": 0.064,
+        "hydrationTimeMs": 0.241,
         "probeTimingsMs": {
-          "naive-json": 0.008,
-          "cycle-flat": 0.021
+          "naive-json": 0.027,
+          "cycle-flat": 0.01
         }
       },
       "hydration": {
@@ -141,7 +141,7 @@
           "pass": true,
           "errorDetail": null,
           "nodesProcessed": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "flatCompare": {
           "pass": true,
@@ -152,7 +152,7 @@
           "errorDetail": null,
           "uniqueIds": 10,
           "uniqueInstances": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "doubleVerified": true
       },
@@ -161,8 +161,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": true,
-            "errorDetail": null,
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
             "outputVerification": null
           },
           {
@@ -182,14 +182,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "acyclic-control",
+      "dataset": "basic",
       "metrics": {
-        "headlineTimeMs": 0.163,
-        "headlineRamMb": 0.039,
-        "hydrationTimeMs": 0.156,
+        "headlineTimeMs": 0.123,
+        "headlineRamMb": 0.048,
+        "hydrationTimeMs": 0.113,
         "probeTimingsMs": {
-          "naive-json": 0.009,
-          "cycle-flat": 0.007
+          "naive-json": 0.023,
+          "cycle-flat": 0.01
         }
       },
       "hydration": {
@@ -198,7 +198,7 @@
           "pass": true,
           "errorDetail": null,
           "nodesProcessed": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "flatCompare": {
           "pass": true,
@@ -209,7 +209,7 @@
           "errorDetail": null,
           "uniqueIds": 10,
           "uniqueInstances": 10,
-          "edgesTraversed": 11
+          "edgesTraversed": 17
         },
         "doubleVerified": true
       },
@@ -218,8 +218,8 @@
         "probes": [
           {
             "name": "naive-json",
-            "pass": true,
-            "errorDetail": null,
+            "pass": false,
+            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
             "outputVerification": null
           },
           {

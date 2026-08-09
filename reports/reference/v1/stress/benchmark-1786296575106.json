@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "96f3ece2f3d211e4",
-    "runAt": "2026-07-12T03:27:41.152Z",
-    "nodeVersion": "v22.23.1",
+    "fingerprint": "b6a95e96465566fd",
+    "runAt": "2026-08-09T17:29:29.131Z",
+    "nodeVersion": "v24.18.0",
     "platform": "linux",
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.0.2",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
+    "manifestGeneratedAt": "2026-08-09T17:29:28.461Z"
   },
   "results": [
     {
@@ -30,7 +30,7 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "extreme",
+      "dataset": "stress",
       "skipped": true,
       "metrics": null,
       "hydration": {
@@ -64,11 +64,11 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "extreme",
+      "dataset": "stress",
       "metrics": {
         "headlineTimeMs": null,
         "headlineRamMb": null,
-        "hydrationTimeMs": 78.13,
+        "hydrationTimeMs": 17.355,
         "probeTimingsMs": {}
       },
       "hydration": {
@@ -102,14 +102,14 @@
       "algorithmName": "Tarjan SCC Layering",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "extreme",
+      "dataset": "stress",
       "metrics": {
-        "headlineTimeMs": 2450.422,
-        "headlineRamMb": 283.598,
-        "hydrationTimeMs": 2290.158,
+        "headlineTimeMs": 404.296,
+        "headlineRamMb": 82.639,
+        "hydrationTimeMs": 387.154,
         "probeTimingsMs": {
-          "naive-json": 6.85,
-          "cycle-flat": 160.264
+          "naive-json": 5.888,
+          "cycle-flat": 17.142
         }
       },
       "hydration": {
@@ -117,8 +117,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 250000,
-          "edgesTraversed": 500514
+          "nodesProcessed": 50000,
+          "edgesTraversed": 99988
         },
         "flatCompare": {
           "pass": true,
@@ -127,9 +127,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 250000,
-          "uniqueInstances": 250000,
-          "edgesTraversed": 500514
+          "uniqueIds": 50000,
+          "uniqueInstances": 50000,
+          "edgesTraversed": 99988
         },
         "doubleVerified": true
       },
@@ -159,14 +159,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "extreme",
+      "dataset": "stress",
       "metrics": {
-        "headlineTimeMs": 1737.022,
-        "headlineRamMb": 217.118,
-        "hydrationTimeMs": 1585.985,
+        "headlineTimeMs": 244.661,
+        "headlineRamMb": 37.32,
+        "hydrationTimeMs": 224.827,
         "probeTimingsMs": {
-          "naive-json": 6.155,
-          "cycle-flat": 151.037
+          "naive-json": 6.019,
+          "cycle-flat": 19.834
         }
       },
       "hydration": {
@@ -174,8 +174,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 250000,
-          "edgesTraversed": 500514
+          "nodesProcessed": 50000,
+          "edgesTraversed": 99988
         },
         "flatCompare": {
           "pass": true,
@@ -184,9 +184,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 250000,
-          "uniqueInstances": 250000,
-          "edgesTraversed": 500514
+          "uniqueIds": 50000,
+          "uniqueInstances": 50000,
+          "edgesTraversed": 99988
         },
         "doubleVerified": true
       },

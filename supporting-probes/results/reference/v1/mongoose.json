@@ -26,5 +26,5 @@
   "libraryVersion": "8.24.0",
   "outcome": "HYDRATION_FAIL",
   "probe": "mongoose",
-  "runtimeVersion": "v22.23.1"
+  "runtimeVersion": "v24.18.0"
 }

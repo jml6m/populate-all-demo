@@ -26,5 +26,5 @@
   "libraryVersion": "5.22.0",
   "outcome": "HYDRATION_FAIL",
   "probe": "prisma",
-  "runtimeVersion": "v22.23.1"
+  "runtimeVersion": "v24.18.0"
 }

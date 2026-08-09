@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "fingerprint": "96f3ece2f3d211e4",
-    "runAt": "2026-07-12T03:27:41.152Z",
-    "nodeVersion": "v22.23.1",
+    "fingerprint": "b6a95e96465566fd",
+    "runAt": "2026-08-09T17:29:29.131Z",
+    "nodeVersion": "v24.18.0",
     "platform": "linux",
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.0.2",
     "datasets": [
       "acyclic-control",
       "basic",
@@ -22,7 +22,7 @@
       "naive-json",
       "cycle-flat"
     ],
-    "manifestGeneratedAt": "2026-07-12T03:27:40.560Z"
+    "manifestGeneratedAt": "2026-08-09T17:29:28.461Z"
   },
   "results": [
     {
@@ -30,13 +30,9 @@
       "algorithmName": "Naive Recursion",
       "timeComplexity": "O(∞)",
       "spaceComplexity": "O(∞)",
-      "dataset": "basic",
-      "metrics": {
-        "headlineTimeMs": null,
-        "headlineRamMb": null,
-        "hydrationTimeMs": 8.089,
-        "probeTimingsMs": {}
-      },
+      "dataset": "extreme",
+      "skipped": true,
+      "metrics": null,
       "hydration": {
         "pass": false,
         "smartCompare": {
@@ -68,56 +64,37 @@
       "algorithmName": "Map Tracker",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "basic",
+      "dataset": "extreme",
       "metrics": {
-        "headlineTimeMs": 0.13,
-        "headlineRamMb": 0.049,
-        "hydrationTimeMs": 0.119,
-        "probeTimingsMs": {
-          "naive-json": 0.034,
-          "cycle-flat": 0.011
-        }
+        "headlineTimeMs": null,
+        "headlineRamMb": null,
+        "hydrationTimeMs": 66.24,
+        "probeTimingsMs": {}
       },
       "hydration": {
-        "pass": true,
+        "pass": false,
         "smartCompare": {
-          "pass": true,
-          "errorDetail": null,
-          "nodesProcessed": 10,
-          "edgesTraversed": 17
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "nodesProcessed": 0,
+          "edgesTraversed": 0
         },
         "flatCompare": {
-          "pass": true,
-          "errorDetail": null
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded"
         },
         "runtimeInvariant": {
-          "pass": true,
-          "errorDetail": null,
-          "uniqueIds": 10,
-          "uniqueInstances": 10,
-          "edgesTraversed": 17
+          "pass": false,
+          "errorDetail": "Maximum call stack size exceeded",
+          "uniqueIds": 0,
+          "uniqueInstances": 0,
+          "edgesTraversed": 0
         },
-        "doubleVerified": true
+        "doubleVerified": false
       },
       "consumerProbes": {
-        "ran": true,
-        "probes": [
-          {
-            "name": "naive-json",
-            "pass": false,
-            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
-            "outputVerification": null
-          },
-          {
-            "name": "cycle-flat",
-            "pass": true,
-            "errorDetail": null,
-            "outputVerification": {
-              "pass": true,
-              "errorDetail": null
-            }
-          }
-        ]
+        "ran": false,
+        "probes": []
       }
     },
     {
@@ -125,14 +102,14 @@
       "algorithmName": "Tarjan SCC Layering",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "basic",
+      "dataset": "extreme",
       "metrics": {
-        "headlineTimeMs": 0.736,
-        "headlineRamMb": 0,
-        "hydrationTimeMs": 0.728,
+        "headlineTimeMs": 2968.98,
+        "headlineRamMb": 238.314,
+        "hydrationTimeMs": 2886.401,
         "probeTimingsMs": {
-          "naive-json": 0.026,
-          "cycle-flat": 0.008
+          "naive-json": 5.923,
+          "cycle-flat": 82.579
         }
       },
       "hydration": {
@@ -140,8 +117,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 10,
-          "edgesTraversed": 17
+          "nodesProcessed": 250000,
+          "edgesTraversed": 500514
         },
         "flatCompare": {
           "pass": true,
@@ -150,9 +127,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 10,
-          "uniqueInstances": 10,
-          "edgesTraversed": 17
+          "uniqueIds": 250000,
+          "uniqueInstances": 250000,
+          "edgesTraversed": 500514
         },
         "doubleVerified": true
       },
@@ -162,7 +139,7 @@
           {
             "name": "naive-json",
             "pass": false,
-            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "errorDetail": "Maximum call stack size exceeded",
             "outputVerification": null
           },
           {
@@ -182,14 +159,14 @@
       "algorithmName": "Two-Pass Wire",
       "timeComplexity": "O(V + E)",
       "spaceComplexity": "O(V)",
-      "dataset": "basic",
+      "dataset": "extreme",
       "metrics": {
-        "headlineTimeMs": 0.09,
-        "headlineRamMb": 0.048,
-        "hydrationTimeMs": 0.082,
+        "headlineTimeMs": 1568.101,
+        "headlineRamMb": 187.666,
+        "hydrationTimeMs": 1468.101,
         "probeTimingsMs": {
-          "naive-json": 0.023,
-          "cycle-flat": 0.008
+          "naive-json": 5.831,
+          "cycle-flat": 100
         }
       },
       "hydration": {
@@ -197,8 +174,8 @@
         "smartCompare": {
           "pass": true,
           "errorDetail": null,
-          "nodesProcessed": 10,
-          "edgesTraversed": 17
+          "nodesProcessed": 250000,
+          "edgesTraversed": 500514
         },
         "flatCompare": {
           "pass": true,
@@ -207,9 +184,9 @@
         "runtimeInvariant": {
           "pass": true,
           "errorDetail": null,
-          "uniqueIds": 10,
-          "uniqueInstances": 10,
-          "edgesTraversed": 17
+          "uniqueIds": 250000,
+          "uniqueInstances": 250000,
+          "edgesTraversed": 500514
         },
         "doubleVerified": true
       },
@@ -219,7 +196,7 @@
           {
             "name": "naive-json",
             "pass": false,
-            "errorDetail": "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'dependencies' -> object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    |     ...\n    |     property 'dependencies' -> object with constructor 'Array'\n    --- index 1 closes the circle",
+            "errorDetail": "Maximum call stack size exceeded",
             "outputVerification": null
           },
           {
