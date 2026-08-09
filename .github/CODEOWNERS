@@ -1,16 +1,15 @@
-# Agent-instruction governance lock — added as part of the 2026-08 cross-repo
-# consolidation to AGENTS.md as the single source of truth. Only these paths
-# require @jml6m's review before merge (enforced by the "main-require-review"
-# ruleset's "Require review from Code Owners" rule); everything else keeps
-# the repo's normal review requirements. See AGENTS.md for the full policy.
+# Governance locks — these paths require @jml6m review (ruleset: Require
+# review from Code Owners). Everything else keeps normal review requirements.
 #
-# .github/ is protected in full (not just the agent-instruction files within
-# it) — it's CI/CD workflows and repo automation, i.e. anything that could
-# weaken or bypass a merge gate. Matches the pattern already used in
-# local-land-client/local-land-server.
-
+# Agent-instruction / automation surfaces (AGENTS.md is the single source;
+# these paths are tripwires against reintroducing mirrors or weakening gates):
 CLAUDE.md                          @jml6m
 .github/                           @jml6m
 .cursorrules                       @jml6m
 GEMINI.md                          @jml6m
 .grok/                             @jml6m
+
+# package.json governance — dependency, scripts, and important metadata.
+# Lockfiles intentionally NOT listed (high churn / transitive noise).
+package.json                       @jml6m
+supporting-probes/package.json     @jml6m
