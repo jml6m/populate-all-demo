@@ -3,6 +3,7 @@
 #
 # Agent-instruction / automation surfaces (AGENTS.md is the single source;
 # these paths are tripwires against reintroducing mirrors or weakening gates):
+AGENTS.md                          @jml6m
 CLAUDE.md                          @jml6m
 .github/                           @jml6m
 .cursorrules                       @jml6m
