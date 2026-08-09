@@ -74,6 +74,7 @@ For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, 
 - **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
 - **v1.0.1** (patch) — corrected the **MikroORM** supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for [MikroORM results](./supporting-probes/results/reference/v1/mikroorm.json) were updated; benchmark/algorithm results are unchanged.
 - **v1.0.2** (patch) — corrected the ecosystem hydration conclusions: Only **MikroORM** and **Hibernate** reach schema-driven acyclic full hydration — and even these are provisional. **EF Core** and **TypeORM** cannot construct the eager query at all; **SQLAlchemy** and **ActiveRecord** resolve the graph only through N+1 traversal queries; the remaining libraries under-hydrate. The §2 comparison was reworked into an explicit cyclic/acyclic hydration matrix. Core two-pass algorithm and benchmark results are unchanged.
+- **v1.0.3** (patch) — Process & Infrastructure Overhaul. Repository automation and governance were streamlined for maintainers; experiment logic and benchmark outcomes are unchanged for end users.
 
 See [docs/ADMIN.md §Release procedure](./docs/ADMIN.md#release-procedure) for canonical release workflow and artifact details.
 
