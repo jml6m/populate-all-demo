@@ -227,3 +227,7 @@ GH_TOKEN="$(~/workspaces/.tooling/gh-app-token.sh jml6m/populate-all-demo)" gh p
 
 CI and Actions mint the same identity via `actions/create-github-app-token` using App credentials stored only as GitHub Actions secrets (never in source). The GitHub App is the standard automation
 identity for this repo — personal access tokens are not used.
+
+## Issues & PRs
+
+Agents put `Closes #N` / `Relates to #N` in the PR body (there is no auto-link workflow; do not rely on `N-` branch names).
