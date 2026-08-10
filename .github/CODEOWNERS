@@ -14,3 +14,8 @@ GEMINI.md                          @jml6m
 # Lockfiles intentionally NOT listed (high churn / transitive noise).
 package.json                       @jml6m
 supporting-probes/package.json     @jml6m
+
+# Markdown allowlist policy — this is a public repo, so every *.md add/change
+# needs review (docs-policy.yml's exact allowlist is enforced separately in
+# CI by the "docs-policy" job; this line is what makes the review mandatory).
+*.md                                @jml6m
