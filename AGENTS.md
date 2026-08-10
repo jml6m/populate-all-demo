@@ -178,9 +178,10 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 2. **All other `.github/workflows/*.yml`** — no `ci-change` label is required.
 3. **`.github/CODEOWNERS`** (when it exists) — admin only.
 4. **`.github/branch-protection.json`** (when it exists) — admin only.
-5. **`reports/reference/v1/` + `v2/` (and newer), `logs/reference/v1/` + `v2/` (and newer), `supporting-probes/results/reference/v1/` + `v2/` (and newer), `data/reference/v1/` + `v2/` (and newer)** — frozen per §6.
-6. **`package.json` `version` field** — admin only, modified by the release workflow.
-7. **`AGENTS.md`** (this file) — admin approval required for changes.
+5. **`.github/docs-policy.yml`** — CODEOWNERS-gated; agents may propose additions via PR, never merge them directly.
+6. **`reports/reference/v1/` + `v2/` (and newer), `logs/reference/v1/` + `v2/` (and newer), `supporting-probes/results/reference/v1/` + `v2/` (and newer), `data/reference/v1/` + `v2/` (and newer)** — frozen per §6.
+7. **`package.json` `version` field** — admin only, modified by the release workflow.
+8. **`AGENTS.md`** (this file) — admin approval required for changes.
 
 ### Interaction Guidelines
 
@@ -201,6 +202,7 @@ The following paths are **agent-protected**. Do not modify without explicit inst
 ## Documentation conventions
 
 - **Linkable paths must be clickable links.** Any in-repo path mentioned in a Markdown file must be written as a clickable link to the target (e.g. `[src/runner.ts](./src/runner.ts)`), not as bare inline code. Command examples and illustrative / non-existent paths are exempt. The existing [`docs-lint`](./.github/workflows/docs-lint.yml) job (lychee + markdownlint) validates that the links resolve.
+- **Markdown files are locked to an exact allowlist** — this is a public repo, and `.md` sprawl (agents documenting every decision in a new file) risks leaking internal notes/patterns and drowning the docs that matter. [`.github/docs-policy.yml`](./.github/docs-policy.yml) lists every path allowed to exist; [`.github/scripts/check-docs-policy.sh`](./.github/scripts/check-docs-policy.sh) enforces it as the `docs-policy` CI job. Editing an already-allowed file (including `analysis/*.md`, per §2) is unrestricted. **Do not create a new top-level `.md` file** (design notes, decision logs, admin runbooks, etc.) — put that content in the PR description or an issue instead. If a new doc file is genuinely warranted, add it to `docs-policy.yml`'s `allowed` list in the same PR; that file is CODEOWNERS-gated, so @jml6m reviews every addition.
 
 ## Opening PRs — author as the app, not the admin
 
