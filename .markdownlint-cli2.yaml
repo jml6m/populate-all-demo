@@ -29,8 +29,6 @@ ignores:
   - 'reports/local/**'
   - 'logs/local/**'
   - 'supporting-probes/results/local/**'
-  # Agent-instruction files — formatting is irrelevant (only an agent reads them); their links are
-  # still checked by lychee, which does not honor this list.
+  # Length-capped instead of format-linted; lychee still checks their links.
   - 'AGENTS.md'
   - 'CLAUDE.md'
-  - '.github/copilot-instructions.md'

@@ -1,48 +1,31 @@
 # Dependabot — monthly multi-ecosystem gold baseline (multi-directory)
 # https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configuring-multi-ecosystem-updates
 # open-pull-requests-limit must live on the multi-ecosystem group (not on updates).
+# supporting-probes/ is not listed: its dependencies are part of the experiment definition and
+# change only in a major release, alongside a new reference set.
 version: 2
 
 multi-ecosystem-groups:
   all-dependencies:
     schedule:
-      interval: "monthly"
+      interval: 'monthly'
     open-pull-requests-limit: 1
     labels:
-      - "dependencies"
-      - "defer-to-later-release"
+      - 'dependencies'
+      - 'defer-to-later-release'
     assignees:
-      - "jml6m"
+      - 'jml6m'
 
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-    versioning-strategy: "increase"
+      - '*'
+    multi-ecosystem-group: 'all-dependencies'
+    versioning-strategy: 'increase'
 
-  - package-ecosystem: "npm"
-    directory: "/supporting-probes"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-    versioning-strategy: "increase"
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-
-  - package-ecosystem: "maven"
-    directory: "/supporting-probes"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-
-  - package-ecosystem: "nuget"
-    directory: "/supporting-probes"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
+      - '*'
+    multi-ecosystem-group: 'all-dependencies'

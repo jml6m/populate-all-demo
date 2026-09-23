@@ -3,10 +3,10 @@
 
 ## Related Issues
 <!--
-  Agents put closing keywords in the body to link/close issues (e.g. "Closes #1").
-  For multiple issues, use the keyword before each issue (e.g. "Closes #1, Fixes #2").
+  Add a line starting with "Relates to #N" for the issue this PR serves
+  (one line per issue). The issue must be open and in a milestone.
 -->
-<!-- Closes # -->
+Relates to #
 
 ## Checklist
 - [ ] My code follows the style guidelines of this project

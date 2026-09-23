@@ -30,6 +30,16 @@ module.exports = defineConfig([
       '@typescript-eslint/no-unused-vars': 'off',
       'unused-imports/no-unused-imports': 'error',
       'unused-imports/no-unused-vars': ['warn', { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+
+      'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Already over the cap. Splitting them restructures the experiment runner, which waits for
+    // the next major release; warn until then so new code still gets the error.
+    files: ['src/runner.ts', 'src/runner.test.ts', 'src/utils/compare.test.ts', 'src/utils/manifest-validator.test.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 400, skipBlankLines: true, skipComments: true }],
     },
   },
 ]);
