@@ -16,6 +16,7 @@
     "lint": "eslint \"src/**/*.ts\" && npm run lint:encoding",
     "lint:encoding": "node scripts/check-encoding.mjs",
     "lint:docs": "npx --yes markdownlint-cli2@0.14.0 \"**/*.md\"",
+    "lint:agents": "node scripts/check-agent-file-length.mjs",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "audit:ci": "node scripts/audit-ci.mjs"
   },
