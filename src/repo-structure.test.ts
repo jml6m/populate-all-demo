@@ -196,11 +196,11 @@ void describe('repo-structure — package.json', () => {
     });
   }
 
-  void it('version uses X.0.Z form (minor is fixed at 0)', () => {
+  void it('version uses X.Y.0 form (only major and minor versions are released)', () => {
     assert.match(
       pkg.version,
-      /^\d+\.0\.\d+$/,
-      `package.json version "${pkg.version}" must use X.0.Z form (major and patch numeric; minor fixed at 0), e.g. 1.0.0, 1.0.1, 2.0.0.`
+      /^\d+\.\d+\.0$/,
+      `package.json version "${pkg.version}" must use X.Y.0 form (releases are major or minor), e.g. 1.1.0, 2.0.0.`
     );
   });
 });

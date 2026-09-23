@@ -241,7 +241,7 @@ This extended report is scoped to cross-ecosystem comparison of full cyclic hydr
 
 [^18]: [Prisma — Relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
 
-[^19]: [Prisma — issue #3725](https://github.com/prisma/prisma/issues/3725)
+[^19]: [Prisma — issue #3725](https://github.com/prisma/orm/issues/3725)
 
 [^20]: [TypeORM — issue #3663](https://github.com/typeorm/typeorm/issues/3663)
 
