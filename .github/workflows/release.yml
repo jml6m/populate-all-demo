@@ -1,24 +1,227 @@
 name: Release
 
+# Maintainer-started release of the main tip.
+#   minor: fixes and infrastructure. package.json already carries X.Y.0 from the release PR.
+#          Never re-runs the experiment and never touches reference/; tags and releases only.
+#   major: the full pipeline. Regenerates results into a new reference/v<N+1>/ set, commits it
+#          with the version bump, then tags and releases.
+# A real run needs a successful dry run of the same type on the same commit. Steps skip work
+# already done, so re-running failed jobs resumes a partial release.
+run-name: ${{ inputs.dry_run && 'Release dry run' || 'Release' }} (${{ inputs.release_type }}) from ${{ github.ref_name }}
+
 on:
   workflow_dispatch:
     inputs:
       release_type:
         description: 'Release type'
-        required: false
-        default: major
+        required: true
+        default: minor
         type: choice
         options:
+          - minor
           - major
-          - patch
+      dry_run:
+        description: 'Dry run: run every check, write nothing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ${{ vars.RUNS_ON }}
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TYPE: ${{ inputs.release_type }}
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      current_major: ${{ steps.version.outputs.current_major }}
+      next_major: ${{ steps.version.outputs.next_major }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      tag_exists: ${{ steps.state.outputs.tag_exists }}
+      milestone: ${{ steps.milestone.outputs.number }}
+    steps:
+      - name: Only the maintainer releases
+        run: |
+          if [ "$GITHUB_TRIGGERING_ACTOR" != "jml6m" ]; then
+            echo "::error::Only the maintainer can start a release, not ${GITHUB_TRIGGERING_ACTOR}."
+            exit 1
+          fi
+
+      - name: Only from the default branch tip
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            echo "::error::Run this from ${DEFAULT_BRANCH}, not ${GITHUB_REF}."
+            exit 1
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Release the tip of ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          TIP="$(git rev-parse "origin/${DEFAULT_BRANCH}")"
+          if [ "$TIP" != "$GITHUB_SHA" ]; then
+            echo "::error::${DEFAULT_BRANCH} moved to ${TIP} after this run started at ${GITHUB_SHA}. Start a new run."
+            exit 1
+          fi
+
+      - name: Resolve the version
+        id: version
+        run: |
+          set -euo pipefail
+          CURRENT="$(node -p "require('./package.json').version")"
+          if ! [[ "$CURRENT" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::package.json version '${CURRENT}' is not MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
+          if [ "$RELEASE_TYPE" = "minor" ]; then
+            if [ "$PATCH" != "0" ]; then
+              echo "::error::A minor release ships package.json as X.Y.0 from its release PR; found ${CURRENT}."
+              exit 1
+            fi
+            TAG="v${CURRENT}"; LINE="v${MAJOR}.${MINOR}"
+          else
+            TAG="v$((MAJOR + 1)).0.0"; LINE="v$((MAJOR + 1)).0"
+          fi
+          PREVIOUS="$(git tag --list 'v*' --sort=-v:refname | grep -v -x "$TAG" | head -1 || true)"
+          {
+            echo "tag=${TAG}"
+            echo "line=${LINE}"
+            echo "current_major=${MAJOR}"
+            echo "next_major=$((MAJOR + 1))"
+            echo "previous_tag=${PREVIOUS}"
+          } >> "$GITHUB_OUTPUT"
+          echo "${RELEASE_TYPE}: ${CURRENT} -> ${TAG} (previous ${PREVIOUS:-none})"
+
+      - name: Tag state
+        id: state
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          TAG_EXISTS=false
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            TAGGED="$(git rev-parse "${TAG}^{commit}")"
+            if [ "$RELEASE_TYPE" = "major" ] || [ "$TAGGED" != "$GITHUB_SHA" ]; then
+              echo "::error::${TAG} already exists on ${TAGGED}. Tags never move."
+              exit 1
+            fi
+            TAG_EXISTS=true
+          fi
+          echo "tag_exists=${TAG_EXISTS}" >> "$GITHUB_OUTPUT"
+
+      # The vX.Y milestone must be done. Its `release`-labelled issue tracks the release itself
+      # and is closed by the finish job.
+      - name: Milestone is done
+        id: milestone
+        env:
+          LINE: ${{ steps.version.outputs.line }}
+        run: |
+          NUMBER="$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=all&per_page=100" \
+            --jq ".[] | select(.title == \"${LINE}\") | .number")"
+          if [ -z "$NUMBER" ]; then
+            echo "::notice::No ${LINE} milestone; nothing to close."
+            exit 0
+          fi
+          OPEN="$(gh api "repos/${GITHUB_REPOSITORY}/issues?milestone=${NUMBER}&state=open&per_page=100" \
+            --jq '[.[] | select(all(.labels[]; .name != "release")) | "#\(.number) \(.title)"] | .[]')"
+          if [ -n "$OPEN" ]; then
+            echo "::error::${LINE} still has open issues or PRs:"
+            echo "$OPEN"
+            exit 1
+          fi
+          echo "number=${NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: A dry run passed on this commit
+        if: ${{ !inputs.dry_run }}
+        run: |
+          WANT="Release dry run (${RELEASE_TYPE})"
+          PASSED="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --limit 100 \
+            --json headSha,conclusion,displayTitle \
+            --jq "[.[] | select(.headSha == \"${GITHUB_SHA}\" and .conclusion == \"success\" and (.displayTitle | startswith(\"${WANT}\")))] | length")"
+          if [ "$PASSED" -eq 0 ]; then
+            echo "::error::No successful ${RELEASE_TYPE} dry run on ${GITHUB_SHA}. Run this workflow with dry_run checked first."
+            exit 1
+          fi
+
+  minor:
+    needs: check
+    if: ${{ inputs.release_type == 'minor' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.check.outputs.tag }}
+      PREVIOUS: ${{ needs.check.outputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Results are unchanged since the last release
+        run: |
+          if [ -z "$PREVIOUS" ]; then
+            echo "::error::No previous release tag to compare against."
+            exit 1
+          fi
+          if ! git diff --quiet "$PREVIOUS" "$GITHUB_SHA" -- \
+              reports/reference logs/reference supporting-probes/results/reference data/reference; then
+            echo "::error::reference/ changed since ${PREVIOUS}. Only a major release writes results."
+            git diff --stat "$PREVIOUS" "$GITHUB_SHA" -- \
+              reports/reference logs/reference supporting-probes/results/reference data/reference
+            exit 1
+          fi
+          echo "reference/ is identical to ${PREVIOUS}."
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22.22.3'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Test
+        run: |
+          mkdir -p logs/local logs/reference
+          npm test
+
+      - name: Tag ${{ needs.check.outputs.tag }}
+        if: ${{ !inputs.dry_run && needs.check.outputs.tag_exists != 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "$GITHUB_SHA" -m "$TAG"
+          git push origin "refs/tags/${TAG}"
+
+      - name: GitHub release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+              --generate-notes --notes-start-tag "$PREVIOUS"
+          fi
+
+  major:
+    needs: check
+    if: ${{ inputs.release_type == 'major' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     services:
@@ -33,61 +236,35 @@ jobs:
           --health-retries 5
 
     steps:
-      # Mint a short-lived token from the dedicated *version-bump* GitHub App
-      # (jml6m-version-bot via VERSION_BUMP_APP_*; Always-allow bypass on the
-      # main-require-review ruleset — NOT jml6m-bot / APP_ID). jml6m-bot authors
-      # PRs and must remain subject to required checks (no release-push bypass).
-      - name: Mint version-bump App token
+      # The release commit goes straight to main, so a real major needs the release App's token.
+      - name: Mint release App token
         id: app-token
-        uses: actions/create-github-app-token@v2
+        if: ${{ !inputs.dry_run }}
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
           app-id: ${{ secrets.VERSION_BUMP_APP_ID }}
           private-key: ${{ secrets.VERSION_BUMP_APP_PRIVATE_KEY }}
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
           fetch-depth: 0
 
       - name: Compute next version
         id: version
         env:
-          RELEASE_TYPE: ${{ github.event.inputs.release_type || 'major' }}
+          NEXT_MAJOR: ${{ needs.check.outputs.next_major }}
+          CURRENT_MAJOR: ${{ needs.check.outputs.current_major }}
         run: |
-          set -euo pipefail
-          current=$(node -p "require('./package.json').version")
-          if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo "❌ package.json version '$current' is not in MAJOR.MINOR.PATCH format."
-            exit 1
-          fi
-          major=${BASH_REMATCH[1]}
-          minor=${BASH_REMATCH[2]}
-          patch=${BASH_REMATCH[3]}
-          release_type=${RELEASE_TYPE:-major}
-
-          if [ "$release_type" = "patch" ]; then
-            next_major=$major
-            next_patch=$((patch + 1))
-            next_tag="v$major.$minor.$next_patch"
-            next_semver="$major.$minor.$next_patch"
-          else
-            next_major=$((major + 1))
-            next_tag="v$next_major.0.0"
-            next_semver="$next_major.0.0"
-          fi
-
-          echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "next_major=$next_major" >> "$GITHUB_OUTPUT"
-          echo "next_version=v$next_major" >> "$GITHUB_OUTPUT"
-          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
-          echo "next_semver=$next_semver" >> "$GITHUB_OUTPUT"
-          echo "current_major=$major" >> "$GITHUB_OUTPUT"
-          echo "release_type=$release_type" >> "$GITHUB_OUTPUT"
-          echo "Releasing $next_tag (current is $current, type=$release_type)"
+          {
+            echo "current_major=${CURRENT_MAJOR}"
+            echo "next_version=v${NEXT_MAJOR}"
+            echo "next_tag=v${NEXT_MAJOR}.0.0"
+            echo "next_semver=${NEXT_MAJOR}.0.0"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Existence check
-        if: steps.version.outputs.release_type != 'patch'
         env:
           NEXT: ${{ steps.version.outputs.next_version }}
         run: |
@@ -102,21 +279,21 @@ jobs:
           if [ "$fail" -ne 0 ]; then exit 1; fi
           echo "✅ No existing $NEXT directories."
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: ${{ vars.NODE_VERSION }}
+          node-version: '22.22.3'
           cache: 'npm'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.x'
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@8e41b362d2589a22a44c1cfa214b3c83052c195b # v1.318.0
         with:
           ruby-version: 'ruby'
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: 'temurin'
           java-version: '21'
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '8.0.x'
 
@@ -125,7 +302,7 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Lychee link check
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: --no-progress --include-fragments --config ./.lychee.toml './**/*.md'
           fail: true
@@ -168,7 +345,6 @@ jobs:
         run: npm run probe:all
 
       - name: Fingerprint check vs previous release
-        if: steps.version.outputs.release_type != 'patch'
         env:
           CURRENT_MAJOR: ${{ steps.version.outputs.current_major }}
         run: |
@@ -197,26 +373,8 @@ jobs:
       - name: Copy artifacts to reference/
         env:
           NEXT: ${{ steps.version.outputs.next_version }}
-          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
         run: |
           set -euo pipefail
-          if [ "$RELEASE_TYPE" = "patch" ]; then
-            fail=0
-            for d in \
-              "reports/reference/$NEXT" \
-              "logs/reference/$NEXT" \
-              "supporting-probes/results/reference/$NEXT" \
-              "data/reference/$NEXT"; do
-              if [ ! -d "$d" ]; then
-                echo "❌ Patch mode requires an existing $d directory (run a major release first)."
-                fail=1
-              fi
-            done
-            if [ "$fail" -ne 0 ]; then exit 1; fi
-            rm -rf "reports/reference/$NEXT" "logs/reference/$NEXT" "supporting-probes/results/reference/$NEXT" "data/reference/$NEXT"
-            echo "✅ Patch mode: replacing all reference assets in $NEXT."
-          fi
-
           mkdir -p "supporting-probes/results/reference/$NEXT"
           latest_probes=$(ls -d supporting-probes/results/local/*/ | sort | tail -1)
           cp -r "$latest_probes"* "supporting-probes/results/reference/$NEXT/"
@@ -286,10 +444,11 @@ jobs:
           cat "reports/reference/$NEXT_VERSION/manifest.json"
 
       - name: Bump package version
-        run: |
-          set -euo pipefail
-          npm version "${{ steps.version.outputs.next_semver }}" --no-git-tag-version --force
-      - name: Commit and push
+        if: ${{ !inputs.dry_run }}
+        run: npm version "${{ steps.version.outputs.next_semver }}" --no-git-tag-version --force
+
+      - name: Commit, push and tag
+        if: ${{ !inputs.dry_run }}
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
@@ -303,20 +462,34 @@ jobs:
             "supporting-probes/results/reference/$NEXT_VERSION/" \
             "data/reference/$NEXT_VERSION/"
           git commit -m "Release $NEXT_TAG"
-          if ! git push origin main; then
-            echo ""
-            echo "❌ Push to main failed."
-            echo "   Most likely cause: the version-bump App token step failed, or"
-            echo "   jml6m-version-bot is not an 'Always allow' bypass actor on the"
-            echo "   main-require-review ruleset."
-            echo ""
-            echo "   Admin remediation:"
-            echo "   1. Verify VERSION_BUMP_APP_ID + VERSION_BUMP_APP_PRIVATE_KEY exist"
-            echo "      (Settings > Secrets and variables > Actions)."
-            echo "   2. Verify the jml6m-version-bot App is installed on this repo."
-            echo "   3. Verify jml6m-version-bot has 'Always allow' bypass on the"
-            echo "      main-require-review ruleset (not jml6m-bot — that App authors PRs)."
-            echo ""
-            exit 1
-          fi
-          echo "✅ Pushed release $NEXT_TAG to main."
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          git tag -a "$NEXT_TAG" -m "$NEXT_TAG"
+          git push origin "refs/tags/${NEXT_TAG}"
+
+      - name: GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+          PREVIOUS: ${{ needs.check.outputs.previous_tag }}
+        run: |
+          gh release create "$NEXT_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$NEXT_TAG" \
+            --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
+
+  finish:
+    needs: [check, minor, major]
+    if: ${{ always() && !inputs.dry_run && needs.check.result == 'success' && (needs.minor.result == 'success' || needs.major.result == 'success') && needs.check.outputs.milestone != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.check.outputs.tag }}
+      MILESTONE: ${{ needs.check.outputs.milestone }}
+    steps:
+      - name: Close the release issue and the milestone
+        run: |
+          for n in $(gh api "repos/${GITHUB_REPOSITORY}/issues?milestone=${MILESTONE}&state=open&labels=release&per_page=100" --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "Released as ${TAG}."
+          done
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/milestones/${MILESTONE}" -f state=closed --jq '"Closed milestone \(.title)."'
