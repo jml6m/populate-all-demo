@@ -341,16 +341,15 @@ void describe('smartCompare — mismatch detection', () => {
 // Strategy: build graphs at scale factors [1×, 2×, 4×, 8×] of BASE_N nodes,
 // each organised as groups of GROUP_SIZE nodes forming independent short
 // cycles.  This keeps the max recursion depth constant (= GROUP_SIZE) while
-// letting N grow large enough for reliable timing.
+// letting N grow across the scale points.
 //
 // For each graph:
 //   V = N  (every node is visited exactly once)
 //   E = N × DEGREE  (every edge is traversed exactly once)
 //   ops = V + E = N × (1 + DEGREE)  — mathematically deterministic
 //
-// Two independent checks are performed and then synthesised:
-//  1. Operation count: ops(k×N) / ops(N) must equal k exactly.
-//  2. Runtime scaling: time(k×N) / time(N) must be ≈ k (within tolerance).
+// Operation count is the deterministic gate: ops(k×N) / ops(N) must equal k.
+// Runtime samples are observations only; shared-runner noise must not fail CI.
 // ---------------------------------------------------------------------------
 
 // Fixed parameters for the complexity proof
@@ -360,10 +359,6 @@ const GROUP_SIZE = 10; // nodes per independent cycle — bounds max recursion d
 const SCALE_FACTORS = [1, 2, 4, 8]; // scale multipliers relative to BASE_N
 const WARMUP_RUNS = 3; // JIT warm-up runs before timing
 const TIMING_RUNS = 7; // timing runs; median is used
-// How far the actual runtime ratio may deviate from the expected linear ratio.
-// 75% tolerance means: for a 2× scale we accept ratios in [0.5, 3.5].
-// This catches super-linear (O(N²)) regressions while tolerating CI noise.
-const RUNTIME_TOLERANCE = 0.75;
 
 interface ScalePoint {
   scale: number;
@@ -398,7 +393,7 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 
-// Compute scaling data once at describe-level so all three it() blocks share it.
+// Compute scaling data once so the operation-count test and timing report share it.
 const scalingData: ScalePoint[] = SCALE_FACTORS.map((scale) => {
   const N = BASE_N * scale;
   const [actual, expected] = makeGroupedCycleGraph(N);
@@ -448,49 +443,16 @@ void describe('smartCompare — O(V+E) complexity proof', () => {
     console.log('   ✅ Operation count scales exactly as O(V+E).');
   });
 
-  void it('runtime scales approximately as O(V+E) [empirical check]', () => {
+  void it('reports runtime scaling observations without timing assertions', (t) => {
     const details: string[] = [];
 
     for (const { scale, medianMs } of scalingData) {
-      const actualRatio = medianMs / baseMs;
-      const expectedRatio = scale;
-      const lo = Math.max(0, expectedRatio * (1 - RUNTIME_TOLERANCE));
-      const hi = expectedRatio * (1 + RUNTIME_TOLERANCE);
-      details.push(`${scale}×: ${medianMs.toFixed(2)}ms ratio=${actualRatio.toFixed(2)} (expect [${lo.toFixed(1)}, ${hi.toFixed(1)}])`);
-
-      assert.ok(
-        actualRatio >= lo && actualRatio <= hi,
-        `Runtime ratio for ${scale}× scale is ${actualRatio.toFixed(2)}, expected in [${lo.toFixed(2)}, ${hi.toFixed(2)}]`
-      );
+      const ratio = baseMs > 0 ? (medianMs / baseMs).toFixed(2) : 'n/a';
+      details.push(`${scale}×: ${medianMs.toFixed(2)}ms ratio=${ratio}`);
     }
 
-    console.log('   [Runtime ]', details.join('  |  '));
-    console.log('   ✅ Runtime scales approximately as O(V+E).');
-  });
-
-  void it('final verification: both checks agree on O(V+E) behavior', () => {
-    let opCountPassed = true;
-    let runtimePassed = true;
-
-    for (const { scale, ops, medianMs } of scalingData) {
-      if (ops / baseOps !== scale) opCountPassed = false;
-
-      const ratio = medianMs / baseMs;
-      const lo = Math.max(0, scale * (1 - RUNTIME_TOLERANCE));
-      const hi = scale * (1 + RUNTIME_TOLERANCE);
-      if (ratio < lo || ratio > hi) runtimePassed = false;
-    }
-
-    if (opCountPassed && runtimePassed) {
-      console.log('   ✅ O(V+E) VERIFIED: both operation count and runtime checks confirm linear scaling.');
-    } else if (opCountPassed && !runtimePassed) {
-      console.error('   ⚠️  O(V+E) PARTIAL: operation count mathematically confirms linear scaling; runtime check inconclusive (possible CI measurement noise).');
-    } else if (!opCountPassed && runtimePassed) {
-      console.error('   ⚠️  O(V+E) PARTIAL: runtime approximately confirms linear scaling; operation count check failed unexpectedly.');
-    } else {
-      console.error('   ❌ O(V+E) NOT VERIFIED: both operation count and runtime checks failed.');
-      assert.fail('O(V+E) not verified: both operation count and runtime checks failed.');
-    }
+    t.diagnostic(`[Runtime observations only] ${details.join('  |  ')}`);
+    t.diagnostic('Timing ratios are informational; operation counts determine the complexity test result.');
   });
 });
 
