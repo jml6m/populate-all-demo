@@ -1,0 +1,20 @@
+# Exact allowlist of Markdown files in this repo. Any tracked *.md file not listed
+# here, and not under an exempt_globs path, fails the "docs-policy" job in
+# .github/workflows/docs-lint.yml. Widening it needs the maintainer's review.
+#
+# Enforced by: .github/scripts/check-docs-policy.sh
+
+allowed:
+  - README.md                              # Public project overview, usage, install instructions
+  - AGENTS.md                               # Project guidance for agents and reviewers
+  - CONTRIBUTING.md                          # How to contribute
+  - CLAUDE.md                                # Thin @AGENTS.md import pointer only
+  - SECURITY.md                               # Vulnerability disclosure policy
+  - supporting-probes/README.md                # Supporting-probes subproject overview
+  - analysis/ECOSYSTEM_RESEARCH.md               # Human-authored research report (the project's actual deliverable)
+  - analysis/EXPERIMENT_ANALYSIS.md               # Human-authored research report (the project's actual deliverable)
+  - .github/ISSUE_TEMPLATE/bug_report.md
+  - .github/ISSUE_TEMPLATE/feature_request.md
+  - .github/pull_request_template.md
+
+exempt_globs: []

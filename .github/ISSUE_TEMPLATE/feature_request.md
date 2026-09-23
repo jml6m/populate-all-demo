@@ -16,7 +16,7 @@ What problem does this solve, or what research question does it open?
 - [ ] Supporting probes (specify which)
 - [ ] Release / CI infrastructure (`.github/workflows/`)
 - [ ] Analysis docs (`analysis/`)
-- [ ] Project documentation (`README.md`, `AGENTS.md`, `docs/ADMIN.md`)
+- [ ] Project documentation (`README.md`, `AGENTS.md`)
 - [ ] New algorithm to benchmark
 - [ ] New library to probe
 

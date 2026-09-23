@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        ### 🧭 Epic Guidelines (For Agents & Developers)
+        ### 🧭 Epic Guidelines
         - **When to use:** Use an Epic when the work naturally breaks down into **3 or more** distinct sub-issues, or spans multiple repositories/functional areas.
         - **How to use:** 
           1. Create this Parent Epic first.
