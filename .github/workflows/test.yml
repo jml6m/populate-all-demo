@@ -28,6 +28,9 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      - name: Circular imports
+        run: npm run health:circular
+
       - name: Create logs directory
         run: mkdir -p logs/local logs/reference
 
