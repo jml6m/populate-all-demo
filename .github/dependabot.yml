@@ -23,9 +23,17 @@ updates:
       - '*'
     multi-ecosystem-group: 'all-dependencies'
     versioning-strategy: 'increase'
+    ignore:
+      # typescript-eslint doesn't support the next TypeScript major yet.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'github-actions'
     directory: '/'
     patterns:
       - '*'
     multi-ecosystem-group: 'all-dependencies'
+    ignore:
+      # v3 deprecates the app-id input; moving to it is a separate change.
+      - dependency-name: 'actions/create-github-app-token'
+        update-types: ['version-update:semver-major']
