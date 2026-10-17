@@ -26,7 +26,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        continue-on-error: true
 
       - name: Circular imports
         run: npm run health:circular
