@@ -9,32 +9,52 @@ welcome; response times are best-effort.
 - Corrections to the supporting probes or the analysis, with evidence.
 - Fixes to the runner, generator and tooling that keep results unchanged.
 
-Changes that alter the experiment or its results are planned into the next major version, which
-publishes a new reference set. The published `reference/` directories are never edited.
+## Research contributions
 
-## Before you open a PR
+Results stay comparable only if the conditions they were measured under stay fixed:
 
-Open an issue first for anything beyond a typo, so the approach is agreed before code is written.
-Use the templates under [`.github/ISSUE_TEMPLATE/`](./.github/ISSUE_TEMPLATE/).
+- The published results under the `reference/` directories change only in a major release, which
+  publishes a new reference set. They are never edited.
+- The measured libraries in [`supporting-probes/`](./supporting-probes/) are pinned, and the
+  measurement runtime (the Node version in [`.nvmrc`](./.nvmrc) and the CI runner) is fixed per
+  release. Changing either is planned into the next major.
+- A change that affects measurements needs an issue that agrees the method first.
+- Gates and report-only output are different things. A gate fails the run (the empirical runtime
+  check in the tests is one); report-only output is printed or written to a report and never
+  fails anything. Say which one a new check is.
 
-## Local gates
+## Contributing from a fork
+
+1. For anything beyond a typo or small fix, open or comment on an issue first and agree the
+   approach there, using the templates under [`.github/ISSUE_TEMPLATE/`](./.github/ISSUE_TEMPLATE/).
+   Follow the design an issue describes; to propose a different one, say so on the issue before
+   writing code.
+2. Fork the repository and branch from `main`. Keep each pull request to one focused change.
+3. Run the [local checks](#local-checks) before you push.
+4. Open the pull request against `main`. Its description starts with `Closes #N`, or
+   `Relates to #N` if it only does part of the issue. That issue must be open and in a
+   milestone; the maintainer adds milestones, so ask on the issue if it has none. The
+   `issue-link` check enforces this.
+5. Leave "Allow edits from maintainers" checked.
+
+CI on a first contribution runs after the maintainer approves it. Pull requests are reviewed as the
+maintainer has time, with no fixed response time, and are squash-merged. Don't open a pull request
+you don't plan to see through.
+
+Don't bump the version in `package.json` or touch anything under a `reference/` directory.
+
+## Local checks
 
 ```bash
 npm ci
-npm run lint        # ESLint + encoding check
-npm test            # unit tests (Node's built-in runner via tsx)
-npm run lint:docs   # markdownlint, if you touched Markdown
+npm run lint              # ESLint + encoding check
+npm run health:circular   # circular imports in src/ (madge)
+npm test                  # unit tests (Node's built-in runner via tsx)
+npm run lint:docs         # markdownlint, if you touched Markdown
 ```
 
 CI runs the same, plus the supporting-probe suite and a link check on Markdown. Use the Node version
 in [`.nvmrc`](./.nvmrc).
-
-## PR conventions
-
-- Open the PR against `main`. Its description has a line starting with `Relates to #N` for the
-  issue it serves; the `issue-link` check requires it.
-- Keep a PR to one change. PRs are squash-merged.
-- Don't bump the version in `package.json` or touch anything under a `reference/` directory.
 
 ## Where the rules live
 
