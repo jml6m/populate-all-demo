@@ -146,7 +146,7 @@ On an acyclic graph, `JSON.stringify` succeeds because there are no circular ref
 | Tarjan SCC Layering | 0.899 ms / 0.099 MB | 0.292 ms / 0.064 MB | 38.036 ms / 10.243 MB | 443.007 ms / 52.639 MB | 3,482.344 ms / 281.093 MB |
 | Two-Pass Wire       | 0.298 ms / 0.039 MB | 1.088 ms / 0 MB     | 24.678 ms / 0 MB      | 528.237 ms / 37.813 MB | 2,174.188 ms / 203.311 MB |
 
-> **Measurement environment.** Timings and RAM in the table above are sourced from the canonical `v1` benchmark JSONs in [`reports/reference/v1/`](../reports/reference/v1/), measured on GitHub-hosted `ubuntu-latest` with Node 22.22.3 and a 4 GB heap (`NODE_OPTIONS='--max-old-space-size=4096'`). The full release manifest with commit SHA, run ID, and lockfile hashes is at [`reports/reference/v1/manifest.json`](../reports/reference/v1/manifest.json). Local runs on developer hardware will produce different numbers.
+> **Measurement environment.** Timings and RAM in the table above are sourced from the canonical `v1` benchmark JSONs in [`reports/reference/v1/`](../reports/reference/v1/), measured on GitHub-hosted `ubuntu-latest` with Node v24.18.0 and a 4 GB heap (`NODE_OPTIONS='--max-old-space-size=4096'`). The full release manifest with commit SHA, run ID, and lockfile hashes is at [`reports/reference/v1/manifest.json`](../reports/reference/v1/manifest.json). Local runs on developer hardware will produce different numbers.
 >
 > _(The Python, Ruby, Java, and .NET runtimes used by supporting probes are recorded in the same manifest but do not affect the JS-only benchmark numbers in the table above.)_
 

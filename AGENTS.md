@@ -18,7 +18,8 @@ record of published findings; treat them as immutable historical data.
 - `npm run generate`: produce test datasets (writes to `data/`, gitignored).
 - `npm run experiment` / `npm run experiment:force`: run benchmarks (writes to `reports/`, gitignored).
 - `npm test`: unit tests (trace logs to `logs/`, gitignored).
-- `npm run lint`: ESLint. `npm run lint:docs`: markdownlint.
+- `npm run lint`: ESLint and the encoding check. `npm run health:circular`: circular imports
+  (madge). `npm run lint:docs`: markdownlint.
 - `cd supporting-probes && npm ci && npm run probe:all`: the full supporting-probe suite.
   `mongoose` needs a reachable MongoDB (`MONGODB_URI`, default
   `mongodb://127.0.0.1:27017/supporting_probe_mongoose`). For the Python/Ruby/Java/.NET setup,
@@ -54,7 +55,8 @@ different output across re-runs, it is incorrect.
   dependency versions.
 - **The runtime is a measurement parameter, not a compatibility setting.** Node is pinned to
   exactly `22.22.3` ([`.nvmrc`](./.nvmrc) and every workflow), and CI runs on `ubuntu-24.04`.
-  The v1 numbers were measured on that runtime. `engines` stays `>=22`, because that is the real
+  The v1 reference numbers were measured on Node `v24.18.0`, as each v1 artifact records; the
+  next major decides the runtime for its numbers. `engines` stays `>=22`, because that is the real
   code floor. Changing the runtime, or the supporting-probe dependencies, requires a new major
   reference version with regenerated numbers, never a routine bump.
 

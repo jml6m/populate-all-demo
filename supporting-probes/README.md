@@ -4,7 +4,7 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 ## Hydration scenarios under test
 
-- Schema-driven full hydration of **cyclic** objects (documentation-driven in this patch cycle): `A -> B -> A`
+- Schema-driven full hydration of **cyclic** objects (documentation-driven, not exercised in probe code): `A -> B -> A`
 - Schema-driven full hydration of **acyclic** objects (implemented in probe code): `A -> B -> C`
 
 ## Commands
@@ -51,7 +51,7 @@ The `supporting-probes` workflow runs with `PROBE_VERBOSE=1` so workflow logs pr
 Each orchestrator run computes one `PROBE_RUN_ID` (`YYYYMMDD-HHMMSS-<7hexchars|nogit>`) and every probe writes JSON to:
 
 - Local/unofficial runs: `supporting-probes/results/local/<run-id>/<probe>.json`
-- Official release artifacts (future release workflow only): `supporting-probes/results/reference/v<N>/`
+- Official release artifacts (written only by a major release): `supporting-probes/results/reference/v<N>/`
 
 Non-release workflows must not write to `reference/`.
 
