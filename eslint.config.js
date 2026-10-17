@@ -1,10 +1,13 @@
 // @ts-check
+const { includeIgnoreFile } = require('@eslint/compat');
 const eslint = require('@eslint/js');
 const { defineConfig } = require('eslint/config');
 const tseslint = require('typescript-eslint');
+const path = require('node:path');
 const unusedImports = require('eslint-plugin-unused-imports');
 
 module.exports = defineConfig([
+  includeIgnoreFile(path.join(__dirname, '.gitignore')),
   {
     files: ['**/*.ts'],
     extends: [eslint.configs.recommended, ...tseslint.configs.recommended, ...tseslint.configs.stylistic],

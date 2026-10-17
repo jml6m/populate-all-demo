@@ -19,16 +19,12 @@ config:
   MD056: true
   MD058: true
 
+gitignore: true
+
 ignores:
   - '.github/ISSUE_TEMPLATE/**'           # issue templates authored without an H1
   - '.github/pull_request_template.md'
-  - 'node_modules/**'
-  - 'supporting-probes/node_modules/**'
-  - 'dist/**'
   - 'data/**'
-  - 'reports/local/**'
-  - 'logs/local/**'
-  - 'supporting-probes/results/local/**'
   # Length-capped instead of format-linted; lychee still checks their links.
   - 'AGENTS.md'
   - 'CLAUDE.md'

@@ -31,6 +31,12 @@
 !/supporting-probes/results/reference/
 !/supporting-probes/results/.gitkeep
 
+# Claude Code local-only files
+.claude/worktrees/
+.claude/settings.local.json
+.claude/agent-memory-local/
+CLAUDE.local.md
+
 # IDE
 /.idea
 /.vscode
