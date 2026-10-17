@@ -67,8 +67,8 @@ if [ "${#offenders[@]}" -gt 0 ]; then
   echo "This is a public repo — markdown files are locked to an exact allowlist to keep" >&2
   echo "internal notes/patterns out and stop unreviewed doc sprawl. Either:" >&2
   echo "  1. Remove the file, or" >&2
-  echo "  2. Open a PR adding it (with its purpose) to $POLICY_FILE's 'allowed' list" >&2
-  echo "     — that file is CODEOWNERS-gated, so it requires @jml6m's review." >&2
+  echo "  2. Open a PR adding it (with its purpose) to $POLICY_FILE's 'allowed' list;" >&2
+  echo "     like any change, it needs a maintainer's review." >&2
   exit 1
 fi
 
