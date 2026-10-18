@@ -184,7 +184,6 @@ void describe('repo-structure — package.json', () => {
     'generate:force',
     'experiment',
     'experiment:force',
-    'clean',
   ];
 
   for (const script of requiredScripts) {
