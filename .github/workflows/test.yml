@@ -55,3 +55,13 @@ jobs:
             logs/local/
             logs/reference/
           if-no-files-found: error
+
+  # One result for the test job, so its legs can change without renaming a check. always() makes a
+  # failed test fail this job; a skipped job would report as success.
+  tests-passed:
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - run: '[ "${{ needs.test.result }}" = "success" ]'
