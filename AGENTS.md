@@ -37,6 +37,12 @@ either `package.json` without justification in the PR.
 - **Never modify them in a PR.** Only a major release writes a new version directory, and a
   published version is frozen forever. `repo-config-guard` rejects PRs that touch them.
 - Minor releases don't change results: they never re-run the experiment or touch `reference/`.
+- **The experiment's inputs change only in a major:** `src/` (except tests), `supporting-probes/`
+  (except its README), the runtime versions, and the packages that run the experiment and the
+  probes. A PR that changes one goes into the next major's milestone.
+- **Statements about results come from checks.** A PR, the README or release notes say results
+  changed or are unchanged only as far as a check shows it: for a minor, the release workflow's
+  `reference/` comparison; for a major, its correctness comparison.
 - Local runs write to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/` and
   `supporting-probes/results/local/<run-id>/`. CI uploads from `reports/` and `logs/` only.
 

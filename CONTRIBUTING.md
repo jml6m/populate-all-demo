@@ -15,10 +15,13 @@ Results stay comparable only if the conditions they were measured under stay fix
 
 - The published results under the `reference/` directories change only in a major release, which
   publishes a new reference set. They are never edited.
-- The measured libraries in [`supporting-probes/`](./supporting-probes/) are pinned, and the
-  measurement runtime (the Node version in [`.nvmrc`](./.nvmrc) and the CI runner) is fixed per
-  release. Changing either is planned into the next major.
+- The experiment's inputs change only in a major release too: the code under [`src/`](./src/)
+  (tests aside), the probes in [`supporting-probes/`](./supporting-probes/), the measurement
+  runtime (the Node version in [`.nvmrc`](./.nvmrc), the probe runtimes and the CI runner) and
+  the packages that run the experiment and the probes. A pull request that changes one goes into
+  the next major's milestone; a minor release ships none of them.
 - A change that affects measurements needs an issue that agrees the method first.
+- A pull request says results changed or are unchanged only as far as a check shows it.
 - Gates and report-only output are different things. A gate fails the run (the empirical runtime
   check in the tests is one); report-only output is printed or written to a report and never
   fails anything. Say which one a new check is.
