@@ -10,7 +10,7 @@ assignees: ''
 
 **Environment**
 - **Repo SHA / branch:** (e.g., `main` HEAD `abc1234`, or release tag `v1.0.0`)
-- **Node version:** (e.g., v22.22.3, the version in `.nvmrc`)
+- **Node version:** (`node --version`; the project uses the version in `.nvmrc`)
 - **OS:** (e.g., GitHub Actions Ubuntu / macOS local / Windows local / WSL)
 - **Polyglot toolchain (if probe-related):** Python <version>, Ruby <version>, Java <version>, .NET <version>
 
