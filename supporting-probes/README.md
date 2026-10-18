@@ -4,7 +4,7 @@ Supporting probes validate hydration and consumer behavior across ORM ecosystems
 
 ## Hydration scenarios under test
 
-- Schema-driven full hydration of **cyclic** objects (documentation-driven in this patch cycle): `A -> B -> A`
+- Schema-driven full hydration of **cyclic** objects (documentation-driven, not exercised in probe code): `A -> B -> A`
 - Schema-driven full hydration of **acyclic** objects (implemented in probe code): `A -> B -> C`
 
 ## Commands
@@ -16,10 +16,12 @@ The orchestrator summary table shows one `outcome` column (`ACYCLIC_PASS` / `ACY
 
 ## Prerequisites
 
-- `probe:ts`: Node.js
-- `probe:all`: Node.js, Python 3, Ruby, Java 21, .NET 8
+- `probe:ts`: Node.js, and MongoDB for the Mongoose probe (below)
+- `probe:all`: also Python 3, Ruby, Java 21 with Maven, and .NET 8
 
-The orchestrator fails fast before any probe starts if required runtimes are missing. Build tools (`mvn`, `javac`, `gem`) are not checked as central prerequisites — if a specific probe's build tool is missing, that probe will fail-soft with a fallback JSON. For reference: the Hibernate probe uses `mvn` and `javac` internally.
+[`supporting-probes.yml`](../.github/workflows/supporting-probes.yml) has the exact install steps CI uses. The orchestrator fails fast before any probe starts if Node, Python, Ruby, Java or .NET is missing. Maven isn't checked up front: without it, the run stops at the Hibernate probe ([#170](https://github.com/jml6m/populate-all-demo/issues/170)).
+
+Without these toolchains, run the suite on GitHub instead: in your fork's **Actions** tab, enable workflows, then run **Supporting Probes** on your branch. It needs no secrets; MongoDB runs as a service container.
 
 ### Local setup for the Mongoose probe
 
@@ -50,10 +52,8 @@ The `supporting-probes` workflow runs with `PROBE_VERBOSE=1` so workflow logs pr
 
 Each orchestrator run computes one `PROBE_RUN_ID` (`YYYYMMDD-HHMMSS-<7hexchars|nogit>`) and every probe writes JSON to:
 
-- Local/unofficial runs: `supporting-probes/results/local/<run-id>/<probe>.json`
-- Official release artifacts (future release workflow only): `supporting-probes/results/reference/v<N>/`
-
-Non-release workflows must not write to `reference/`.
+- Local runs: `supporting-probes/results/local/<run-id>/<probe>.json`
+- Published sets: `supporting-probes/results/reference/v<N>/` (see [artifact directories](../README.md#artifact-directories))
 
 ## JSON schema
 

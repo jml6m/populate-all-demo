@@ -40,7 +40,7 @@ What problem does this solve, or what research question does it open?
 
 ## Reference release impact
 - [ ] Targets next major release (v<N+1>)
-- [ ] Patch-eligible (no experiment-fingerprint change)
+- [ ] Next minor release (no experiment-fingerprint change)
 - [ ] Documentation only (no release impact)
 
 ## Coordination

@@ -1,0 +1,6 @@
+{
+  "fileExtensions": ["ts"],
+  "tsConfig": "tsconfig.json",
+  "excludeRegExp": ["^dist/"],
+  "detectiveOptions": { "ts": { "skipTypeImports": true } }
+}

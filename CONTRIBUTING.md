@@ -3,40 +3,49 @@
 populate-all-demo is a research repository maintained by one person. Issues and pull requests are
 welcome; response times are best-effort.
 
+Templates can be found in [`.github/ISSUE_TEMPLATE/`](./.github/ISSUE_TEMPLATE/).
+
 ## What's wanted
 
-- Bug reports with a reproduction: the command, dataset tier, platform, and what you expected.
+- Bug reports using the provided template.
 - Corrections to the supporting probes or the analysis, with evidence.
-- Fixes to the runner, generator and tooling that keep results unchanged.
+- Optimizations for the runner, generator and tooling.
 
-Changes that alter the experiment or its results are planned into the next major version, which
-publishes a new reference set. The published `reference/` directories are never edited.
+## Research contributions
 
-## Before you open a PR
+Results stay comparable only if the conditions they were measured under stay fixed:
 
-Open an issue first for anything beyond a typo, so the approach is agreed before code is written.
-Use the templates under [`.github/ISSUE_TEMPLATE/`](./.github/ISSUE_TEMPLATE/).
+- The published results under the `reference/` directories are never edited. A major release
+  publishes a new reference set instead ([Releases](./README.md#releases)).
+- The experiment's inputs change only in a major release too: the code under [`src/`](./src/)
+  (tests aside), the probes in [`supporting-probes/`](./supporting-probes/), the measurement
+  runtime (the Node version and the CI runner) and the packages that run the experiment and the
+  probes. A pull request that changes one is planned into the next major.
+- A change that affects measurements needs an issue that agrees the method first.
 
-## Local gates
+## Contributing from a fork
+
+1. For anything beyond a typo or small fix, open or comment on an issue.
+2. Fork the repository and branch from `main`. Keep each pull request to one focused change.
+3. Open the pull request against `main`. Its description starts with `Closes #N`, or
+   `Relates to #N` if it only does part of the issue.
+4. Leave "Allow edits from maintainers" checked.
+
+CI on a first contribution runs after the maintainer approves it. Don't bump the version in
+`package.json` or touch anything under a `reference/` directory.
+
+## Checks
+
+CI runs these on every pull request, on the Node version in [`.nvmrc`](./.nvmrc) and on Node 24.
+Running them before you push is optional:
 
 ```bash
-npm ci
-npm run lint        # ESLint + encoding check
-npm test            # unit tests (Node's built-in runner via tsx)
-npm run lint:docs   # markdownlint, if you touched Markdown
+npm run lint              # ESLint + encoding check
+npm run health:circular   # circular imports in src/ (madge)
+npm test                  # unit tests (Node's built-in runner via tsx)
+npm run lint:docs         # markdownlint, if you touched Markdown
 ```
 
-CI runs the same, plus the supporting-probe suite and a link check on Markdown. Use the Node version
-in [`.nvmrc`](./.nvmrc).
-
-## PR conventions
-
-- Open the PR against `main`. Its description has a line starting with `Relates to #N` for the
-  issue it serves; the `issue-link` check requires it.
-- Keep a PR to one change. PRs are squash-merged.
-- Don't bump the version in `package.json` or touch anything under a `reference/` directory.
-
-## Where the rules live
-
-[AGENTS.md](./AGENTS.md) has the commands, the determinism rules and the coding standards.
-Security reports go through [SECURITY.md](./SECURITY.md).
+CI also checks Markdown links, and runs the supporting-probe suite when `supporting-probes/`
+changes. To run that suite yourself, see its
+[prerequisites](./supporting-probes/README.md#prerequisites).

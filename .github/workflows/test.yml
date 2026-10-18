@@ -7,9 +7,20 @@ on:
 
 jobs:
   test:
+    name: test (${{ matrix.id }})
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The measurement runtime.
+          - id: nvmrc
+            node-version-file: .nvmrc
+          # Node 24 too, which v2.0 measures on as well (#141).
+          - id: node-24
+            node-version: '24.18.0'
 
     steps:
       - name: Checkout code
@@ -18,7 +29,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.22.3'
+          node-version: ${{ matrix.node-version }}
+          node-version-file: ${{ matrix.node-version-file }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -26,7 +38,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        continue-on-error: true
+
+      - name: Circular imports
+        run: npm run health:circular
 
       - name: Create logs directory
         run: mkdir -p logs/local logs/reference
@@ -50,7 +64,7 @@ jobs:
       - name: Upload trace logs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: accuracy-trace-logs
+          name: accuracy-trace-logs-${{ matrix.id }}
           path: |
             logs/local/
             logs/reference/
