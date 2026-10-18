@@ -42,4 +42,12 @@ module.exports = defineConfig([
       'max-lines': ['warn', { max: 400, skipBlankLines: true, skipComments: true }],
     },
   },
+  {
+    // The measurement loop's result defaults are flagged by ESLint 10. The runner stays unchanged
+    // until the next major, which restructures that loop.
+    files: ['src/runner.ts'],
+    rules: {
+      'no-useless-assignment': 'warn',
+    },
+  },
 ]);

@@ -1,31 +1,57 @@
-# Dependabot — monthly multi-ecosystem gold baseline (multi-directory)
-# https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configuring-multi-ecosystem-updates
-# open-pull-requests-limit must live on the multi-ecosystem group (not on updates).
-# supporting-probes/ is not listed: its dependencies are part of the experiment definition and
-# change only in a major release, alongside a new reference set.
+# Dependabot: monthly. Which updates group together, which come alone and which never come is
+# decided by what each dependency is, so this file changes only when that does.
+# - Minor and patch updates of the tooling (dev packages, actions) go together, one PR per
+#   ecosystem.
+# - Each major comes alone, so a breaking one doesn't hold up the rest. To skip a major that
+#   isn't ready (a peer range not caught up, an input that changed), close its PR with
+#   `@dependabot ignore this major version` instead of adding an ignore here.
+# - The experiment's inputs never come from Dependabot: they change only in a major release,
+#   planned by hand with a new reference set. That's the packages that run the experiment, the
+#   actions that install the probes' runtimes, and everything in supporting-probes/ (not listed).
 version: 2
 
-multi-ecosystem-groups:
-  all-dependencies:
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
       interval: 'monthly'
-    open-pull-requests-limit: 1
+    versioning-strategy: 'increase'
     labels:
       - 'dependencies'
       - 'defer-to-later-release'
     assignees:
       - 'jml6m'
-
-updates:
-  - package-ecosystem: 'npm'
-    directory: '/'
-    patterns:
-      - '*'
-    multi-ecosystem-group: 'all-dependencies'
-    versioning-strategy: 'increase'
+    groups:
+      tooling:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      - dependency-name: 'tsx'
+      - dependency-name: 'esbuild'
+      - dependency-name: 'seedrandom'
+      - dependency-name: 'yaml'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
-    patterns:
-      - '*'
-    multi-ecosystem-group: 'all-dependencies'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+      - 'defer-to-later-release'
+    assignees:
+      - 'jml6m'
+    groups:
+      actions:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      - dependency-name: 'actions/setup-python'
+      - dependency-name: 'ruby/setup-ruby'
+      - dependency-name: 'actions/setup-java'
+      - dependency-name: 'actions/setup-dotnet'
