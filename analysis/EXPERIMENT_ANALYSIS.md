@@ -96,7 +96,7 @@ Larger tiers (`medium`, `stress`, `extreme`) suppress repeated consumer-probe de
 
 ## §4 — Results
 
-> **Note on figures:** Timing and RAM measurements below are sourced from the `json` files in [/reports/reference/v1](../reports/reference/v1/).
+> **Note on figures (corrected 2026-10-18):** The results below come from the v1.0.1 release run on Node 22.22.3, whose JSON files are at tag `v1.0.1`. The v1.0.3 release re-ran the experiment on Node 24.18.0 and replaced the files in [/reports/reference/v1](../reports/reference/v1/). That run differs in one correctness result, noted under Map Tracker below; its timings differ as any rerun's do.
 
 ### Scale Survivability — Stage 1 (Hydration)
 
@@ -110,6 +110,8 @@ Larger tiers (`medium`, `stress`, `extreme`) suppress repeated consumer-probe de
 **Naive Recursion** fails on every tier. On `acyclic-control`, it fails because of how shared nodes are handled: when node D is a dependency of both node B and node C, the algorithm visits D twice and creates two separate copies of it — so B and C end up pointing to different objects that happen to have the same ID, instead of both pointing to the same single object. The comparers detect this duplication and report a mismatch. On all cyclic datasets, the failure is more severe: populating node A requires populating B (which A depends on), and populating B requires populating A (which B depends on). The algorithm calls itself recursively without end, adding a new level to the function call chain on every step until the program's built-in call limit is exceeded and it crashes.
 
 **Map Tracker** is deceptive: it passes through `acyclic-control`, `basic`, and `medium` before failing at `stress`. Adding a `visited` Map prevents the algorithm from entering an infinite loop — when it encounters a node it has already started processing, it returns the cached result. But this does not reduce how deeply the functions call each other. On a 50,000-node graph, following a chain of previously unvisited nodes can push thousands of nested functions onto the call stack before a cached node is hit. JavaScript enforces a maximum call stack depth, and this limit is exceeded before the algorithm finishes.
+
+> **On Node 24.18.0** (the committed v1 artifacts), Map Tracker also overflows the stack on `medium`, so it passes only `acyclic-control` and `basic`. The datasets are identical; only the Node version differs. Why is still being investigated, and v2.0 measures on both Node 22 and Node 24.
 
 **Tarjan SCC Layering** and **Two-Pass Wire** pass all five tiers. Both are fully iterative — no recursion, no call-stack dependency.
 
@@ -146,7 +148,7 @@ On an acyclic graph, `JSON.stringify` succeeds because there are no circular ref
 | Tarjan SCC Layering | 0.899 ms / 0.099 MB | 0.292 ms / 0.064 MB | 38.036 ms / 10.243 MB | 443.007 ms / 52.639 MB | 3,482.344 ms / 281.093 MB |
 | Two-Pass Wire       | 0.298 ms / 0.039 MB | 1.088 ms / 0 MB     | 24.678 ms / 0 MB      | 528.237 ms / 37.813 MB | 2,174.188 ms / 203.311 MB |
 
-> **Measurement environment.** Timings and RAM in the table above are sourced from the canonical `v1` benchmark JSONs in [`reports/reference/v1/`](../reports/reference/v1/), measured on GitHub-hosted `ubuntu-latest` with Node v24.18.0 and a 4 GB heap (`NODE_OPTIONS='--max-old-space-size=4096'`). The full release manifest with commit SHA, run ID, and lockfile hashes is at [`reports/reference/v1/manifest.json`](../reports/reference/v1/manifest.json). Local runs on developer hardware will produce different numbers.
+> **Measurement environment.** Timings and RAM in the table above come from the v1.0.1 release run's benchmark JSONs (tag `v1.0.1`), measured on GitHub-hosted `ubuntu-latest` with Node 22.22.3 and a 4 GB heap (`NODE_OPTIONS='--max-old-space-size=4096'`). The committed JSONs in [`reports/reference/v1/`](../reports/reference/v1/) are from the v1.0.3 run on Node 24.18.0; its release manifest, with commit SHA, run ID and lockfile hashes, is at [`reports/reference/v1/manifest.json`](../reports/reference/v1/manifest.json). Local runs on developer hardware will produce different numbers.
 >
 > _(The Python, Ruby, Java, and .NET runtimes used by supporting probes are recorded in the same manifest but do not affect the JS-only benchmark numbers in the table above.)_
 

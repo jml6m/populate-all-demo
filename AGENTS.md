@@ -54,10 +54,10 @@ different output across re-runs, it is incorrect.
 - **No environment leakage:** identical outputs on Linux and Windows for the same seeds and
   dependency versions.
 - **The runtime is a measurement parameter, not a compatibility setting.** Node is pinned to
-  exactly `22.22.3` ([`.nvmrc`](./.nvmrc) and every workflow), and CI runs on `ubuntu-24.04`.
-  The v1 reference numbers were measured on Node `v24.18.0`, as each v1 artifact records; the
-  next major decides the runtime for its numbers. `engines` stays `>=22`, because that is the real
-  code floor. Changing the runtime, or the supporting-probe dependencies, requires a new major
+  exactly `22.22.3` ([`.nvmrc`](./.nvmrc) and every workflow), and CI runs on `ubuntu-24.04`; the
+  tests also run on `24.18.0`. The analysis tables come from the v1.0.1 run on Node 22.22.3, the
+  committed v1 artifacts from the v1.0.3 run on 24.18.0, and Map Tracker's `medium` result differs
+  between them. `engines` stays `>=22`, because that is the real code floor. Changing the runtime, or the supporting-probe dependencies, requires a new major
   reference version with regenerated numbers, never a routine bump.
 
 ## Architecture & coding standards
