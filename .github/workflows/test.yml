@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # .nvmrc's version, and the version the committed v1 reference artifacts were produced on.
+        node: ['22.22.3', '24.18.0']
 
     steps:
       - name: Checkout code
@@ -18,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.22.3'
+          node-version: ${{ matrix.node }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -52,7 +57,7 @@ jobs:
       - name: Upload trace logs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: accuracy-trace-logs
+          name: accuracy-trace-logs-node-${{ matrix.node }}
           path: |
             logs/local/
             logs/reference/
