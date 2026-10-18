@@ -18,7 +18,7 @@ cd populate-all-demo
 npm ci
 ```
 
-`npm ci` installs exactly the versions in `package-lock.json`, so your runs use the same dependencies as the published ones, and it never rewrites the lockfile.
+`npm ci` installs exactly the versions in `package-lock.json`, so your runs use the same dependencies as the published ones, and it never rewrites the lockfile. To add or change a dependency, use `npm install <pkg>`, which updates both files. If `package.json` is edited by hand, `npm ci` stops with an error until `npm install` brings the lockfile back in step.
 
 ## Running the experiment
 
