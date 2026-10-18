@@ -14,36 +14,19 @@ record of published findings; treat them as immutable historical data.
 
 ## Commands
 
-- `npm ci`: reproducible install from `package-lock.json` (not `npm install`).
-- `npm run generate`: produce test datasets (writes to `data/`, gitignored).
-- `npm run experiment` / `npm run experiment:force`: run benchmarks (writes to `reports/`, gitignored).
-- `npm test`: unit tests (trace logs to `logs/`, gitignored).
-- `npm run lint`: ESLint and the encoding check. `npm run health:circular`: circular imports
-  (madge). `npm run lint:docs`: markdownlint.
-- `cd supporting-probes && npm ci && npm run probe:all`: the full supporting-probe suite.
-  `mongoose` needs a reachable MongoDB (`MONGODB_URI`, default
-  `mongodb://127.0.0.1:27017/supporting_probe_mongoose`). For the Python/Ruby/Java/.NET setup,
-  use the commands in [`supporting-probes.yml`](./.github/workflows/supporting-probes.yml).
+- Setup and running the experiment: [README](./README.md#getting-started). Checks CI runs:
+  [CONTRIBUTING](./CONTRIBUTING.md#checks). The supporting-probe suite:
+  [`supporting-probes/README.md`](./supporting-probes/README.md).
+- Don't add top-level dependencies to either `package.json` without justification in the PR.
 
-Don't change the `version` field in `package.json`, and don't add top-level dependencies to
-either `package.json` without justification in the PR.
+## Published results
 
-## Reference artifacts are immutable
-
-`reports/reference/`, `logs/reference/`, `supporting-probes/results/reference/` and
-`data/reference/` hold the canonical published results, one directory per major version
-(`v1/`, `v2/`, …).
-
-- **Never modify them in a PR.** Only a major release writes a new version directory, and a
-  published version is frozen forever. `repo-config-guard` rejects PRs that touch them.
-- Minor releases don't change results: they never re-run the experiment or touch `reference/`.
-- **The experiment's inputs change only in a major:** `src/` (except tests), `supporting-probes/`
-  (except its README), the runtime versions, and the packages that run the experiment and the
-  probes. Say in the PR when it changes one; it waits for the next major release.
+- **Follow [Research contributions](./CONTRIBUTING.md#research-contributions)** before changing
+  anything under `src/` or `supporting-probes/`. `repo-config-guard` rejects PRs that touch a
+  `reference/` directory; a PR that changes an experiment input says so, and waits for the next
+  major release.
 - **Statements about results come from checks.** Don't write that results changed or are
   unchanged unless a check's output shows it, and link that output.
-- Local runs write to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/` and
-  `supporting-probes/results/local/<run-id>/`. CI uploads from `reports/` and `logs/` only.
 
 ## Determinism and reproducibility
 
@@ -59,8 +42,7 @@ different output across re-runs, it is incorrect.
 - **No environment leakage:** identical outputs on Linux and Windows for the same seeds and
   dependency versions.
 - **The runtime is a measurement parameter, not a compatibility setting.** [`.nvmrc`](./.nvmrc)
-  pins the exact Node version, and every workflow reads it; CI runs on `ubuntu-24.04`, and the
-  tests also run on Node 24. `engines` stays `>=22`, because that is the real code floor.
+  pins the exact Node version, and every workflow reads it; CI runs on `ubuntu-24.04`. `engines` stays `>=22`, because that is the real code floor.
   Changing the runtime, or the supporting-probe dependencies, requires a new major reference
   version with regenerated numbers, never a routine bump.
 

@@ -6,9 +6,8 @@ This repository demonstrates how to fully populate a partially hydrated object g
 
 - [Node.js](https://nodejs.org/) v22 or later; use the exact version in [`.nvmrc`](./.nvmrc), which is the one CI runs
 - npm (included with Node.js)
-- MongoDB (only required for the Mongoose supporting probe)
 
-For supporting probe prerequisites and runtime setup details (including `MONGODB_URI` for the Mongoose probe), see [`supporting-probes/README.md`](./supporting-probes/README.md). The main experiment and development checks in this README require only Node.js + npm.
+That's all the experiment and the checks need. The supporting probes need more; see [`supporting-probes/README.md`](./supporting-probes/README.md).
 
 ## Getting started
 
@@ -52,11 +51,9 @@ The runner benchmarks four population algorithms across five dataset tiers (`acy
 npm run experiment:force
 ```
 
-For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, and JSON outputs), see [`supporting-probes/README.md`](./supporting-probes/README.md).
-
 ## Development
 
-Before opening a pull request, run the [local checks](./CONTRIBUTING.md#local-checks) in `CONTRIBUTING.md`.
+CI runs lint, circular-import, unit-test and Markdown checks on every pull request. To run them yourself, see [Checks](./CONTRIBUTING.md#checks).
 
 ## Releases
 
@@ -82,9 +79,7 @@ Major releases publish a new reference set (`reference/v<N>/`) and are the only 
   - `logs/reference/v1/`, `logs/reference/v2/`, ...
   - `supporting-probes/results/reference/v1/`, `supporting-probes/results/reference/v2/`, ...
   - `data/reference/v1/`, `data/reference/v2/`, ...
-- Rules for editing these directories:
-  - `*/local/*` is developer output and is intentionally not committed (`reports/`, `logs/`, `supporting-probes/results/`, and `data/` local output).
-  - `*/reference/*` is canonical release evidence (`reports/`, `logs/`, `supporting-probes/results/`, and `data/`); do not edit existing versioned contents (`v1/`, `v2/`, ...) in normal development.
+- `local/` output is gitignored. The `reference/` sets are never edited ([research contributions](./CONTRIBUTING.md#research-contributions)).
 
 ## Further reading
 
