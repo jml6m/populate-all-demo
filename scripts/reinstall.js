@@ -4,26 +4,21 @@ const { execSync } = require('child_process');
 
 console.log('🗑️  Cleaning dependencies...');
 
-// Paths relative to this script
+// Both packages reinstall from their committed lockfiles, which stay untouched.
 const rootDir = path.resolve(__dirname, '..');
-const nodeModules = path.join(rootDir, 'node_modules');
-const lockFile = path.join(rootDir, 'package-lock.json');
+const packageDirs = [rootDir, path.join(rootDir, 'supporting-probes')];
 
-// Force remove directory
-if (fs.existsSync(nodeModules)) {
-  fs.rmSync(nodeModules, { recursive: true, force: true });
+for (const dir of packageDirs) {
+  fs.rmSync(path.join(dir, 'node_modules'), { recursive: true, force: true });
 }
 
-// Force remove lock file
-if (fs.existsSync(lockFile)) {
-  fs.rmSync(lockFile, { force: true });
-}
-
-console.log('✨ Clean complete. Installing fresh dependencies...');
+console.log('✨ Clean complete. Installing from the lockfiles...');
 
 // Execute install inheriting the console colors
 try {
-  execSync('npm install', { stdio: 'inherit', cwd: rootDir });
+  for (const dir of packageDirs) {
+    execSync('npm ci', { stdio: 'inherit', cwd: dir });
+  }
 } catch (error) {
   process.exit(1);
 }
