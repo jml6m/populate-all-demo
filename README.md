@@ -18,6 +18,8 @@ cd populate-all-demo
 npm ci
 ```
 
+`npm ci` installs exactly the versions in `package-lock.json`, so your runs use the same dependencies as the published ones, and it never rewrites the lockfile.
+
 ## Running the experiment
 
 **Step 1 — generate the test datasets:**
@@ -52,22 +54,16 @@ npm run experiment:force
 
 For supporting probe execution details (`probe:ts`, `probe:all`, prerequisites, and JSON outputs), see [`supporting-probes/README.md`](./supporting-probes/README.md).
 
-## Development commands
+## Development
 
-- `npm run lint` — ESLint on `src/**/*.ts` plus the text-encoding check (zero errors required).
-- `npm run health:circular` — fails on circular imports in `src/` (madge).
-- `npm run lint:docs` — markdownlint across all Markdown. CI also runs a link and anchor check on Markdown.
-- `npm run lint:agents` — checks `AGENTS.md` and `CLAUDE.md` against their character limits.
-- `npm run build` — TypeScript compile to `dist/`.
-- `npm test` — Node test runner against `src/**/*.test.ts`.
-- `npm run npm:reinstall` — clean reinstall of root + supporting-probes dependencies (deletes `node_modules` and runs `npm ci` in both). Useful when lockfile changes or after pulling a branch with dep updates.
+Before opening a pull request, run the [local checks](./CONTRIBUTING.md#local-checks) in `CONTRIBUTING.md`.
 
 ## Releases
 
 - **v1.0.0** (initial release) — first canonical reference dataset; baseline algorithm benchmarks.
 - **v1.0.1** (patch) — corrected the **MikroORM** supporting-probe to verify cycle serialization on the true reconstructed graph rather than `Collection.toJSON()`'s flattened projection. Reference data for [MikroORM results](./supporting-probes/results/reference/v1/mikroorm.json) were updated; benchmark/algorithm results are unchanged.
 - **v1.0.2** (patch) — corrected the ecosystem hydration conclusions: Only **MikroORM** and **Hibernate** reach schema-driven acyclic full hydration — and even these are provisional. **EF Core** and **TypeORM** cannot construct the eager query at all; **SQLAlchemy** and **ActiveRecord** resolve the graph only through N+1 traversal queries; the remaining libraries under-hydrate. The §2 comparison was reworked into an explicit cyclic/acyclic hydration matrix. Core two-pass algorithm and benchmark results are unchanged.
-- **v1.0.3** (patch) — Process & Infrastructure Overhaul. Repository automation and governance were streamlined for maintainers. The release run also moved to Node 24.18.0 (earlier releases ran on Node 22) and replaced the v1 reference files. On Node 24, Map Tracker overflows the stack on the `medium` tier, which it passed on Node 22; every other result is the same. _Corrected 2026-10-18: this entry first said benchmark outcomes were unchanged._
+- **v1.0.3** (patch) — Process & Infrastructure Overhaul. Repository automation and governance were streamlined for maintainers.
 - **v1.1.0** (minor, results unchanged) — the major/minor release model, the exact Node version pin, CI gates, `CONTRIBUTING.md` and the agent-file length check.
 - **v1.2.0** (minor, results unchanged) — toolchain and GitHub Actions updates (ESLint 10), lint errors and circular imports fail CI, a guide for contributing from a fork, and documentation brought up to date.
 

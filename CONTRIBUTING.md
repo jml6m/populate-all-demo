@@ -56,8 +56,8 @@ npm test                  # unit tests (Node's built-in runner via tsx)
 npm run lint:docs         # markdownlint, if you touched Markdown
 ```
 
-CI runs the same on Node 22.22.3 and 24.18.0, plus a link check on Markdown, and the supporting-probe
-suite when `supporting-probes/` changes. Use the Node version in [`.nvmrc`](./.nvmrc).
+Use the Node version in [`.nvmrc`](./.nvmrc). CI runs the same checks on it and on Node 24, plus
+a link check on Markdown, and the supporting-probe suite when `supporting-probes/` changes.
 
 The supporting-probe suite (`cd supporting-probes && npm ci && npm run probe:all`) also needs Python,
 Ruby, Java with Maven, .NET 8 and a running MongoDB (set `MONGODB_URI` if it isn't on

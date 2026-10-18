@@ -39,10 +39,9 @@ either `package.json` without justification in the PR.
 - Minor releases don't change results: they never re-run the experiment or touch `reference/`.
 - **The experiment's inputs change only in a major:** `src/` (except tests), `supporting-probes/`
   (except its README), the runtime versions, and the packages that run the experiment and the
-  probes. A PR that changes one goes into the next major's milestone.
-- **Statements about results come from checks.** A PR, the README or release notes say results
-  changed or are unchanged only as far as a check shows it: for a minor, the release workflow's
-  `reference/` comparison; for a major, its correctness comparison.
+  probes. Say in the PR when it changes one; it waits for the next major release.
+- **Statements about results come from checks.** Don't write that results changed or are
+  unchanged unless a check's output shows it, and link that output.
 - Local runs write to gitignored `reports/local/<run-id>/`, `logs/local/<run-id>/` and
   `supporting-probes/results/local/<run-id>/`. CI uploads from `reports/` and `logs/` only.
 
@@ -53,18 +52,17 @@ different output across re-runs, it is incorrect.
 
 - **Seeded randomness only**, through `seedrandom`. Never `Math.random()` in paths that affect
   committed artifacts.
-- **No wall-clock fields in the fingerprint** (`RunMetadata` in
-  [`src/runner.ts`](./src/runner.ts)). It intentionally includes `manifest.generatedAt` to detect
-  data regenerations.
+- **No new wall-clock fields in the fingerprint** (`RunMetadata` in
+  [`src/runner.ts`](./src/runner.ts)). The one exception, `manifest.generatedAt`, is there to
+  detect data regenerations.
 - **Stable ordering:** sort directory contents and object keys before writing an artifact.
 - **No environment leakage:** identical outputs on Linux and Windows for the same seeds and
   dependency versions.
-- **The runtime is a measurement parameter, not a compatibility setting.** Node is pinned to
-  exactly `22.22.3` ([`.nvmrc`](./.nvmrc) and every workflow), and CI runs on `ubuntu-24.04`; the
-  tests also run on `24.18.0`. The analysis tables come from the v1.0.1 run on Node 22.22.3, the
-  committed v1 artifacts from the v1.0.3 run on 24.18.0, and Map Tracker's `medium` result differs
-  between them. `engines` stays `>=22`, because that is the real code floor. Changing the runtime, or the supporting-probe dependencies, requires a new major
-  reference version with regenerated numbers, never a routine bump.
+- **The runtime is a measurement parameter, not a compatibility setting.** [`.nvmrc`](./.nvmrc)
+  pins the exact Node version, and every workflow reads it; CI runs on `ubuntu-24.04`, and the
+  tests also run on Node 24. `engines` stays `>=22`, because that is the real code floor.
+  Changing the runtime, or the supporting-probe dependencies, requires a new major reference
+  version with regenerated numbers, never a routine bump.
 
 ## Architecture & coding standards
 
