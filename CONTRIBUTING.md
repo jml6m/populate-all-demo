@@ -41,7 +41,7 @@ Running them before you push is optional:
 
 ```bash
 npm run lint              # ESLint + encoding check
-npm run health:circular   # circular imports in src/ (madge)
+npm run health:circular   # circular or unresolvable imports in src/ (dependency-cruiser)
 npm test                  # unit tests (Node's built-in runner via tsx)
 npm run lint:docs         # markdownlint, if you touched Markdown
 ```
