@@ -18,7 +18,6 @@ updates:
     versioning-strategy: 'increase'
     labels:
       - 'dependencies'
-      - 'defer-to-later-release'
     assignees:
       - 'jml6m'
     groups:
@@ -40,7 +39,6 @@ updates:
       interval: 'monthly'
     labels:
       - 'dependencies'
-      - 'defer-to-later-release'
     assignees:
       - 'jml6m'
     groups:
