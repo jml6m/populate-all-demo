@@ -1,7 +1,6 @@
 ---
 name: Bug report
 about: Report a defect in the experiment runner, supporting probes, or release infrastructure
-title: '[BUG] '
 labels: bug
 assignees: ''
 ---
