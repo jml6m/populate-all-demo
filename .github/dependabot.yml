@@ -33,6 +33,9 @@ updates:
       - dependency-name: 'esbuild'
       - dependency-name: 'seedrandom'
       - dependency-name: 'yaml'
+      # dependency-cruiser 18.x supports TypeScript <7; with 7 installed it cruises no TypeScript files and still passes.
+      - dependency-name: 'typescript'
+        versions: ['>=7']
 
   - package-ecosystem: 'github-actions'
     directory: '/'
